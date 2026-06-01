@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecoevent360-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ecoevent360}
+      POSTGRES_USER: ${POSTGRES_USER:-ecoevent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecoevent_password}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - ecoevent360_postgres_data:/var/lib/postgresql/data
+      - ./base_datos/ecoevent_360_schema.sql:/docker-entrypoint-initdb.d/01_ecoevent_360_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ecoevent360_postgres_data:
