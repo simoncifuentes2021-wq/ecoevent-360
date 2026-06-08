@@ -59,8 +59,19 @@ npm install
 npm run dev
 ```
 
+## Deploy
+
+La guia completa para Render, Vercel, Supabase/Neon y Cloudflare R2 esta en
+`README_DEPLOY.md`.
+
 ## Guia de pruebas
 
 Para validar manualmente todo lo implementado en el frontend por rol y por modulo:
 
 - [Guia de pruebas frontend](docs/GUIA_PRUEBAS_FRONTEND.md)
+
+## Auditoria
+
+La trazabilidad administrativa y operativa se documenta en:
+
+- [Auditoria de EcoEvent 360](docs/audit_logs.md)

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
@@ -18,6 +18,7 @@ from app.schemas.survey_schema import (
     SurveyUpdate,
 )
 from app.services import survey_service
+from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(tags=["surveys"])
 
@@ -30,10 +31,23 @@ router = APIRouter(tags=["surveys"])
 def create_survey(
     event_id: UUID,
     payload: SurveyCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return survey_service.create_survey(db, event_id, payload, current_user)
+    survey = survey_service.create_survey(db, event_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="SURVEY_CREATED",
+        module="surveys",
+        entity_type="Survey",
+        entity_id=survey.id,
+        event_id=survey.event_id,
+        new_data=serialize_model_for_audit(survey),
+        request=request,
+    )
+    return survey
 
 
 @router.get("/events/{event_id}/surveys", response_model=SurveyListResponse)
@@ -69,20 +83,52 @@ def get_survey(
 def update_survey(
     survey_id: UUID,
     payload: SurveyUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return survey_service.update_survey(db, survey_id, payload, current_user)
+    before = survey_service.get_survey(db, survey_id, current_user)
+    old_data = serialize_model_for_audit(before)
+    survey = survey_service.update_survey(db, survey_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="SURVEY_UPDATED",
+        module="surveys",
+        entity_type="Survey",
+        entity_id=survey.id,
+        event_id=survey.event_id,
+        old_data=old_data,
+        new_data=serialize_model_for_audit(survey),
+        request=request,
+    )
+    return survey
 
 
 @router.patch("/surveys/{survey_id}/status", response_model=SurveyRead)
 def update_survey_status(
     survey_id: UUID,
     payload: SurveyStatusUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return survey_service.update_survey_status(db, survey_id, payload, current_user)
+    before = survey_service.get_survey(db, survey_id, current_user)
+    old_status = before.status
+    survey = survey_service.update_survey_status(db, survey_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="SURVEY_CLOSED" if survey.status == SurveyStatus.CLOSED else "SURVEY_UPDATED",
+        module="surveys",
+        entity_type="Survey",
+        entity_id=survey.id,
+        event_id=survey.event_id,
+        old_data={"status": old_status},
+        new_data={"status": survey.status},
+        request=request,
+    )
+    return survey
 
 
 @router.post(
@@ -92,6 +138,7 @@ def update_survey_status(
 )
 async def import_survey_csv(
     survey_id: UUID,
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
@@ -103,13 +150,30 @@ async def import_survey_csv(
 
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be CSV")
     content = await file.read()
-    return survey_service.import_survey_csv(
+    imported = survey_service.import_survey_csv(
         db,
         survey_id=survey_id,
         filename=file.filename or "google-sheets-export.csv",
         content=content,
         current_user=current_user,
     )
+    survey = survey_service.get_survey(db, survey_id, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="SURVEY_CSV_IMPORTED",
+        module="surveys",
+        entity_type="SurveyImport",
+        entity_id=imported.id,
+        event_id=survey.event_id,
+        metadata={
+            "survey_id": survey_id,
+            "filename": file.filename,
+            "imported_rows": imported.imported_rows,
+        },
+        request=request,
+    )
+    return imported
 
 
 @router.get("/surveys/{survey_id}/responses", response_model=SurveyResponseListResponse)

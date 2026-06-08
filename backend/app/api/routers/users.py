@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user, require_roles
@@ -9,6 +9,7 @@ from app.models.core import User
 from app.models.enums import UserRole
 from app.schemas.user_schema import UserCreate, UserListResponse, UserRead, UserUpdate
 from app.services import user_service
+from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -21,10 +22,23 @@ router = APIRouter(prefix="/users", tags=["users"])
 )
 def create_user(
     payload: UserCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return user_service.create_user(db, payload, current_user)
+    user = user_service.create_user(db, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="USER_CREATED",
+        module="users",
+        entity_type="User",
+        entity_id=user.id,
+        client_id=user.client_id,
+        new_data=serialize_model_for_audit(user),
+        request=request,
+    )
+    return user
 
 
 @router.get(
@@ -70,10 +84,41 @@ def get_user(user_id: UUID, db: Session = Depends(get_db)):
 def update_user(
     user_id: UUID,
     payload: UserUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return user_service.update_user(db, user_id, payload, current_user)
+    before = user_service.get_user_or_404(db, user_id)
+    old_data = serialize_model_for_audit(before)
+    old_role = before.role
+    user = user_service.update_user(db, user_id, payload, current_user)
+    if payload.password is not None:
+        create_audit_log(
+            db,
+            user=current_user,
+            action="USER_PASSWORD_CHANGED",
+            module="users",
+            entity_type="User",
+            entity_id=user.id,
+            client_id=user.client_id,
+            old_data={"password": "[REDACTED]"},
+            new_data={"password": "[REDACTED]"},
+            request=request,
+        )
+    action = "USER_ROLE_CHANGED" if old_role != user.role else "USER_UPDATED"
+    create_audit_log(
+        db,
+        user=current_user,
+        action=action,
+        module="users",
+        entity_type="User",
+        entity_id=user.id,
+        client_id=user.client_id,
+        old_data=old_data,
+        new_data=serialize_model_for_audit(user),
+        request=request,
+    )
+    return user
 
 
 @router.delete(
@@ -83,8 +128,23 @@ def update_user(
 )
 def delete_user(
     user_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return user_service.deactivate_user(db, user_id, current_user)
-
+    before = user_service.get_user_or_404(db, user_id)
+    old_data = serialize_model_for_audit(before)
+    user = user_service.deactivate_user(db, user_id, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="USER_DEACTIVATED",
+        module="users",
+        entity_type="User",
+        entity_id=user.id,
+        client_id=user.client_id,
+        old_data=old_data,
+        new_data=serialize_model_for_audit(user),
+        request=request,
+    )
+    return user

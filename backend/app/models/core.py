@@ -137,6 +137,9 @@ class Event(Base):
     status: Mapped[EventStatus] = mapped_column(
         event_status_enum, nullable=False, server_default=text("'QUOTE'")
     )
+    hidden_from_operations: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
     created_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )

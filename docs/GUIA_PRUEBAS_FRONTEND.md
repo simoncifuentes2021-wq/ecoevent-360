@@ -105,7 +105,7 @@ Contacto: Maria Gonzalez
 Email: contacto@productora.cl
 Telefono: +56912345678
 Direccion: Temuco, Chile
-Industria: Eventos
+Industria:  
 Notas: Cliente de prueba QA
 ```
 
@@ -254,7 +254,7 @@ Validar:
 - Cards de beneficios visibles.
 - Responsive en mobile.
 
-### 4.2 Login
+### 4.2 Login--------------------------------
 
 Ruta:
 

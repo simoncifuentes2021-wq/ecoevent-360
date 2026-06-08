@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user, require_roles
@@ -19,6 +19,7 @@ from app.schemas.waste_schema import (
     WasteTypeUpdate,
 )
 from app.services import waste_service
+from app.services.audit_log_service import create_audit_log
 
 router = APIRouter(tags=["waste"])
 
@@ -75,10 +76,28 @@ def delete_waste_type(waste_type_id: UUID, db: Session = Depends(get_db)):
 def create_waste_record(
     event_id: UUID,
     payload: WasteRecordCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return waste_service.create_waste_record(db, event_id, payload, current_user)
+    record = waste_service.create_waste_record(db, event_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="CREATE",
+        module="waste",
+        entity_type="WasteRecord",
+        entity_id=record.id,
+        event_id=record.event_id,
+        new_data={
+            "id": record.id,
+            "waste_type_id": record.waste_type_id,
+            "weight_kg": record.weight_kg,
+            "destination": record.destination,
+        },
+        request=request,
+    )
+    return record
 
 
 @router.get("/events/{event_id}/waste-records", response_model=WasteRecordListResponse)
@@ -108,19 +127,60 @@ def get_waste_record(
 def update_waste_record(
     record_id: UUID,
     payload: WasteRecordUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return waste_service.update_waste_record(db, record_id, payload, current_user)
+    before = waste_service.get_waste_record(db, record_id, current_user)
+    old_data = {
+        "waste_type_id": before.waste_type_id,
+        "weight_kg": before.weight_kg,
+        "destination": before.destination,
+        "zone_id": before.zone_id,
+    }
+    record = waste_service.update_waste_record(db, record_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="UPDATE",
+        module="waste",
+        entity_type="WasteRecord",
+        entity_id=record.id,
+        event_id=record.event_id,
+        old_data=old_data,
+        new_data=payload.model_dump(exclude_unset=True),
+        request=request,
+    )
+    return record
 
 
 @router.delete("/waste-records/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_waste_record(
     record_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    record = waste_service.get_waste_record(db, record_id, current_user)
+    event_id = record.event_id
+    old_data = {
+        "id": record.id,
+        "waste_type_id": record.waste_type_id,
+        "weight_kg": record.weight_kg,
+        "destination": record.destination,
+    }
     waste_service.delete_waste_record(db, record_id, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="DELETE",
+        module="waste",
+        entity_type="WasteRecord",
+        entity_id=record_id,
+        event_id=event_id,
+        old_data=old_data,
+        request=request,
+    )
 
 
 @router.get("/events/{event_id}/waste-summary", response_model=WasteSummaryRead)

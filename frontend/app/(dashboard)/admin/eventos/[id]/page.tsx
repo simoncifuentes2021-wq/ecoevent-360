@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, Edit } from "lucide-react";
+import { ArrowLeft, CalendarClock, Edit, EyeOff, Users } from "lucide-react";
 
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -13,7 +14,7 @@ import { StatusChangeDialog } from "@/components/events/StatusChangeDialog";
 import { RoleGuard } from "@/components/layout/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { changeEventStatus, getEvent } from "@/lib/api/events";
+import { changeEventOperationalVisibility, changeEventStatus, getEvent } from "@/lib/api/events";
 import type { Event, EventStatus } from "@/types/event";
 
 export default function EventDetailPage({ params }: { params: { id: string } }) {
@@ -23,6 +24,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
   const [statusLoading, setStatusLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [visibilityOpen, setVisibilityOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,6 +53,18 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
     }
   }
 
+  async function toggleOperationalVisibility() {
+    if (!event) return;
+    try {
+      await changeEventOperationalVisibility(event.id, !event.hidden_from_operations);
+      setVisibilityOpen(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo actualizar la visibilidad operativa.");
+      setVisibilityOpen(false);
+    }
+  }
+
   if (loading) return <LoadingState label="Cargando evento..." />;
   if (error || !event) return <ErrorState message={error || "Evento no encontrado"} title="No pudimos cargar el evento" onRetry={load} />;
 
@@ -72,6 +86,10 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
                 <CalendarClock className="h-4 w-4" />
                 Estado
               </Button>
+              <Button variant="secondary" onClick={() => setVisibilityOpen(true)}>
+                {event.hidden_from_operations ? <Users className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                {event.hidden_from_operations ? "Mostrar equipo" : "Ocultar equipo"}
+              </Button>
               <Link href={`/admin/eventos/${event.id}/editar`}>
                 <Button>
                   <Edit className="h-4 w-4" />
@@ -82,7 +100,18 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           }
         />
         <EventHeader event={event} />
-        <EventTabs eventId={event.id} role={user?.role} />
+        <EventTabs event={event} eventId={event.id} role={user?.role} />
+        <ConfirmDialog
+          description={
+            event.hidden_from_operations
+              ? "Supervisores y trabajadores volveran a ver este evento si tienen asignaciones o tareas."
+              : "Supervisores y trabajadores dejaran de ver este evento, incluyendo tareas asignadas y accesos operativos."
+          }
+          open={visibilityOpen}
+          title={event.hidden_from_operations ? "Mostrar al equipo operativo" : "Ocultar al equipo operativo"}
+          onClose={() => setVisibilityOpen(false)}
+          onConfirm={toggleOperationalVisibility}
+        />
         <StatusChangeDialog event={statusOpen ? event : null} loading={statusLoading} onClose={() => setStatusOpen(false)} onConfirm={updateStatus} />
       </div>
     </RoleGuard>

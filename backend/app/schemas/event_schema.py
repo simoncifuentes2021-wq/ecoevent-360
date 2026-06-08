@@ -33,6 +33,7 @@ class EventBase(BaseModel):
 
 class EventCreate(EventBase):
     status: EventStatus | None = None
+    hidden_from_operations: bool = False
 
 
 class EventUpdate(BaseModel):
@@ -51,10 +52,15 @@ class EventUpdate(BaseModel):
     end_date: datetime | None = None
     estimated_attendees: int | None = Field(default=None, ge=0)
     real_attendees: int | None = Field(default=None, ge=0)
+    hidden_from_operations: bool | None = None
 
 
 class EventStatusUpdate(BaseModel):
     status: EventStatus
+
+
+class EventOperationalVisibilityUpdate(BaseModel):
+    hidden_from_operations: bool
 
 
 class EventClientRead(BaseModel):
@@ -86,6 +92,7 @@ class EventRead(BaseModel):
     estimated_attendees: int | None = None
     real_attendees: int | None = None
     status: EventStatus
+    hidden_from_operations: bool = False
     created_by: UUID | None = None
     created_at: datetime
     updated_at: datetime

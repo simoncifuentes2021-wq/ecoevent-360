@@ -1,5 +1,5 @@
 import { API_URL } from "@/lib/constants";
-import { getStoredToken } from "@/lib/auth";
+import { clearSession, getStoredToken } from "@/lib/auth";
 import { api, ApiError } from "@/lib/api";
 import { toQuery, type QueryValue } from "@/lib/api/query";
 import type { ListResponse } from "@/types/common";
@@ -28,6 +28,8 @@ export async function generateFinalReport(eventId: string, options: Record<strin
     body: JSON.stringify(options)
   });
 
+  handleUnauthorized(response);
+
   if (!response.ok) {
     let detail = "No se pudo generar el reporte.";
     try {
@@ -54,6 +56,8 @@ export async function downloadReport(reportId: string): Promise<GenerateReportRe
   const response = await fetch(`${API_URL}/reports/${reportId}/download`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   });
+
+  handleUnauthorized(response);
 
   if (!response.ok) {
     let detail = "No se pudo descargar el PDF.";
@@ -82,4 +86,11 @@ export function markReportDelivered(reportId: string) {
 function filenameFromDisposition(disposition: string | null) {
   const match = disposition?.match(/filename="?([^"]+)"?/i);
   return match?.[1];
+}
+
+function handleUnauthorized(response: Response) {
+  if (response.status === 401) {
+    clearSession();
+    if (typeof window !== "undefined") window.location.href = "/login";
+  }
 }

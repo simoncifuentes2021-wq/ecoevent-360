@@ -25,6 +25,7 @@ export type Event = {
   estimated_attendees: number | null;
   real_attendees: number | null;
   status: EventStatus;
+  hidden_from_operations: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -46,6 +47,7 @@ export type EventCreate = {
   estimated_attendees?: number | null;
   real_attendees?: number | null;
   status?: EventStatus;
+  hidden_from_operations?: boolean;
 };
 
 export type EventUpdate = Partial<EventCreate>;

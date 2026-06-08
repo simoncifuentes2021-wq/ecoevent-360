@@ -11,6 +11,7 @@ import { FormActions } from "@/components/common/FormActions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api";
+import { eventStatusLabels } from "@/lib/status-labels";
 import type { Client } from "@/types/client";
 import type { Event, EventCreate, EventStatus, EventUpdate } from "@/types/event";
 
@@ -140,7 +141,7 @@ export function EventForm({ event, clients, onSubmit, cancelHref, submitLabel }:
               <select className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" {...register("status")}>
                 {statuses.map((status) => (
                   <option key={status} value={status}>
-                    {status.replaceAll("_", " ")}
+                    {eventStatusLabels[status]}
                   </option>
                 ))}
               </select>

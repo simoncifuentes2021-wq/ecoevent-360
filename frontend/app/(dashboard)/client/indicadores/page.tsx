@@ -6,7 +6,7 @@ import { ClientIndicatorsPage } from "@/components/client/ClientIndicatorsPage";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { RoleGuard } from "@/components/layout/RoleGuard";
-import { getClientDashboard, getClientIndicatorsFallback } from "@/lib/api/clientDashboard";
+import { getClientDashboard } from "@/lib/api/clientDashboard";
 import type { ClientDashboard } from "@/types/clientDashboard";
 
 export default function ClientIndicatorsRoute() {
@@ -20,12 +20,8 @@ export default function ClientIndicatorsRoute() {
       setError(null);
       try {
         setDashboard(await getClientDashboard());
-      } catch {
-        try {
-          setDashboard(await getClientIndicatorsFallback());
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "No se pudieron cargar los indicadores.");
-        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudieron cargar los indicadores.");
       } finally {
         setLoading(false);
       }

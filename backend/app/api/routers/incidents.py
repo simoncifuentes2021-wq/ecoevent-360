@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
@@ -15,6 +15,7 @@ from app.schemas.incident_schema import (
     IncidentUpdate,
 )
 from app.services import incident_service
+from app.services.audit_log_service import create_audit_log
 
 router = APIRouter(tags=["incidents"])
 
@@ -27,10 +28,23 @@ router = APIRouter(tags=["incidents"])
 def create_incident(
     event_id: UUID,
     payload: IncidentCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return incident_service.create_incident(db, event_id, payload, current_user)
+    incident = incident_service.create_incident(db, event_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="CREATE",
+        module="incidents",
+        entity_type="Incident",
+        entity_id=incident.id,
+        event_id=incident.event_id,
+        new_data={"id": incident.id, "title": incident.title, "status": incident.status},
+        request=request,
+    )
+    return incident
 
 
 @router.get("/events/{event_id}/incidents", response_model=IncidentListResponse)
@@ -66,26 +80,73 @@ def get_incident(
 def update_incident(
     incident_id: UUID,
     payload: IncidentUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return incident_service.update_incident(db, incident_id, payload, current_user)
+    before = incident_service.get_incident(db, incident_id, current_user)
+    old_data = {
+        "title": before.title,
+        "status": before.status,
+        "priority": before.priority,
+        "assigned_to": before.assigned_to,
+    }
+    incident = incident_service.update_incident(db, incident_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="UPDATE",
+        module="incidents",
+        entity_type="Incident",
+        entity_id=incident.id,
+        event_id=incident.event_id,
+        old_data=old_data,
+        new_data=payload.model_dump(exclude_unset=True),
+        request=request,
+    )
+    return incident
 
 
 @router.patch("/incidents/{incident_id}/resolve", response_model=IncidentRead)
 def resolve_incident(
     incident_id: UUID,
     payload: IncidentResolve,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return incident_service.resolve_incident(db, incident_id, payload, current_user)
+    incident = incident_service.resolve_incident(db, incident_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="RESOLVE",
+        module="incidents",
+        entity_type="Incident",
+        entity_id=incident.id,
+        event_id=incident.event_id,
+        new_data={"status": incident.status, "resolved_at": incident.resolved_at},
+        request=request,
+    )
+    return incident
 
 
 @router.patch("/incidents/{incident_id}/close", response_model=IncidentRead)
 def close_incident(
     incident_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return incident_service.close_incident(db, incident_id, current_user)
+    incident = incident_service.close_incident(db, incident_id, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="CLOSE",
+        module="incidents",
+        entity_type="Incident",
+        entity_id=incident.id,
+        event_id=incident.event_id,
+        new_data={"status": incident.status, "closed_at": incident.closed_at},
+        request=request,
+    )
+    return incident

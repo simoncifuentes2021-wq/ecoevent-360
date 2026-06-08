@@ -1,8 +1,13 @@
 import { api } from "@/lib/api";
+import type { ListResponse } from "@/types/common";
 import type { WasteType, WasteTypeCreate, WasteTypeUpdate } from "@/types/waste";
 
-export function getWasteTypes() {
-  return api.get<WasteType[]>("/waste-types");
+function normalizeWasteTypes(value: WasteType[] | ListResponse<WasteType>) {
+  return Array.isArray(value) ? value : value.items;
+}
+
+export async function getWasteTypes() {
+  return normalizeWasteTypes(await api.get<WasteType[] | ListResponse<WasteType>>("/waste-types"));
 }
 
 export function createWasteType(data: WasteTypeCreate) {

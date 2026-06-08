@@ -44,7 +44,7 @@ export default function SupervisorEventDetailPage({ params }: { params: { id: st
       <div className="space-y-6">
         <PageHeader title="Operacion del evento" description="Gestion supervisora de zonas, personal y tareas." actions={<Link href="/supervisor/eventos"><Button variant="secondary"><ArrowLeft className="h-4 w-4" />Volver</Button></Link>} />
         <EventHeader event={event} />
-        <EventTabs eventId={event.id} role="SUPERVISOR" variant="supervisor" />
+        <EventTabs event={event} eventId={event.id} role="SUPERVISOR" variant="supervisor" />
       </div>
     </RoleGuard>
   );

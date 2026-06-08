@@ -61,7 +61,7 @@ export function LoginForm() {
         Contraseña
         <div className="relative">
           <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9" placeholder="123456" type="password" {...register("password")} />
+          <Input className="pl-9" placeholder="Contraseña" type="password" {...register("password")} />
         </div>
         {errors.password ? <span className="text-xs text-rose-600">{errors.password.message}</span> : null}
       </label>

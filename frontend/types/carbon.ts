@@ -80,7 +80,8 @@ export type CarbonFactorCreate = {
   name: string;
   category: CarbonCategory | string;
   unit: string;
-  factor_value: number;
+  factor_value?: number;
+  factor_kgco2e?: number;
   source?: string | null;
   source_url?: string | null;
   year?: number | null;

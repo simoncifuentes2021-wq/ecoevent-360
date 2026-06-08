@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS events (
     estimated_attendees INTEGER DEFAULT 0,
     real_attendees INTEGER,
     status event_status NOT NULL DEFAULT 'QUOTE',
+    hidden_from_operations BOOLEAN NOT NULL DEFAULT FALSE,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()

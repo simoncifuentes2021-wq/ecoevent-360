@@ -4,7 +4,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.permissions import can_access_event
+from app.core.permissions import can_access_event, can_close_assigned_task, can_operate_event
 from app.models.core import Event, Evidence, Incident, Task, User
 from app.models.enums import EventStatus, UserRole
 from app.services.file_storage_service import delete_local_file, save_evidence_file
@@ -61,10 +61,18 @@ def create_evidence(
     current_user: User,
 ) -> Evidence:
     _get_event_or_404(db, event_id)
-    if not can_access_event(current_user, event_id, db):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
     _validate_task(db, event_id, task_id)
     _validate_incident(db, event_id, incident_id)
+    can_upload_for_assigned_task = False
+    if task_id and current_user.role == UserRole.WORKER:
+        task = db.get(Task, task_id)
+        can_upload_for_assigned_task = (
+            task is not None
+            and task.assigned_to == current_user.id
+            and can_close_assigned_task(current_user, event_id, db)
+        )
+    if not can_operate_event(current_user, event_id, db) and not can_upload_for_assigned_task:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
 
     file_url, file_type = save_evidence_file(file)
     evidence = Evidence(

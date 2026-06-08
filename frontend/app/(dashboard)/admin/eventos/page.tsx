@@ -12,7 +12,7 @@ import { StatusChangeDialog } from "@/components/events/StatusChangeDialog";
 import { RoleGuard } from "@/components/layout/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { getClients } from "@/lib/api/clients";
-import { changeEventStatus, deleteEvent, getEvents } from "@/lib/api/events";
+import { changeEventOperationalVisibility, changeEventStatus, deleteEvent, getEvents } from "@/lib/api/events";
 import type { Client } from "@/types/client";
 import type { Event, EventStatus } from "@/types/event";
 
@@ -31,6 +31,7 @@ export default function AdminEventsPage() {
   const [error, setError] = useState<string | undefined>();
   const [cancelTarget, setCancelTarget] = useState<Event | null>(null);
   const [statusTarget, setStatusTarget] = useState<Event | null>(null);
+  const [visibilityTarget, setVisibilityTarget] = useState<Event | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,6 +93,18 @@ export default function AdminEventsPage() {
     }
   }
 
+  async function toggleOperationalVisibility() {
+    if (!visibilityTarget) return;
+    try {
+      await changeEventOperationalVisibility(visibilityTarget.id, !visibilityTarget.hidden_from_operations);
+      setVisibilityTarget(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo actualizar la visibilidad operativa.");
+      setVisibilityTarget(null);
+    }
+  }
+
   return (
     <RoleGuard roles={["SUPER_ADMIN", "ADMIN"]}>
       <div className="space-y-6">
@@ -134,7 +147,19 @@ export default function AdminEventsPage() {
           total={total}
           onCancel={setCancelTarget}
           onChangeStatus={setStatusTarget}
+          onToggleOperationalVisibility={setVisibilityTarget}
           onPageChange={setPage}
+        />
+        <ConfirmDialog
+          description={
+            visibilityTarget?.hidden_from_operations
+              ? `El equipo operativo volvera a ver ${visibilityTarget.name} si tiene asignaciones o tareas.`
+              : `Supervisores y trabajadores dejaran de ver ${visibilityTarget?.name || ""}, incluyendo tareas asignadas del evento.`
+          }
+          open={Boolean(visibilityTarget)}
+          title={visibilityTarget?.hidden_from_operations ? "Mostrar al equipo operativo" : "Ocultar al equipo operativo"}
+          onClose={() => setVisibilityTarget(null)}
+          onConfirm={toggleOperationalVisibility}
         />
         <ConfirmDialog
           description={`El evento ${cancelTarget?.name || ""} se cancelara sin eliminar su historial.`}

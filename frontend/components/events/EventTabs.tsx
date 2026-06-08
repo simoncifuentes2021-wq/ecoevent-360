@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { BarChart3, Camera, ClipboardList, FileText, Leaf, Map, Recycle, Settings2, ShieldAlert, Users } from "lucide-react";
+import { BarChart3, Camera, ClipboardList, FileText, Leaf, Map, Recycle, Settings2, ShieldAlert, ShieldCheck, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertsTab } from "@/components/alerts/AlertsTab";
+import { EventAuditTab } from "@/components/audit/EventAuditTab";
 import { CarbonTab } from "@/components/carbon/CarbonTab";
 import { EventDashboardTab } from "@/components/dashboard/EventDashboardTab";
 import { EvidencesTab } from "@/components/evidences/EvidencesTab";
@@ -18,6 +19,7 @@ import { TasksTab } from "@/components/tasks/TasksTab";
 import { Card, CardContent } from "@/components/ui/card";
 import { WasteTab } from "@/components/waste/WasteTab";
 import { ZonesTab } from "@/components/zones/ZonesTab";
+import type { Event } from "@/types/event";
 import type { UserRole } from "@/types/roles";
 
 const adminTabs = [
@@ -31,6 +33,7 @@ const adminTabs = [
   { key: "residuos", label: "Residuos", icon: Recycle, description: "Registro, destino y recuperacion de residuos." },
   { key: "huella", label: "Huella", icon: Leaf, description: "Emisiones, consumos y factores ambientales." },
   { key: "encuestas", label: "Encuestas", icon: ClipboardList, description: "Respuestas importadas desde Google Forms o Sheets." },
+  { key: "auditoria", label: "Auditoria", icon: ShieldCheck, description: "Trazabilidad interna del evento y acciones relevantes." },
   { key: "alertas", label: "Alertas", icon: ShieldAlert, description: "Avisos y riesgos operativos." },
   { key: "reportes", label: "Reportes", icon: FileText, description: "Informe final y entregables profesionales para cliente." }
 ];
@@ -49,14 +52,34 @@ const supervisorTabs = [
   { key: "reportes", label: "Reportes", icon: FileText, description: "Informes y entregables del evento." }
 ];
 
-export function EventTabs({ eventId, role, variant = "admin" }: { eventId: string; role?: UserRole | null; variant?: "admin" | "supervisor" }) {
+function operationalState(event?: Event, variant?: "admin" | "supervisor") {
+  if (!event || variant !== "supervisor") return { readOnly: false, message: "" };
+  if (event.status === "REPORT_DELIVERED") return { readOnly: true, message: "Evento solo lectura: el reporte ya fue entregado." };
+  if (event.status === "CANCELLED") return { readOnly: true, message: "Evento cancelado: no se permiten nuevos registros operativos." };
+  if (event.status === "FINISHED") {
+    const closureEndsAt = new Date(event.end_date);
+    closureEndsAt.setDate(closureEndsAt.getDate() + 7);
+    if (Date.now() > closureEndsAt.getTime()) return { readOnly: true, message: "Evento solo lectura: la ventana de cierre operativo ya termino." };
+    return { readOnly: false, message: `Evento en cierre operativo hasta ${closureEndsAt.toLocaleDateString("es-CL")}.` };
+  }
+  return { readOnly: false, message: "" };
+}
+
+export function EventTabs({ eventId, event, role, variant = "admin" }: { eventId: string; event?: Event; role?: UserRole | null; variant?: "admin" | "supervisor" }) {
   const tabs = variant === "supervisor" ? supervisorTabs : adminTabs;
   const [active, setActive] = useState(tabs[0].key);
   const selected = tabs.find((tab) => tab.key === active) || tabs[0];
   const Icon = selected.icon;
+  const state = operationalState(event, variant);
+  const effectiveRole = state.readOnly && role === "SUPERVISOR" ? "CLIENT" : role;
 
   return (
     <div className="space-y-4">
+      {state.message ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          {state.message}
+        </div>
+      ) : null}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
         <div className="flex min-w-max gap-2">
           {tabs.map((tab) => {
@@ -78,7 +101,7 @@ export function EventTabs({ eventId, role, variant = "admin" }: { eventId: strin
           })}
         </div>
       </div>
-      <TabContent active={active} description={selected.description} eventId={eventId} icon={<Icon className="h-10 w-10" />} role={role} title={selected.label} />
+      <TabContent active={active} description={selected.description} eventId={eventId} icon={<Icon className="h-10 w-10" />} role={effectiveRole} title={selected.label} />
     </div>
   );
 }
@@ -94,6 +117,7 @@ function TabContent({ active, eventId, role, title, description, icon }: { activ
   if (active === "residuos") return <WasteTab eventId={eventId} role={role} />;
   if (active === "huella") return <CarbonTab eventId={eventId} role={role} />;
   if (active === "encuestas") return <SurveysTab eventId={eventId} role={role} />;
+  if (active === "auditoria") return <EventAuditTab eventId={eventId} />;
   if (active === "alertas") return <AlertsTab eventId={eventId} role={role} />;
   if (active === "reportes") return <ReportsTab eventId={eventId} role={role} />;
 

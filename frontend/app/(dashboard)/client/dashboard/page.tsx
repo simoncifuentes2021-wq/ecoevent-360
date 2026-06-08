@@ -7,7 +7,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { RoleGuard } from "@/components/layout/RoleGuard";
 import { useAuth } from "@/hooks/useAuth";
-import { getClientDashboard, getClientIndicatorsFallback } from "@/lib/api/clientDashboard";
+import { getClientDashboard } from "@/lib/api/clientDashboard";
 import type { ClientDashboard as ClientDashboardType } from "@/types/clientDashboard";
 
 export default function ClientDashboardPage() {
@@ -22,12 +22,8 @@ export default function ClientDashboardPage() {
       setError(null);
       try {
         setDashboard(await getClientDashboard());
-      } catch {
-        try {
-          setDashboard(await getClientIndicatorsFallback());
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "No se pudieron cargar los indicadores.");
-        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudieron cargar los indicadores.");
       } finally {
         setLoading(false);
       }

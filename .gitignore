@@ -11,6 +11,8 @@ backend/uploads/
 
 # FastAPI / env
 .env
+.env.local
+.env.production
 backend/.env
 
 # Node / Next

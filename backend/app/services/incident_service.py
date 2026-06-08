@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.permissions import can_access_event, can_manage_event
+from app.core.permissions import can_access_event, can_manage_event, can_operate_event
 from app.models.core import Event, EventStaff, EventZone, Incident, User
 from app.models.enums import IncidentStatus, UserRole
 from app.schemas.incident_schema import IncidentCreate, IncidentResolve, IncidentUpdate
@@ -65,7 +65,7 @@ def create_incident(
     db: Session, event_id: UUID, payload: IncidentCreate, current_user: User
 ) -> Incident:
     _get_event_or_404(db, event_id)
-    if not can_access_event(current_user, event_id, db):
+    if not can_operate_event(current_user, event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
 
     _validate_zone(db, event_id, payload.zone_id)

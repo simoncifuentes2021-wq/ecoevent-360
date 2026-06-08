@@ -22,6 +22,7 @@ from app.schemas.event_schema import (
     EventCreate,
     EventServiceCreate,
     EventServiceUpdate,
+    EventOperationalVisibilityUpdate,
     EventStatusUpdate,
     EventUpdate,
 )
@@ -89,11 +90,19 @@ def _event_visibility_filters(user: User):
         return [Event.client_id == user.client_id]
     if user.role == UserRole.SUPERVISOR:
         staff_events = select(EventStaff.event_id).where(EventStaff.user_id == user.id)
-        return [Event.id.in_(staff_events)]
+        return [
+            Event.id.in_(staff_events),
+            Event.hidden_from_operations.is_(False),
+            Event.status != EventStatus.QUOTE,
+        ]
     if user.role == UserRole.WORKER:
         staff_events = select(EventStaff.event_id).where(EventStaff.user_id == user.id)
         task_events = select(Task.event_id).where(Task.assigned_to == user.id)
-        return [or_(Event.id.in_(staff_events), Event.id.in_(task_events))]
+        return [
+            or_(Event.id.in_(staff_events), Event.id.in_(task_events)),
+            Event.hidden_from_operations.is_(False),
+            Event.status != EventStatus.QUOTE,
+        ]
     return [Event.id.is_(None)]
 
 
@@ -219,6 +228,23 @@ def update_event_status(
         )
 
     event.status = new_status
+    event.updated_at = datetime.utcnow()
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def update_operational_visibility(
+    db: Session,
+    event_id: UUID,
+    payload: EventOperationalVisibilityUpdate,
+    current_user: User,
+) -> Event:
+    event = ensure_can_manage_event(db, current_user, event_id)
+    if current_user.role not in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+    event.hidden_from_operations = payload.hidden_from_operations
     event.updated_at = datetime.utcnow()
     db.add(event)
     db.commit()

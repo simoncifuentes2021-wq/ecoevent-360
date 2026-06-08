@@ -5,9 +5,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.permissions import can_access_event, can_manage_event
+from app.core.permissions import can_access_event, can_close_assigned_task, can_manage_event, can_operate_event
 from app.models.core import Event, EventStaff, EventZone, Task, User
-from app.models.enums import TaskStatus, UserRole
+from app.models.enums import EventStatus, TaskStatus, UserRole
 from app.schemas.task_schema import TaskComplete, TaskCreate, TaskStatusUpdate, TaskUpdate
 
 ASSIGNEE_ROLES = {UserRole.SUPERVISOR, UserRole.WORKER}
@@ -164,6 +164,11 @@ def update_task_status(
     if current_user.role == UserRole.WORKER:
         if task.assigned_to != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+        if not can_operate_event(current_user, task.event_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Event is not open for operational updates",
+            )
         allowed = {
             (TaskStatus.PENDING, TaskStatus.IN_PROGRESS),
             (TaskStatus.IN_PROGRESS, TaskStatus.COMPLETED),
@@ -204,6 +209,13 @@ def complete_task(db: Session, task_id: UUID, payload: TaskComplete, current_use
     task = get_task_or_404(db, task_id)
     if current_user.role == UserRole.WORKER and task.assigned_to != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+    if current_user.role in {UserRole.WORKER, UserRole.SUPERVISOR} and not can_close_assigned_task(
+        current_user, task.event_id, db
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Event is not open for task completion",
+        )
     if current_user.role == UserRole.WORKER and task.status != TaskStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -241,13 +253,19 @@ def list_my_tasks(
     page: int,
     limit: int,
 ) -> tuple[list[Task], int]:
-    filters = [Task.assigned_to == current_user.id]
+    filters = [
+        Task.assigned_to == current_user.id,
+        Event.id == Task.event_id,
+        Event.hidden_from_operations.is_(False),
+        Event.status != EventStatus.QUOTE,
+    ]
     if status_filter is not None:
         filters.append(Task.status == status_filter)
-    total = db.scalar(select(func.count()).select_from(Task).where(*filters)) or 0
+    total = db.scalar(select(func.count()).select_from(Task, Event).where(*filters)) or 0
     items = list(
         db.scalars(
             select(Task)
+            .select_from(Task, Event)
             .where(*filters)
             .order_by(Task.scheduled_at.is_(None), Task.scheduled_at, Task.created_at.desc())
             .offset((page - 1) * limit)

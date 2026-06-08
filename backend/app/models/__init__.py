@@ -1,3 +1,4 @@
+from app.models.audit_log import AuditLog
 from app.models.core import (
     Alert,
     CarbonFactor,
@@ -24,6 +25,7 @@ from app.models.core import (
 )
 
 __all__ = [
+    "AuditLog",
     "Alert",
     "CarbonFactor",
     "CarbonRecord",

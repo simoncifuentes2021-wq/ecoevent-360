@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarClock, Edit, Eye, Power } from "lucide-react";
+import { CalendarClock, Edit, Eye, EyeOff, Power, Users } from "lucide-react";
 
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { EventStatusBadge } from "@/components/events/EventStatusBadge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Event } from "@/types/event";
 
@@ -17,6 +18,7 @@ type EventTableProps = {
   total: number;
   onPageChange: (page: number) => void;
   onChangeStatus: (event: Event) => void;
+  onToggleOperationalVisibility: (event: Event) => void;
   onCancel: (event: Event) => void;
 };
 
@@ -31,7 +33,10 @@ export function EventTable(props: EventTableProps) {
       header: "Evento",
       cell: (event) => (
         <div>
-          <p className="font-semibold text-slate-950">{event.name}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold text-slate-950">{event.name}</p>
+            {event.hidden_from_operations ? <Badge tone="warning">Oculto equipo</Badge> : null}
+          </div>
           <p className="text-xs text-slate-500">{event.event_type || "Sin tipo"}</p>
         </div>
       )
@@ -55,6 +60,14 @@ export function EventTable(props: EventTableProps) {
           </Link>
           <Button size="sm" variant="ghost" onClick={() => props.onChangeStatus(event)}>
             <CalendarClock className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => props.onToggleOperationalVisibility(event)}
+            title={event.hidden_from_operations ? "Mostrar al equipo operativo" : "Ocultar al equipo operativo"}
+          >
+            {event.hidden_from_operations ? <Users className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
           <Link href={`/admin/eventos/${event.id}/editar`}>
             <Button size="sm" variant="secondary">

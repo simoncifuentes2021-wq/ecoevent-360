@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.permissions import can_access_event, can_manage_event
+from app.core.permissions import can_access_event, can_manage_event, can_operate_event
 from app.models.core import Event, EventZone, Evidence, User, WasteRecord, WasteType
 from app.models.enums import EventStatus, UserRole, WasteDestination
 from app.schemas.waste_schema import WasteRecordCreate, WasteRecordUpdate, WasteTypeCreate, WasteTypeUpdate
@@ -138,7 +138,7 @@ def create_waste_record(
     db: Session, event_id: UUID, payload: WasteRecordCreate, current_user: User
 ) -> WasteRecord:
     _get_event_or_404(db, event_id)
-    if not can_access_event(current_user, event_id, db):
+    if not can_operate_event(current_user, event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
     if current_user.role == UserRole.CLIENT:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { EventStatusBadge } from "@/components/events/EventStatusBadge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import type { Event } from "@/types/event";
 
 function formatDate(value: string) {
@@ -17,6 +18,7 @@ export function EventHeader({ event }: { event: Event }) {
           <div>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <EventStatusBadge status={event.status} />
+              {event.hidden_from_operations ? <Badge tone="warning">Oculto al equipo operativo</Badge> : null}
               <span className="text-sm font-medium text-slate-500">{event.client?.business_name || "Cliente no informado"}</span>
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">{event.name}</h1>

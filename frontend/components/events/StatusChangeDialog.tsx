@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { eventStatusLabels } from "@/lib/status-labels";
 import type { Event, EventStatus } from "@/types/event";
 
 const statuses: EventStatus[] = ["QUOTE", "PLANNING", "IN_PROGRESS", "FINISHED", "REPORT_DELIVERED", "CANCELLED"];
@@ -31,7 +32,7 @@ export function StatusChangeDialog({ event, loading, onClose, onConfirm }: Statu
         >
           {statuses.map((item) => (
             <option key={item} value={item}>
-              {item.replaceAll("_", " ")}
+              {eventStatusLabels[item]}
             </option>
           ))}
         </select>

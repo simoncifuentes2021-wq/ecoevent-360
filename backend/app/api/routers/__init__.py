@@ -1,4 +1,5 @@
 from app.api.routers import (
+    audit_logs,
     auth,
     carbon,
     clients,
@@ -19,6 +20,8 @@ from app.api.routers import (
 
 routers = [
     health.router,
+    audit_logs.router,
+    audit_logs.event_router,
     auth.router,
     users.router,
     clients.router,
