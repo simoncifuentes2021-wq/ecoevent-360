@@ -59,4 +59,9 @@ CLOUDFLARE_R2_ACCOUNT_ID=
 CLOUDFLARE_R2_ACCESS_KEY_ID=
 CLOUDFLARE_R2_SECRET_ACCESS_KEY=
 CLOUDFLARE_R2_PUBLIC_BASE_URL=
+MAX_UPLOAD_SIZE_MB=10
 ```
+
+R2 almacena `evidences/` y `surveys/` cuando todas las variables R2 estan
+configuradas. Si falta alguna, se usa `uploads/`, servido por FastAPI desde
+`/uploads`.

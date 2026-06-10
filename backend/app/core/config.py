@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     cloudflare_r2_access_key_id: str | None = None
     cloudflare_r2_secret_access_key: str | None = None
     cloudflare_r2_public_base_url: str | None = None
+    max_upload_size_mb: int = 10
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -71,7 +72,11 @@ class Settings(BaseSettings):
             self.cloudflare_r2_secret_access_key,
             self.cloudflare_r2_public_base_url,
         )
-        return self.app_env.lower() == "production" and all(values)
+        return all(values)
+
+    @property
+    def max_upload_size_bytes(self) -> int:
+        return self.max_upload_size_mb * 1024 * 1024
 
 
 @lru_cache

@@ -36,6 +36,7 @@ CLOUDFLARE_R2_ACCOUNT_ID=
 CLOUDFLARE_R2_ACCESS_KEY_ID=
 CLOUDFLARE_R2_SECRET_ACCESS_KEY=
 CLOUDFLARE_R2_PUBLIC_BASE_URL=
+MAX_UPLOAD_SIZE_MB=10
 SEED_ADMIN_EMAIL=
 SEED_ADMIN_PASSWORD=
 SEED_ADMIN_NAME=
@@ -87,10 +88,16 @@ CLOUDFLARE_R2_SECRET_ACCESS_KEY=
 CLOUDFLARE_R2_PUBLIC_BASE_URL=
 ```
 
-El backend usa almacenamiento local en desarrollo. En produccion usa R2 cuando todas
-las variables R2 estan configuradas. Las claves privadas no se exponen al frontend.
+El backend usa almacenamiento local en desarrollo y lo sirve desde `/uploads`.
+En produccion usa R2 cuando todas las variables R2 estan configuradas. Las claves
+privadas no se exponen al frontend.
 
-Tipos permitidos para evidencias:
+Rutas de almacenamiento usadas:
+
+- `evidences/`: fotos y PDF subidos como evidencias operativas.
+- `surveys/`: CSV importados desde Google Forms/Sheets.
+
+Tipos permitidos:
 
 - `image/jpeg`
 - `image/png`
@@ -119,5 +126,5 @@ BACKEND_CORS_ORIGINS=https://app.tudominio.cl,https://ecoevent-360.vercel.app
 - CORS contiene solo dominios reales, sin `*` en produccion.
 - `SECRET_KEY` es largo, aleatorio y distinto al ejemplo.
 - `DATABASE_URL` apunta a Supabase o Neon.
-- Las evidencias suben a R2 en produccion.
+- Las evidencias y CSV de encuestas suben a R2 en produccion.
 - No hay archivos `.env` versionados.

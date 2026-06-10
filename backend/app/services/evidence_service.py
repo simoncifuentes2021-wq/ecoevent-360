@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.permissions import can_access_event, can_close_assigned_task, can_operate_event
 from app.models.core import Event, Evidence, Incident, Task, User
 from app.models.enums import EventStatus, UserRole
-from app.services.file_storage_service import delete_local_file, save_evidence_file
+from app.services.file_storage_service import delete_stored_file, save_evidence_file
 
 
 def get_evidence_or_404(db: Session, evidence_id: UUID) -> Evidence:
@@ -138,4 +138,4 @@ def delete_evidence(db: Session, evidence_id: UUID, current_user: User) -> None:
     file_url = evidence.file_url
     db.delete(evidence)
     db.commit()
-    delete_local_file(file_url)
+    delete_stored_file(file_url)

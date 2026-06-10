@@ -13,7 +13,7 @@ function listFrom<T>(raw: T[] | ListResponse<T> | { data?: T[]; items?: T[]; tot
 export function importSurveyResponsesCsv(surveyId: string, fileOrFormData: File | FormData) {
   const formData = fileOrFormData instanceof FormData ? fileOrFormData : new FormData();
   if (fileOrFormData instanceof File) formData.set("file", fileOrFormData);
-  return api.post<CSVImportResult>(`/surveys/${surveyId}/responses/import-csv`, formData);
+  return api.post<CSVImportResult>(`/surveys/${surveyId}/import-csv`, formData);
 }
 
 export async function getSurveyResponses(surveyId: string, params: Record<string, QueryValue> = {}) {

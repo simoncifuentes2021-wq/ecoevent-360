@@ -5,3 +5,5 @@ const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
 
 export const API_URL =
   configuredApiUrl ?? (process.env.NODE_ENV === "production" ? "" : localApiUrl);
+
+export const API_ORIGIN = API_URL.replace(/\/api\/v\d+$/, "");

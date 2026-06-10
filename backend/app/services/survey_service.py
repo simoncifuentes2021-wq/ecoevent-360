@@ -2,8 +2,7 @@ import csv
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from io import StringIO
-from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -13,8 +12,7 @@ from app.core.permissions import can_access_event, can_manage_event
 from app.models.core import Event, EventZone, Survey, SurveyImport, SurveyResponse, User
 from app.models.enums import SurveyStatus, UserRole
 from app.schemas.survey_schema import SurveyCreate, SurveyStatusUpdate, SurveyUpdate
-
-UPLOAD_DIR = Path("uploads/surveys")
+from app.services.file_storage_service import save_survey_import_file
 
 
 def get_survey_or_404(db: Session, survey_id: UUID) -> Survey:
@@ -206,11 +204,7 @@ def get_survey_summary(db: Session, survey_id: UUID, current_user: User) -> dict
 
 
 def _save_csv_file(filename: str, content: bytes) -> str:
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    safe_name = Path(filename or "google-sheets-export.csv").name
-    destination = UPLOAD_DIR / f"{uuid4()}-{safe_name}"
-    destination.write_bytes(content)
-    return destination.as_posix()
+    return save_survey_import_file(filename, content)
 
 
 def _build_response_from_row(db: Session, survey: Survey, row: dict[str, str]) -> SurveyResponse:
