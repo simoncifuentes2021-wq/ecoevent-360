@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
-from app.db.session import get_db
+from app.db.session import get_db, set_rls_context
 from app.models.core import User
 from app.schemas.common import AuthUserResponse, LoginRequest, LogoutResponse, MeResponse, TokenResponse
 from app.services.auth import authenticate_user, get_user_by_email, issue_token
@@ -25,6 +25,12 @@ def auth_user_from_model(user: User) -> AuthUserResponse:
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
     existing_user = get_user_by_email(db, payload.email)
     if existing_user and not existing_user.is_active:
+        set_rls_context(
+            db,
+            user_id=existing_user.id,
+            role=existing_user.role,
+            client_id=existing_user.client_id,
+        )
         create_audit_log(
             db,
             user=existing_user,
@@ -47,6 +53,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             request=request,
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    set_rls_context(db, user_id=user.id, role=user.role, client_id=user.client_id)
     create_audit_log(
         db,
         user=user,

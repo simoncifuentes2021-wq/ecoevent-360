@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
-from app.db.session import get_db
+from app.db.session import get_db, set_rls_context
 from app.models.core import User
 from app.models.enums import UserRole
 
@@ -35,6 +35,7 @@ def get_current_user(
     user = db.get(User, user_id)
     if not user:
         raise credentials_exception
+    set_rls_context(db, user_id=user.id, role=user.role, client_id=user.client_id)
     return user
 
 

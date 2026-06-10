@@ -555,5 +555,295 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- =========================================================
+-- 17. ROW LEVEL SECURITY
+-- =========================================================
+
+CREATE OR REPLACE FUNCTION app_current_user_id()
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT NULLIF(current_setting('app.current_user_id', TRUE), '')::UUID
+$$;
+
+CREATE OR REPLACE FUNCTION app_current_client_id()
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT NULLIF(current_setting('app.current_client_id', TRUE), '')::UUID
+$$;
+
+CREATE OR REPLACE FUNCTION app_current_role()
+RETURNS TEXT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT NULLIF(current_setting('app.current_role', TRUE), '')
+$$;
+
+CREATE OR REPLACE FUNCTION app_is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT app_current_role() IN ('SUPER_ADMIN', 'ADMIN')
+$$;
+
+CREATE OR REPLACE FUNCTION app_is_authenticated()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT app_current_user_id() IS NOT NULL
+$$;
+
+CREATE OR REPLACE FUNCTION app_can_access_client(client_uuid UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT
+        app_is_admin()
+        OR (
+            app_current_role() = 'CLIENT'
+            AND app_current_client_id() = client_uuid
+        )
+$$;
+
+CREATE OR REPLACE FUNCTION app_can_view_event(event_uuid UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM events e
+        WHERE e.id = event_uuid
+          AND (
+            app_is_admin()
+            OR (
+                app_current_role() = 'CLIENT'
+                AND app_current_client_id() = e.client_id
+            )
+            OR (
+                app_current_role() IN ('SUPERVISOR', 'WORKER')
+                AND e.status <> 'QUOTE'
+                AND e.hidden_from_operations = FALSE
+                AND (
+                    EXISTS (
+                        SELECT 1
+                        FROM event_staff es
+                        WHERE es.event_id = e.id
+                          AND es.user_id = app_current_user_id()
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM tasks t
+                        WHERE t.event_id = e.id
+                          AND t.assigned_to = app_current_user_id()
+                    )
+                )
+            )
+          )
+    )
+$$;
+
+CREATE OR REPLACE FUNCTION app_can_manage_reference_data()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT app_is_admin()
+$$;
+
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_zones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_services ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_staff ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE evidences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE waste_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE carbon_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fuel_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE energy_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE water_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE surveys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE survey_imports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE survey_responses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE services ENABLE ROW LEVEL SECURITY;
+ALTER TABLE waste_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE carbon_factors ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY clients_rls ON clients
+    FOR ALL
+    USING (app_is_admin() OR (app_current_role() = 'CLIENT' AND id = app_current_client_id()))
+    WITH CHECK (app_is_admin() OR (app_current_role() = 'CLIENT' AND id = app_current_client_id()));
+
+CREATE POLICY events_rls ON events
+    FOR ALL
+    USING (app_can_view_event(id))
+    WITH CHECK (app_is_admin() OR app_can_access_client(client_id));
+
+CREATE POLICY event_zones_rls ON event_zones
+    FOR ALL
+    USING (app_can_view_event(event_id))
+    WITH CHECK (app_can_view_event(event_id));
+
+CREATE POLICY event_services_rls ON event_services
+    FOR ALL
+    USING (app_can_view_event(event_id))
+    WITH CHECK (app_can_view_event(event_id));
+
+CREATE POLICY event_staff_rls ON event_staff
+    FOR ALL
+    USING (app_can_view_event(event_id) OR user_id = app_current_user_id())
+    WITH CHECK (app_can_view_event(event_id));
+
+CREATE POLICY tasks_rls ON tasks
+    FOR ALL
+    USING (app_can_view_event(event_id) OR assigned_to = app_current_user_id())
+    WITH CHECK (app_can_view_event(event_id));
+
+CREATE POLICY incidents_rls ON incidents
+    FOR ALL
+    USING (
+        app_can_view_event(event_id)
+        OR reported_by = app_current_user_id()
+        OR assigned_to = app_current_user_id()
+    )
+    WITH CHECK (app_can_view_event(event_id));
+
+CREATE POLICY evidences_rls ON evidences
+    FOR ALL
+    USING (app_can_view_event(event_id) OR uploaded_by = app_current_user_id())
+    WITH CHECK (app_can_view_event(event_id) OR uploaded_by = app_current_user_id());
+
+CREATE POLICY waste_records_rls ON waste_records
+    FOR ALL
+    USING (app_can_view_event(event_id) OR recorded_by = app_current_user_id())
+    WITH CHECK (app_can_view_event(event_id) OR recorded_by = app_current_user_id());
+
+CREATE POLICY carbon_records_rls ON carbon_records
+    FOR ALL
+    USING (app_can_view_event(event_id) OR recorded_by = app_current_user_id())
+    WITH CHECK (app_can_view_event(event_id) OR recorded_by = app_current_user_id());
+
+CREATE POLICY fuel_records_rls ON fuel_records
+    FOR ALL
+    USING (app_can_view_event(event_id) OR recorded_by = app_current_user_id())
+    WITH CHECK (app_can_view_event(event_id) OR recorded_by = app_current_user_id());
+
+CREATE POLICY energy_records_rls ON energy_records
+    FOR ALL
+    USING (app_can_view_event(event_id) OR recorded_by = app_current_user_id())
+    WITH CHECK (app_can_view_event(event_id) OR recorded_by = app_current_user_id());
+
+CREATE POLICY water_records_rls ON water_records
+    FOR ALL
+    USING (app_can_view_event(event_id) OR recorded_by = app_current_user_id())
+    WITH CHECK (app_can_view_event(event_id) OR recorded_by = app_current_user_id());
+
+CREATE POLICY surveys_rls ON surveys
+    FOR ALL
+    USING (app_can_view_event(event_id))
+    WITH CHECK (app_can_view_event(event_id));
+
+CREATE POLICY survey_imports_rls ON survey_imports
+    FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1
+            FROM surveys s
+            WHERE s.id = survey_id
+              AND app_can_view_event(s.event_id)
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1
+            FROM surveys s
+            WHERE s.id = survey_id
+              AND app_can_view_event(s.event_id)
+        )
+    );
+
+CREATE POLICY survey_responses_rls ON survey_responses
+    FOR ALL
+    USING (app_can_view_event(event_id))
+    WITH CHECK (app_can_view_event(event_id));
+
+CREATE POLICY alerts_rls ON alerts
+    FOR ALL
+    USING (app_can_view_event(event_id))
+    WITH CHECK (app_can_view_event(event_id));
+
+CREATE POLICY reports_rls ON reports
+    FOR ALL
+    USING (app_can_view_event(event_id))
+    WITH CHECK (app_can_view_event(event_id));
+
+CREATE POLICY audit_logs_rls ON audit_logs
+    FOR ALL
+    USING (
+        app_is_admin()
+        OR user_id = app_current_user_id()
+        OR (client_id IS NOT NULL AND app_can_access_client(client_id))
+        OR (event_id IS NOT NULL AND app_can_view_event(event_id))
+    )
+    WITH CHECK (
+        app_is_authenticated()
+        OR module = 'auth'
+    );
+
+CREATE POLICY services_read_rls ON services
+    FOR SELECT
+    USING (app_is_authenticated());
+
+CREATE POLICY services_write_rls ON services
+    FOR ALL
+    USING (app_can_manage_reference_data())
+    WITH CHECK (app_can_manage_reference_data());
+
+CREATE POLICY waste_types_read_rls ON waste_types
+    FOR SELECT
+    USING (app_is_authenticated());
+
+CREATE POLICY waste_types_write_rls ON waste_types
+    FOR ALL
+    USING (app_can_manage_reference_data())
+    WITH CHECK (app_can_manage_reference_data());
+
+CREATE POLICY carbon_factors_read_rls ON carbon_factors
+    FOR SELECT
+    USING (app_is_authenticated());
+
+CREATE POLICY carbon_factors_write_rls ON carbon_factors
+    FOR ALL
+    USING (app_can_manage_reference_data())
+    WITH CHECK (app_can_manage_reference_data());
+
+-- =========================================================
 -- FIN DEL SCRIPT
 -- =========================================================

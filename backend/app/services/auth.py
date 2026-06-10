@@ -26,4 +26,10 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
 
 
 def issue_token(user: User) -> str:
-    return create_access_token(data={"sub": str(user.id), "role": user.role.value})
+    return create_access_token(
+        data={
+            "sub": str(user.id),
+            "role": user.role.value,
+            "client_id": str(user.client_id) if user.client_id else None,
+        }
+    )

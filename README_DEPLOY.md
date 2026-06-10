@@ -49,6 +49,11 @@ Despues de crear el servicio, ejecuta las migraciones desde Render Shell:
 alembic upgrade head
 ```
 
+La migracion `20260610_0005` activa Row Level Security en las tablas de negocio.
+Para que PostgreSQL aplique RLS en produccion, la `DATABASE_URL` del backend debe
+usar un rol de aplicacion que no sea propietario de las tablas ni tenga
+`BYPASSRLS`. El rol propietario/admin se debe reservar para migraciones.
+
 Crea el usuario inicial SUPER_ADMIN:
 
 ```bash

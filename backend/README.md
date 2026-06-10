@@ -34,6 +34,11 @@ Migraciones:
 alembic upgrade head
 ```
 
+La migracion de Row Level Security usa variables de sesion PostgreSQL seteadas
+por el backend en cada request autenticada. En produccion, usa un rol de base de
+datos no propietario de las tablas para la `DATABASE_URL` de la app; deja el rol
+propietario/admin solo para ejecutar migraciones.
+
 Seed SUPER_ADMIN:
 
 ```bash
