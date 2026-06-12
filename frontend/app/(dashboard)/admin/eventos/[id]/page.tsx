@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, Edit, EyeOff, Users } from "lucide-react";
+import { ArrowLeft, CalendarClock, Edit, EyeOff, MapPin, Users } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -13,6 +13,7 @@ import { EventTabs } from "@/components/events/EventTabs";
 import { StatusChangeDialog } from "@/components/events/StatusChangeDialog";
 import { RoleGuard } from "@/components/layout/RoleGuard";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { changeEventOperationalVisibility, changeEventStatus, getEvent } from "@/lib/api/events";
 import type { Event, EventStatus } from "@/types/event";
@@ -100,6 +101,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           }
         />
         <EventHeader event={event} />
+        <LogisticsCard event={event} />
         <EventTabs event={event} eventId={event.id} role={user?.role} />
         <ConfirmDialog
           description={
@@ -115,5 +117,37 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
         <StatusChangeDialog event={statusOpen ? event : null} loading={statusLoading} onClose={() => setStatusOpen(false)} onConfirm={updateStatus} />
       </div>
     </RoleGuard>
+  );
+}
+
+function LogisticsCard({ event }: { event: Event }) {
+  const location = [event.location_name, event.city, event.region, event.country].filter(Boolean).join(", ");
+  const latitude = event.latitude === null || event.latitude === undefined || event.latitude === "" ? "No informada" : String(event.latitude);
+  const longitude = event.longitude === null || event.longitude === undefined || event.longitude === "" ? "No informada" : String(event.longitude);
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-center gap-2 text-slate-900">
+          <MapPin className="h-5 w-5 text-emerald-700" />
+          <h2 className="text-lg font-bold">Datos logísticos</h2>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <LogisticsInfo label="Ubicación" value={location || "Sin ubicación registrada"} />
+          <LogisticsInfo label="Dirección" value={event.address || "Sin dirección registrada"} />
+          <LogisticsInfo label="Latitud" value={latitude} />
+          <LogisticsInfo label="Longitud" value={longitude} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LogisticsInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <p className="text-xs font-bold uppercase text-slate-500">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-slate-800">{value}</p>
+    </div>
   );
 }

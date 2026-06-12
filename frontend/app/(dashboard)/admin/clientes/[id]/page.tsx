@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Edit } from "lucide-react";
+import { ArrowLeft, Edit, Plus } from "lucide-react";
 
 import { ClientEventsTable } from "@/components/clients/ClientEventsTable";
 import { ClientSummary } from "@/components/clients/ClientSummary";
@@ -65,9 +65,15 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                 </Button>
               </Link>
               <Link href={`/admin/clientes/${client.id}/editar`}>
-                <Button>
+                <Button variant="secondary">
                   <Edit className="h-4 w-4" />
                   Editar
+                </Button>
+              </Link>
+              <Link href={`/admin/eventos/nuevo?client_id=${client.id}`}>
+                <Button>
+                  <Plus className="h-4 w-4" />
+                  Agregar evento a este cliente
                 </Button>
               </Link>
             </div>

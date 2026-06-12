@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import EventStatus
 
@@ -23,6 +23,29 @@ class EventBase(BaseModel):
     end_date: datetime
     estimated_attendees: int | None = Field(default=0, ge=0)
     real_attendees: int | None = Field(default=None, ge=0)
+
+    @field_validator(
+        "event_type",
+        "description",
+        "location_name",
+        "address",
+        "city",
+        "region",
+        "country",
+        mode="before",
+    )
+    @classmethod
+    def empty_string_to_none(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("latitude", "longitude", "estimated_attendees", "real_attendees", mode="before")
+    @classmethod
+    def empty_number_to_none(cls, value):
+        if value == "":
+            return None
+        return value
 
     @model_validator(mode="after")
     def validate_dates(self) -> "EventBase":
@@ -52,7 +75,37 @@ class EventUpdate(BaseModel):
     end_date: datetime | None = None
     estimated_attendees: int | None = Field(default=None, ge=0)
     real_attendees: int | None = Field(default=None, ge=0)
+    status: EventStatus | None = None
     hidden_from_operations: bool | None = None
+
+    @field_validator(
+        "event_type",
+        "description",
+        "location_name",
+        "address",
+        "city",
+        "region",
+        "country",
+        mode="before",
+    )
+    @classmethod
+    def empty_string_to_none(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("latitude", "longitude", "estimated_attendees", "real_attendees", mode="before")
+    @classmethod
+    def empty_number_to_none(cls, value):
+        if value == "":
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> "EventUpdate":
+        if self.start_date is not None and self.end_date is not None and self.start_date >= self.end_date:
+            raise ValueError("start_date must be before end_date")
+        return self
 
 
 class EventStatusUpdate(BaseModel):

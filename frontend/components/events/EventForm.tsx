@@ -16,6 +16,7 @@ import type { Client } from "@/types/client";
 import type { Event, EventCreate, EventStatus, EventUpdate } from "@/types/event";
 
 const statuses = ["QUOTE", "PLANNING", "IN_PROGRESS", "FINISHED", "REPORT_DELIVERED", "CANCELLED"] as const satisfies readonly EventStatus[];
+const optionalNumber = z.preprocess((value) => (value === "" || value === null ? undefined : value), z.coerce.number().optional());
 
 const schema = z
   .object({
@@ -28,12 +29,12 @@ const schema = z
     city: z.string().optional(),
     region: z.string().optional(),
     country: z.string().optional(),
-    latitude: z.coerce.number().optional().or(z.literal("")),
-    longitude: z.coerce.number().optional().or(z.literal("")),
+    latitude: optionalNumber,
+    longitude: optionalNumber,
     start_date: z.string().min(1, "La fecha de inicio es obligatoria"),
     end_date: z.string().min(1, "La fecha de termino es obligatoria"),
-    estimated_attendees: z.coerce.number().min(0, "No puede ser negativo").optional(),
-    status: z.enum(statuses)
+    estimated_attendees: optionalNumber.refine((value) => value === undefined || value >= 0, "No puede ser negativo"),
+    status: z.enum(statuses).or(z.literal("")).optional()
   })
   .superRefine((data, ctx) => {
     if (data.start_date && data.end_date && new Date(data.start_date) >= new Date(data.end_date)) {
@@ -48,6 +49,7 @@ type EventFormProps = {
   clients: Client[];
   onSubmit: (data: EventCreate | EventUpdate) => Promise<void>;
   cancelHref: string;
+  initialClientId?: string;
   submitLabel?: string;
 };
 
@@ -59,7 +61,7 @@ function nullableString(value?: string | null) {
   return value?.trim() ? value.trim() : null;
 }
 
-export function EventForm({ event, clients, onSubmit, cancelHref, submitLabel }: EventFormProps) {
+export function EventForm({ event, clients, onSubmit, cancelHref, initialClientId, submitLabel }: EventFormProps) {
   const [apiError, setApiError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const {
@@ -69,7 +71,7 @@ export function EventForm({ event, clients, onSubmit, cancelHref, submitLabel }:
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      client_id: event?.client_id || "",
+      client_id: event?.client_id || initialClientId || "",
       name: event?.name || "",
       event_type: event?.event_type || "",
       description: event?.description || "",
@@ -78,12 +80,12 @@ export function EventForm({ event, clients, onSubmit, cancelHref, submitLabel }:
       city: event?.city || "",
       region: event?.region || "",
       country: event?.country || "Chile",
-      latitude: event?.latitude ? Number(event.latitude) : "",
-      longitude: event?.longitude ? Number(event.longitude) : "",
+      latitude: event?.latitude ? Number(event.latitude) : undefined,
+      longitude: event?.longitude ? Number(event.longitude) : undefined,
       start_date: toDatetimeLocal(event?.start_date),
       end_date: toDatetimeLocal(event?.end_date),
-      estimated_attendees: event?.estimated_attendees || 0,
-      status: event?.status || "PLANNING"
+      estimated_attendees: event?.estimated_attendees ?? undefined,
+      status: event?.status || ""
     }
   });
 
@@ -91,7 +93,7 @@ export function EventForm({ event, clients, onSubmit, cancelHref, submitLabel }:
     setApiError(null);
     setLoading(true);
     try {
-      await onSubmit({
+      const payload: EventCreate | EventUpdate = {
         client_id: values.client_id,
         name: values.name,
         event_type: nullableString(values.event_type),
@@ -100,14 +102,17 @@ export function EventForm({ event, clients, onSubmit, cancelHref, submitLabel }:
         address: nullableString(values.address),
         city: nullableString(values.city),
         region: nullableString(values.region),
-        country: nullableString(values.country) || "Chile",
-        latitude: values.latitude === "" ? null : Number(values.latitude),
-        longitude: values.longitude === "" ? null : Number(values.longitude),
+        country: nullableString(values.country),
+        latitude: values.latitude ?? null,
+        longitude: values.longitude ?? null,
         start_date: values.start_date,
         end_date: values.end_date,
-        estimated_attendees: values.estimated_attendees ?? 0,
-        status: values.status
-      });
+        estimated_attendees: values.estimated_attendees ?? null
+      };
+      if (values.status) {
+        payload.status = values.status;
+      }
+      await onSubmit(payload);
     } catch (error) {
       setApiError(error instanceof ApiError ? error.message : "No pudimos guardar el evento.");
     } finally {
@@ -139,6 +144,7 @@ export function EventForm({ event, clients, onSubmit, cancelHref, submitLabel }:
             </Field>
             <Field label="Estado">
               <select className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" {...register("status")}>
+                <option value="">Usar estado por defecto</option>
                 {statuses.map((status) => (
                   <option key={status} value={status}>
                     {eventStatusLabels[status]}
@@ -152,37 +158,44 @@ export function EventForm({ event, clients, onSubmit, cancelHref, submitLabel }:
             <Field error={errors.end_date?.message} label="Termino">
               <Input type="datetime-local" {...register("end_date")} />
             </Field>
-            <Field label="Ubicacion">
-              <Input {...register("location_name")} placeholder="Parque, estadio o recinto" />
-            </Field>
-            <Field label="Direccion">
-              <Input {...register("address")} />
-            </Field>
-            <Field label="Ciudad">
-              <Input {...register("city")} />
-            </Field>
-            <Field label="Region">
-              <Input {...register("region")} />
-            </Field>
-            <Field label="Pais">
-              <Input {...register("country")} />
-            </Field>
             <Field error={errors.estimated_attendees?.message} label="Asistentes estimados">
               <Input min={0} type="number" {...register("estimated_attendees")} />
             </Field>
-            <Field label="Latitud">
-              <Input step="0.000001" type="number" {...register("latitude")} />
-            </Field>
-            <Field label="Longitud">
-              <Input step="0.000001" type="number" {...register("longitude")} />
-            </Field>
           </div>
-          <Field label="Descripcion">
-            <textarea
-              className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
-              {...register("description")}
-            />
-          </Field>
+          <details className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+            <summary className="cursor-pointer text-sm font-bold text-slate-800">Información logística avanzada</summary>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <Field label="Ubicación">
+                <Input {...register("location_name")} placeholder="Parque, estadio o recinto" />
+              </Field>
+              <Field label="Dirección">
+                <Input {...register("address")} />
+              </Field>
+              <Field label="Ciudad">
+                <Input {...register("city")} />
+              </Field>
+              <Field label="Región">
+                <Input {...register("region")} />
+              </Field>
+              <Field label="País">
+                <Input {...register("country")} />
+              </Field>
+              <Field label="Latitud">
+                <Input step="0.000001" type="number" {...register("latitude")} />
+              </Field>
+              <Field label="Longitud">
+                <Input step="0.000001" type="number" {...register("longitude")} />
+              </Field>
+              <div className="md:col-span-2">
+                <Field label="Descripción">
+                  <textarea
+                    className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                    {...register("description")}
+                  />
+                </Field>
+              </div>
+            </div>
+          </details>
           <FormActions cancelHref={cancelHref} loading={loading} submitLabel={submitLabel} />
         </form>
       </CardContent>

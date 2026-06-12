@@ -1,4 +1,4 @@
-import { CalendarDays, MapPin, Users } from "lucide-react";
+import { CalendarDays, Users } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { EventStatusBadge } from "@/components/events/EventStatusBadge";
@@ -25,9 +25,8 @@ export function EventHeader({ event }: { event: Event }) {
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{event.description || "Evento preparado para gestion operativa, ambiental y sanitaria."}</p>
           </div>
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <Info icon={<CalendarDays className="h-5 w-5" />} label="Fechas" value={`${formatDate(event.start_date)} - ${formatDate(event.end_date)}`} />
-          <Info icon={<MapPin className="h-5 w-5" />} label="Ubicacion" value={[event.location_name, event.city, event.region].filter(Boolean).join(", ") || "Sin ubicacion"} />
           <Info icon={<Users className="h-5 w-5" />} label="Asistentes" value={`${event.estimated_attendees?.toLocaleString("es-CL") || 0} estimados`} />
         </div>
       </CardContent>

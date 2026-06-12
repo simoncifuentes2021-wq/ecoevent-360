@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
@@ -15,6 +15,8 @@ import type { EventCreate, EventUpdate } from "@/types/event";
 
 export default function NewEventPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialClientId = searchParams.get("client_id") || undefined;
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,13 @@ export default function NewEventPage() {
     <RoleGuard roles={["SUPER_ADMIN", "ADMIN"]}>
       <div className="space-y-6">
         <PageHeader title="Crear evento" description="Configura cliente, ubicacion, fechas y estado inicial." />
-        <EventForm cancelHref="/admin/eventos" clients={clients} submitLabel="Crear evento" onSubmit={submit} />
+        <EventForm
+          cancelHref={initialClientId ? `/admin/clientes/${initialClientId}` : "/admin/eventos"}
+          clients={clients}
+          initialClientId={initialClientId}
+          submitLabel={initialClientId ? "Crear evento asociado" : "Crear evento"}
+          onSubmit={submit}
+        />
       </div>
     </RoleGuard>
   );

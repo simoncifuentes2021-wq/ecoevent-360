@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, MapPin, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Users } from "lucide-react";
 
 import { EventStatusBadge } from "@/components/events/EventStatusBadge";
 import { Button } from "@/components/ui/button";
@@ -29,9 +29,8 @@ export function ClientEventHeader({ event }: { event: Event }) {
             <Button type="button" variant="secondary"><ArrowLeft className="h-4 w-4" />Volver</Button>
           </Link>
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <Info icon={<CalendarDays className="h-5 w-5" />} label="Fechas" value={`${formatDate(event.start_date)} - ${formatDate(event.end_date)}`} />
-          <Info icon={<MapPin className="h-5 w-5" />} label="Ubicacion" value={[event.location_name, event.city, event.region].filter(Boolean).join(", ") || "Sin ubicacion"} />
           <Info icon={<Users className="h-5 w-5" />} label="Asistentes" value={`${(event.real_attendees ?? event.estimated_attendees ?? 0).toLocaleString("es-CL")} ${event.real_attendees ? "reales" : "estimados"}`} />
         </div>
       </CardContent>

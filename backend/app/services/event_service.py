@@ -81,6 +81,25 @@ def _validate_event_dates(start_date: datetime, end_date: datetime) -> None:
         )
 
 
+def _validate_status_transition(
+    current_status: EventStatus, new_status: EventStatus, current_user: User
+) -> None:
+    if new_status == current_status:
+        return
+
+    if current_status in TERMINAL_STATUSES:
+        if current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only SUPER_ADMIN can revert terminal events",
+            )
+    elif new_status not in VALID_STATUS_TRANSITIONS.get(current_status, set()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status transition from {current_status} to {new_status}",
+        )
+
+
 def _event_visibility_filters(user: User):
     if user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
         return []
@@ -193,6 +212,10 @@ def update_event(db: Session, event_id: UUID, payload: EventUpdate, current_user
             )
     if "client_id" in data:
         _validate_client(db, data["client_id"])
+    if data.get("status") is None:
+        data.pop("status", None)
+    if "status" in data:
+        _validate_status_transition(event.status, data["status"], current_user)
 
     start_date = data.get("start_date", event.start_date)
     end_date = data.get("end_date", event.end_date)
@@ -215,17 +238,7 @@ def update_event_status(
     if new_status == event.status:
         return event
 
-    if event.status in TERMINAL_STATUSES:
-        if current_user.role != UserRole.SUPER_ADMIN:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only SUPER_ADMIN can revert terminal events",
-            )
-    elif new_status not in VALID_STATUS_TRANSITIONS.get(event.status, set()):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status transition from {event.status} to {new_status}",
-        )
+    _validate_status_transition(event.status, new_status, current_user)
 
     event.status = new_status
     event.updated_at = datetime.utcnow()
