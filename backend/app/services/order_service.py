@@ -517,7 +517,6 @@ def update_item_stage(
         order.updated_at = now
         db.add(order)
     db.commit()
-    db.refresh(item)
     return item
 
 
