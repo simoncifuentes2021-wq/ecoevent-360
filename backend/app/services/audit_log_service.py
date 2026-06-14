@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import Request
 from sqlalchemy import inspect as sqlalchemy_inspect
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, insert, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.audit_log import AuditLog
@@ -393,37 +393,36 @@ def create_audit_log(
             new_data=new_data,
             metadata=merged_metadata,
         )
-        log = AuditLog(
-            user_id=user.id if user else None,
-            event_id=event.id if event else event_id,
-            client_id=client.id if client else client_id,
-            task_id=task.id if task else task_id,
-            incident_id=incident.id if incident else incident_id,
-            zone_id=zone.id if zone else zone_id,
-            action=action,
-            module=module,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            status=status,
-            old_data=sanitize_audit_data(old_data),
-            new_data=sanitize_audit_data(new_data),
-            metadata_=sanitize_audit_data(merged_metadata),
-            description=final_description,
-        )
+        log_values = {
+            "user_id": user.id if user else None,
+            "event_id": event.id if event else event_id,
+            "client_id": client.id if client else client_id,
+            "task_id": task.id if task else task_id,
+            "incident_id": incident.id if incident else incident_id,
+            "zone_id": zone.id if zone else zone_id,
+            "action": action,
+            "module": module,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "status": status,
+            "old_data": sanitize_audit_data(old_data),
+            "new_data": sanitize_audit_data(new_data),
+            "metadata": sanitize_audit_data(merged_metadata),
+            "description": final_description,
+        }
         if request is not None:
             forwarded_for = request.headers.get("x-forwarded-for")
-            log.ip_address = (
+            log_values["ip_address"] = (
                 forwarded_for.split(",")[0].strip()
                 if forwarded_for
                 else request.client.host if request.client else None
             )
-            log.user_agent = request.headers.get("user-agent")
-            log.request_method = request.method
-            log.request_path = str(request.url.path)
-        db.add(log)
+            log_values["user_agent"] = request.headers.get("user-agent")
+            log_values["request_method"] = request.method
+            log_values["request_path"] = str(request.url.path)
+        db.execute(insert(AuditLog.__table__).inline().values(**log_values))
         db.commit()
-        db.refresh(log)
-        return log
+        return None
     except Exception:
         db.rollback()
         logger.exception("Audit log could not be persisted")
@@ -515,4 +514,3 @@ def list_audit_logs(
         ).all()
     )
     return items, total
-
