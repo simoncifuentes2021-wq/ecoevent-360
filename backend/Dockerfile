@@ -16,4 +16,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && gunicorn app.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"]
+CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS_ON_STARTUP\" = \"true\" ]; then alembic upgrade head; fi && gunicorn app.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"]

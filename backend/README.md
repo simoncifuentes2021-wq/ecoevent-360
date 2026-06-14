@@ -34,6 +34,17 @@ Migraciones:
 alembic upgrade head
 ```
 
+En produccion, no ejecutes migraciones automaticamente con el rol de la app si
+ese rol no es propietario de las tablas. Render solo corre migraciones al
+arranque si defines:
+
+```bash
+RUN_MIGRATIONS_ON_STARTUP=true
+```
+
+El flujo recomendado es dejar esa variable ausente o en `false` en Render y
+ejecutar `alembic upgrade head` desde local usando la `DATABASE_URL` admin.
+
 La migracion de Row Level Security usa variables de sesion PostgreSQL seteadas
 por el backend en cada request autenticada. En produccion, usa un rol de base de
 datos no propietario de las tablas para la `DATABASE_URL` de la app; deja el rol
