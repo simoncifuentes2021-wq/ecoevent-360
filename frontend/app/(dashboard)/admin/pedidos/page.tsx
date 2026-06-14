@@ -22,7 +22,7 @@ import type { CatalogItem, EventOrder, EventOrderCreate, EventOrderItemCreate, O
 import type { EventStaff } from "@/types/staff";
 
 type OrderRow = EventOrder & { eventName: string };
-type QuickItem = { catalog_item_id: string; name: string; quantity: number; unit: string };
+type QuickItem = { catalog_item_id: string; name: string; quantity: string; unit: string };
 
 const statuses: OrderStatus[] = ["DRAFT", "REQUESTED", "APPROVED", "PREPARING", "LOADED", "IN_TRANSIT", "DELIVERED", "RETURN_IN_PROGRESS", "RETURNED", "CLOSED", "CANCELLED"];
 
@@ -184,7 +184,7 @@ function QuickOrderModal({ events, onClose, onSubmit }: { events: Event[]; onClo
         delete next[item.id];
         return next;
       }
-      return { ...current, [item.id]: { catalog_item_id: item.id, name: item.name, quantity: 1, unit: item.unit || "" } };
+      return { ...current, [item.id]: { catalog_item_id: item.id, name: item.name, quantity: "1", unit: item.unit || "" } };
     });
   }
 
@@ -203,7 +203,7 @@ function QuickOrderModal({ events, onClose, onSubmit }: { events: Event[]; onClo
         notes: form.notes || null
       }, selectedItems.map((item) => ({
         catalog_item_id: item.catalog_item_id,
-        quantity: item.quantity,
+        quantity: Number(item.quantity || 0),
         notes: null
       })));
     } finally {
@@ -242,7 +242,7 @@ function QuickOrderModal({ events, onClose, onSubmit }: { events: Event[]; onClo
                         <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,220px)_1fr] md:items-end">
                           <label className="grid gap-1 text-xs font-semibold">
                             Cantidad
-                            <Input min={0.01} step="0.01" type="number" value={quickItem.quantity} onChange={(event) => updateItem(item.id, { quantity: Number(event.target.value) })} />
+                            <Input min={0.01} step="0.01" type="number" value={quickItem.quantity} onChange={(event) => updateItem(item.id, { quantity: cleanQuantityInput(event.target.value) })} onFocus={(event) => event.currentTarget.select()} />
                           </label>
                           <p className="rounded-md bg-white px-3 py-2 text-xs font-semibold text-slate-600">
                             Unidad cargada del catalogo: {quickItem.unit || "unidad"}
@@ -250,7 +250,7 @@ function QuickOrderModal({ events, onClose, onSubmit }: { events: Event[]; onClo
                         </div>
                       ) : null}
                     </div>
-                    {quickItem ? <span className="text-xs font-bold text-emerald-700">{numberValue(quickItem.quantity)}</span> : null}
+                    {quickItem ? <span className="text-xs font-bold text-emerald-700">{numberValue(Number(quickItem.quantity || 0))}</span> : null}
                   </div>
                 </div>
               );
@@ -261,4 +261,13 @@ function QuickOrderModal({ events, onClose, onSubmit }: { events: Event[]; onClo
       </form>
     </ModalShell>
   );
+}
+
+function cleanQuantityInput(value: string) {
+  if (!value) return "";
+  if (value.includes(".")) {
+    const [whole, decimal] = value.split(".", 2);
+    return `${whole.replace(/^0+(?=\d)/, "") || "0"}.${decimal}`;
+  }
+  return value.replace(/^0+(?=\d)/, "");
 }

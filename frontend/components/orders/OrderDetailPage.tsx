@@ -22,6 +22,7 @@ import type { Zone } from "@/types/zone";
 import { dateValue, ItemStageBadge, money, numberValue, OrderStatusBadge, ProgressLine, stageLabels } from "@/components/orders/order-ui";
 
 const stages: OrderEvidenceStage[] = ["LOAD", "DELIVERY", "RETURN"];
+type ItemFormState = Omit<EventOrderItemCreate, "quantity"> & { quantity: string };
 
 export function OrderDetailPage({ orderId, readOnly = false, backHref = "/admin/eventos" }: { orderId: string; readOnly?: boolean; backHref?: string }) {
   const [order, setOrder] = useState<EventOrder | null>(null);
@@ -280,15 +281,16 @@ function EditOrderForm({ assignees, order, onClose, onSubmit }: { assignees: Eve
 
 function ItemForm({ catalog, zones, onClose, onSubmit }: { catalog: CatalogItem[]; zones: Zone[]; onClose: () => void; onSubmit: (data: EventOrderItemCreate) => Promise<void> }) {
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<EventOrderItemCreate>({ catalog_item_id: "", item_name_snapshot: "", quantity: 1, unit_price: 0, unit: "", zone_id: "", notes: "" });
+  const [form, setForm] = useState<ItemFormState>({ catalog_item_id: "", item_name_snapshot: "", quantity: "1", unit_price: 0, unit: "", zone_id: "", notes: "" });
   const selected = catalog.find((item) => item.id === form.catalog_item_id);
-  const valid = form.quantity > 0 && Boolean(form.catalog_item_id || form.item_name_snapshot);
+  const valid = Number(form.quantity || 0) > 0 && Boolean(form.catalog_item_id || form.item_name_snapshot);
 
   async function submit() {
     setSaving(true);
     try {
       await onSubmit({
         ...form,
+        quantity: Number(form.quantity || 0),
         catalog_item_id: form.catalog_item_id || null,
         item_name_snapshot: form.item_name_snapshot || null,
         zone_id: form.zone_id || null,
@@ -301,7 +303,59 @@ function ItemForm({ catalog, zones, onClose, onSubmit }: { catalog: CatalogItem[
     }
   }
 
-  return <ModalShell title="Agregar ítem" onClose={onClose}><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (valid) void submit(); }}><label className="grid gap-2 text-sm font-semibold">Catálogo<select className="h-10 rounded-md border px-3" value={form.catalog_item_id || ""} onChange={(event) => { const item = catalog.find((catalogItem) => catalogItem.id === event.target.value); setForm({ ...form, catalog_item_id: event.target.value, item_name_snapshot: item?.name || "", unit: item?.unit || "", unit_price: Number(item?.default_unit_price || 0) }); }}><option value="">Elemento manual</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="grid gap-2 text-sm font-semibold">Nombre<Input value={form.item_name_snapshot || ""} onChange={(event) => setForm({ ...form, item_name_snapshot: event.target.value })} /></label><div className="grid gap-3 md:grid-cols-3"><label className="grid gap-2 text-sm font-semibold">Cantidad<Input min={0.01} step="0.01" type="number" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} /></label><label className="grid gap-2 text-sm font-semibold">Unidad<Input value={form.unit || ""} onChange={(event) => setForm({ ...form, unit: event.target.value })} /></label><label className="grid gap-2 text-sm font-semibold">Precio<Input min={0} type="number" value={form.unit_price || 0} onChange={(event) => setForm({ ...form, unit_price: Number(event.target.value) })} /></label></div><label className="grid gap-2 text-sm font-semibold">Zona<select className="h-10 rounded-md border px-3" value={form.zone_id || ""} onChange={(event) => setForm({ ...form, zone_id: event.target.value })}><option value="">Sin zona</option>{zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}</select></label><label className="grid gap-2 text-sm font-semibold">Notas<Input value={form.notes || ""} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Agregar"}</Button></div></form></ModalShell>;
+  return (
+    <ModalShell title="Agregar item" onClose={onClose}>
+      <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (valid) void submit(); }}>
+        <label className="grid gap-2 text-sm font-semibold">
+          Catalogo
+          <select
+            className="h-10 rounded-md border px-3"
+            value={form.catalog_item_id || ""}
+            onChange={(event) => {
+              const item = catalog.find((catalogItem) => catalogItem.id === event.target.value);
+              setForm({ ...form, catalog_item_id: event.target.value, item_name_snapshot: item?.name || "", unit: item?.unit || "", unit_price: Number(item?.default_unit_price || 0) });
+            }}
+          >
+            <option value="">Elemento manual</option>
+            {catalog.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Nombre
+          <Input value={form.item_name_snapshot || ""} onChange={(event) => setForm({ ...form, item_name_snapshot: event.target.value })} />
+        </label>
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="grid gap-2 text-sm font-semibold">
+            Cantidad
+            <Input min={0.01} step="0.01" type="number" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: cleanQuantityInput(event.target.value) })} onFocus={(event) => event.currentTarget.select()} />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold">
+            Unidad
+            <Input value={form.unit || ""} onChange={(event) => setForm({ ...form, unit: event.target.value })} />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold">
+            Precio
+            <Input min={0} type="number" value={form.unit_price || 0} onChange={(event) => setForm({ ...form, unit_price: Number(event.target.value) })} />
+          </label>
+        </div>
+        <label className="grid gap-2 text-sm font-semibold">
+          Zona
+          <select className="h-10 rounded-md border px-3" value={form.zone_id || ""} onChange={(event) => setForm({ ...form, zone_id: event.target.value })}>
+            <option value="">Sin zona</option>
+            {zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Notas
+          <Input value={form.notes || ""} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Agregar"}</Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
 }
 
 function EvidenceForm({ orderId, target, onClose, onSaved }: { orderId: string; target: { item?: EventOrderItem; stage: OrderEvidenceStage }; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -332,4 +386,13 @@ function toDateTimeLocal(value?: string | null) {
   if (Number.isNaN(date.getTime())) return "";
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+function cleanQuantityInput(value: string) {
+  if (!value) return "";
+  if (value.includes(".")) {
+    const [whole, decimal] = value.split(".", 2);
+    return `${whole.replace(/^0+(?=\d)/, "") || "0"}.${decimal}`;
+  }
+  return value.replace(/^0+(?=\d)/, "");
 }
