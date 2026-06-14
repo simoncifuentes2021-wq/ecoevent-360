@@ -69,3 +69,29 @@ class ReportStatus(StrEnum):
     GENERATED = "GENERATED"
     DELIVERED = "DELIVERED"
     ARCHIVED = "ARCHIVED"
+
+
+class OrderStatus(StrEnum):
+    DRAFT = "DRAFT"
+    REQUESTED = "REQUESTED"
+    APPROVED = "APPROVED"
+    PREPARING = "PREPARING"
+    LOADED = "LOADED"
+    IN_TRANSIT = "IN_TRANSIT"
+    DELIVERED = "DELIVERED"
+    RETURN_IN_PROGRESS = "RETURN_IN_PROGRESS"
+    RETURNED = "RETURNED"
+    CLOSED = "CLOSED"
+    CANCELLED = "CANCELLED"
+
+
+class OrderItemStageStatus(StrEnum):
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    OBSERVED = "OBSERVED"
+
+
+class OrderEvidenceStage(StrEnum):
+    LOAD = "LOAD"
+    DELIVERY = "DELIVERY"
+    RETURN = "RETURN"

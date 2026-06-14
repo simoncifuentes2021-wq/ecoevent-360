@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.permissions import can_access_event, can_manage_event, can_operate_event
 from app.models.core import Event, EventZone, Evidence, User, WasteRecord, WasteType
@@ -173,6 +173,7 @@ def list_event_waste_records(
     items = list(
         db.scalars(
             select(WasteRecord)
+            .options(selectinload(WasteRecord.recorder))
             .where(*filters)
             .order_by(WasteRecord.recorded_at.desc(), WasteRecord.created_at.desc())
             .offset((page - 1) * limit)
@@ -183,7 +184,13 @@ def list_event_waste_records(
 
 
 def get_waste_record(db: Session, record_id: UUID, current_user: User) -> WasteRecord:
-    record = get_waste_record_or_404(db, record_id)
+    record = db.scalar(
+        select(WasteRecord)
+        .options(selectinload(WasteRecord.recorder))
+        .where(WasteRecord.id == record_id)
+    )
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Waste record not found")
     if not can_access_event(current_user, record.event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
     return record

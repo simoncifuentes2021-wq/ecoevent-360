@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Camera } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -131,8 +129,7 @@ export default function WorkerWastePage() {
                 {contextLoading ? <LoadingState label="Cargando datos del evento..." /> : null}
                 {!contextLoading ? (
                   <>
-                    <Link href={`/worker/subir-evidencia?event_id=${eventId}`}><Button className="w-full" variant="secondary"><Camera className="h-4 w-4" />Subir evidencia primero</Button></Link>
-                    <MobileWasteForm evidences={evidences} loading={saving} wasteTypes={wasteTypes} zones={zones} onCancel={() => router.push(user?.role === "SUPERVISOR" ? "/supervisor/dashboard" : "/worker/dashboard")} onSubmit={submit} />
+                    <MobileWasteForm eventId={eventId} evidences={evidences} loading={saving} wasteTypes={wasteTypes} zones={zones} onCancel={() => router.push(user?.role === "SUPERVISOR" ? "/supervisor/dashboard" : "/worker/dashboard")} onSubmit={submit} />
                   </>
                 ) : null}
               </>

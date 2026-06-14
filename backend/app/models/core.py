@@ -24,6 +24,9 @@ from app.models.enums import (
     CarbonScope,
     EventStatus,
     IncidentStatus,
+    OrderEvidenceStage,
+    OrderItemStageStatus,
+    OrderStatus,
     PriorityLevel,
     ReportStatus,
     SurveyStatus,
@@ -58,6 +61,13 @@ waste_destination_enum = Enum(WasteDestination, name="waste_destination", create
 carbon_scope_enum = Enum(CarbonScope, name="carbon_scope", create_type=False)
 survey_status_enum = Enum(SurveyStatus, name="survey_status", create_type=False)
 report_status_enum = Enum(ReportStatus, name="report_status", create_type=False)
+order_status_enum = Enum(OrderStatus, name="order_status", create_type=False)
+order_item_stage_status_enum = Enum(
+    OrderItemStageStatus, name="order_item_stage_status", create_type=False
+)
+order_evidence_stage_enum = Enum(
+    OrderEvidenceStage, name="order_evidence_stage", create_type=False
+)
 
 
 class Client(Base):
@@ -106,6 +116,9 @@ class User(Base):
     client: Mapped[Client | None] = relationship(back_populates="users")
     created_events: Mapped[list["Event"]] = relationship(back_populates="creator")
     event_staff: Mapped[list["EventStaff"]] = relationship(back_populates="user")
+    assigned_orders: Mapped[list["EventOrder"]] = relationship(
+        back_populates="assignee", foreign_keys="EventOrder.assigned_to"
+    )
 
 
 class Event(Base):
@@ -160,6 +173,7 @@ class Event(Base):
     survey_responses: Mapped[list["SurveyResponse"]] = relationship(back_populates="event")
     reports: Mapped[list["Report"]] = relationship(back_populates="event")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="event")
+    orders: Mapped[list["EventOrder"]] = relationship(back_populates="event")
 
 
 class EventZone(Base):
@@ -181,6 +195,167 @@ class EventZone(Base):
     evidences_from_responses: Mapped[list["SurveyResponse"]] = relationship(back_populates="zone")
     waste_records: Mapped[list["WasteRecord"]] = relationship(back_populates="zone")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="zone")
+    order_items: Mapped[list["EventOrderItem"]] = relationship(back_populates="zone")
+
+
+class CatalogItem(Base):
+    __tablename__ = "catalog_items"
+    __table_args__ = (
+        Index("idx_catalog_items_category", "category"),
+        Index("idx_catalog_items_is_active", "is_active"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
+    unit: Mapped[str | None] = mapped_column(String(50))
+    default_unit_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), server_default=text("0")
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    order_items: Mapped[list["EventOrderItem"]] = relationship(back_populates="catalog_item")
+
+
+class EventOrder(Base):
+    __tablename__ = "event_orders"
+    __table_args__ = (
+        Index("idx_event_orders_event_id", "event_id"),
+        Index("idx_event_orders_assigned_to", "assigned_to"),
+        Index("idx_event_orders_status", "status"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    requested_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    assigned_to: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[OrderStatus] = mapped_column(
+        order_status_enum, nullable=False, server_default=text("'DRAFT'")
+    )
+    requested_date: Mapped[datetime | None] = mapped_column(DateTime)
+    required_date: Mapped[datetime | None] = mapped_column(DateTime)
+    total_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), server_default=text("0"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    event: Mapped[Event] = relationship(back_populates="orders")
+    requester: Mapped[User | None] = relationship(foreign_keys=[requested_by])
+    assignee: Mapped[User | None] = relationship(
+        back_populates="assigned_orders", foreign_keys=[assigned_to]
+    )
+    items: Mapped[list["EventOrderItem"]] = relationship(back_populates="order")
+    evidences: Mapped[list["OrderEvidence"]] = relationship(back_populates="order")
+
+
+class EventOrderItem(Base):
+    __tablename__ = "event_order_items"
+    __table_args__ = (
+        CheckConstraint("quantity > 0"),
+        CheckConstraint("unit_price >= 0"),
+        Index("idx_event_order_items_order_id", "order_id"),
+        Index("idx_event_order_items_catalog_item_id", "catalog_item_id"),
+        Index("idx_event_order_items_zone_id", "zone_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    order_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_orders.id", ondelete="CASCADE"), nullable=False
+    )
+    catalog_item_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("catalog_items.id", ondelete="SET NULL")
+    )
+    zone_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_zones.id", ondelete="SET NULL")
+    )
+    item_name_snapshot: Mapped[str] = mapped_column(String(180), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    unit: Mapped[str | None] = mapped_column(String(50))
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), server_default=text("0"))
+    total_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), server_default=text("0"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    load_status: Mapped[OrderItemStageStatus] = mapped_column(
+        order_item_stage_status_enum, nullable=False, server_default=text("'PENDING'")
+    )
+    delivery_status: Mapped[OrderItemStageStatus] = mapped_column(
+        order_item_stage_status_enum, nullable=False, server_default=text("'PENDING'")
+    )
+    return_status: Mapped[OrderItemStageStatus] = mapped_column(
+        order_item_stage_status_enum, nullable=False, server_default=text("'PENDING'")
+    )
+    loaded_at: Mapped[datetime | None] = mapped_column(DateTime)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime)
+    loaded_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    delivered_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    returned_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    load_observation: Mapped[str | None] = mapped_column(Text)
+    delivery_observation: Mapped[str | None] = mapped_column(Text)
+    return_observation: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    order: Mapped[EventOrder] = relationship(back_populates="items")
+    catalog_item: Mapped[CatalogItem | None] = relationship(back_populates="order_items")
+    zone: Mapped[EventZone | None] = relationship(back_populates="order_items")
+    evidences: Mapped[list["OrderEvidence"]] = relationship(back_populates="order_item")
+
+
+class OrderEvidence(Base):
+    __tablename__ = "order_evidences"
+    __table_args__ = (
+        Index("idx_order_evidences_event_id", "event_id"),
+        Index("idx_order_evidences_order_id", "order_id"),
+        Index("idx_order_evidences_order_item_id", "order_item_id"),
+        Index("idx_order_evidences_stage", "stage"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_orders.id", ondelete="CASCADE"), nullable=False
+    )
+    order_item_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_order_items.id", ondelete="SET NULL")
+    )
+    uploaded_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    stage: Mapped[OrderEvidenceStage] = mapped_column(order_evidence_stage_enum, nullable=False)
+    file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    file_type: Mapped[str | None] = mapped_column(String(80))
+    file_name: Mapped[str | None] = mapped_column(String(255))
+    file_size: Mapped[int | None] = mapped_column(Integer)
+    description: Mapped[str | None] = mapped_column(Text)
+    visible_to_client: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+    event: Mapped[Event] = relationship()
+    order: Mapped[EventOrder] = relationship(back_populates="evidences")
+    order_item: Mapped[EventOrderItem | None] = relationship(back_populates="evidences")
+    uploader: Mapped[User | None] = relationship()
 
 
 class Service(Base):

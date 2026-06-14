@@ -4,9 +4,9 @@ import { FileText, Plus, Sparkles, UserPlus } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 const actions = [
-  { href: "/clients", label: "Crear cliente", icon: Plus },
-  { href: "/events", label: "Crear evento", icon: Sparkles },
-  { href: "/users", label: "Crear usuario", icon: UserPlus },
+  { href: "/admin/clientes/nuevo", label: "Crear cliente", icon: Plus },
+  { href: "/events", label: "Panel eventos", icon: Sparkles },
+  { href: "/admin/usuarios/nuevo", label: "Crear usuario", icon: UserPlus },
   { href: "/reports", label: "Ver reportes", icon: FileText }
 ];
 

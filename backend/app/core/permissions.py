@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.core import Event, EventStaff, Task, User
+from app.models.core import Event, EventOrder, EventOrderItem, OrderEvidence, EventStaff, Task, User
 from app.models.enums import EventStatus, UserRole
 
 CLOSURE_WINDOW_DAYS = 7
@@ -108,3 +108,68 @@ def can_manage_event(user: User, event_id: UUID, db: Session) -> bool:
     if user.role == UserRole.SUPERVISOR:
         return can_operate_event(user, event_id, db)
     return False
+
+
+def can_access_order(user: User, order_id: UUID, db: Session) -> bool:
+    order = db.get(EventOrder, order_id)
+    if order is None:
+        return False
+    if user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        return True
+    if user.role == UserRole.CLIENT:
+        event = db.get(Event, order.event_id)
+        return event is not None and user.client_id is not None and event.client_id == user.client_id
+    if user.role == UserRole.SUPERVISOR:
+        return can_access_event(user, order.event_id, db)
+    if user.role == UserRole.WORKER:
+        return order.assigned_to == user.id or can_access_event(user, order.event_id, db)
+    return False
+
+
+def can_manage_order(user: User, order_id: UUID, db: Session) -> bool:
+    order = db.get(EventOrder, order_id)
+    if order is None:
+        return False
+    if user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        return True
+    if user.role == UserRole.SUPERVISOR:
+        return can_manage_event(user, order.event_id, db)
+    return False
+
+
+def can_complete_order_item_stage(user: User, item_id: UUID, db: Session) -> bool:
+    item = db.get(EventOrderItem, item_id)
+    if item is None:
+        return False
+    order = db.get(EventOrder, item.order_id)
+    if order is None:
+        return False
+    if user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        return True
+    if user.role == UserRole.SUPERVISOR:
+        return can_manage_event(user, order.event_id, db)
+    if user.role == UserRole.WORKER:
+        return order.assigned_to == user.id
+    return False
+
+
+def can_upload_order_evidence(user: User, order_id: UUID, db: Session) -> bool:
+    order = db.get(EventOrder, order_id)
+    if order is None:
+        return False
+    if user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        return True
+    if user.role == UserRole.SUPERVISOR:
+        return can_manage_event(user, order.event_id, db)
+    if user.role == UserRole.WORKER:
+        return order.assigned_to == user.id
+    return False
+
+
+def can_view_order_evidence(user: User, evidence_id: UUID, db: Session) -> bool:
+    evidence = db.get(OrderEvidence, evidence_id)
+    if evidence is None:
+        return False
+    if user.role == UserRole.CLIENT and not evidence.visible_to_client:
+        return False
+    return can_access_order(user, evidence.order_id, db)

@@ -13,6 +13,7 @@ import { WasteRecordTable } from "@/components/waste/WasteRecordTable";
 import { WasteSummaryCards } from "@/components/waste/WasteSummaryCards";
 import { Button } from "@/components/ui/button";
 import { getEventEvidences } from "@/lib/api/evidences";
+import { getUsers } from "@/lib/api/users";
 import { createWasteRecord, deleteWasteRecord, getWasteRecords, getWasteSummary, updateWasteRecord } from "@/lib/api/waste";
 import { getWasteTypes } from "@/lib/api/wasteTypes";
 import { getEventZones } from "@/lib/api/zones";
@@ -20,12 +21,23 @@ import { normalizeWasteSummary } from "@/lib/normalizers/waste";
 import { canCreateWasteRecord, canDeleteWasteRecord, canEditWasteRecord } from "@/lib/permissions";
 import type { Evidence } from "@/types/evidence";
 import type { UserRole } from "@/types/roles";
+import type { User } from "@/types/user";
 import type { WasteRecord, WasteRecordCreate, WasteRecordUpdate, WasteSummary, WasteType } from "@/types/waste";
 import type { Zone } from "@/types/zone";
 
 function typeLabel(record: WasteRecord, types: WasteType[]) {
   if (typeof record.waste_type === "object" && record.waste_type && "name" in record.waste_type) return record.waste_type.name;
   return types.find((item) => item.id === record.waste_type_id)?.name || String(record.waste_type || record.waste_type_id || "OTHER");
+}
+
+function attachRecorders(records: WasteRecord[], users: User[]) {
+  if (users.length === 0) return records;
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  return records.map((record) => {
+    if (record.recorder || !record.recorded_by) return record;
+    const user = usersById.get(record.recorded_by);
+    return user ? { ...record, recorder: { id: user.id, full_name: user.full_name, email: user.email } } : record;
+  });
 }
 
 export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole | null }) {
@@ -49,15 +61,16 @@ export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole |
     setLoading(true);
     setError(null);
     try {
-      const [rawSummary, recordData, zoneData, evidenceData, typeData] = await Promise.all([
+      const [rawSummary, recordData, zoneData, evidenceData, typeData, userData] = await Promise.all([
         getWasteSummary(eventId),
         getWasteRecords(eventId),
         getEventZones(eventId),
         getEventEvidences(eventId),
-        getWasteTypes().catch(() => [])
+        getWasteTypes().catch(() => []),
+        getUsers({ page: 1, limit: 100 }).then((response) => response.items).catch(() => [])
       ]);
       setSummary(normalizeWasteSummary(rawSummary));
-      setRecords(recordData.items);
+      setRecords(attachRecorders(recordData.items, userData));
       setZones(zoneData);
       setEvidences(evidenceData.items);
       setWasteTypes(typeData);
@@ -109,7 +122,7 @@ export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole |
       <WasteCharts byDestination={summary.by_destination} byType={summary.by_type} byZone={summary.by_zone} />
       <WasteFilters destination={destination} q={q} typeId={typeId} wasteTypes={wasteTypes} zoneId={zoneId} zones={zones} onDestinationChange={setDestination} onQChange={setQ} onTypeChange={setTypeId} onZoneChange={setZoneId} />
       <WasteRecordTable canDelete={canDeleteWasteRecord(role)} canEdit={canEditWasteRecord(role)} error={null} loading={loading} records={filtered} wasteTypes={wasteTypes} onDelete={setDeleting} onEdit={setFormRecord} onView={setDetail} />
-      {formRecord !== undefined ? <WasteRecordFormModal evidences={evidences} loading={saving} record={formRecord} wasteTypes={wasteTypes} zones={zones} onClose={() => setFormRecord(undefined)} onSubmit={save} /> : null}
+      {formRecord !== undefined ? <WasteRecordFormModal eventId={eventId} evidences={evidences} loading={saving} record={formRecord} wasteTypes={wasteTypes} zones={zones} onClose={() => setFormRecord(undefined)} onSubmit={save} /> : null}
       {detail ? <WasteRecordDetailDrawer canDelete={canDeleteWasteRecord(role)} canEdit={canEditWasteRecord(role)} record={detail} typeLabel={typeLabel(detail, wasteTypes)} onClose={() => setDetail(null)} onDelete={() => setDeleting(detail)} onEdit={() => setFormRecord(detail)} /> : null}
       <WasteDeleteDialog record={deleting} onClose={() => setDeleting(null)} onConfirm={confirmDelete} />
     </div>

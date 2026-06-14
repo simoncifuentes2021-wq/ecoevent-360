@@ -8,6 +8,7 @@ from app.core.config import settings
 EVIDENCE_CONTENT_TYPES = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
+    "image/webp": ".webp",
     "application/pdf": ".pdf",
 }
 CSV_CONTENT_TYPES = {"text/csv": ".csv"}
@@ -16,6 +17,25 @@ UPLOAD_ROOT = Path("uploads")
 
 def save_evidence_file(file: UploadFile) -> tuple[str, str]:
     return save_upload_file("evidences", file, EVIDENCE_CONTENT_TYPES)
+
+
+def save_order_evidence_file(folder: str, file: UploadFile) -> tuple[str, str, int]:
+    content_type = file.content_type or "application/octet-stream"
+    extension = EVIDENCE_CONTENT_TYPES.get(content_type)
+    if not extension:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported file type",
+        )
+    content = _read_upload_file(file)
+    file_url = _save_content(
+        folder=folder,
+        content=content,
+        content_type=content_type,
+        extension=extension,
+        original_filename=file.filename,
+    )
+    return file_url, content_type, len(content)
 
 
 def save_survey_import_file(filename: str, content: bytes) -> str:

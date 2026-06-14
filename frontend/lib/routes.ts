@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
   Upload,
+  PackageSearch,
   Users,
   UserRound
 } from "lucide-react";
@@ -30,7 +31,9 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/clientes", label: "Clientes", icon: BriefcaseBusiness },
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
     { href: "/admin/eventos", label: "Eventos", icon: Sparkles },
+    { href: "/admin/pedidos", label: "Pedidos", icon: PackageSearch },
     { href: "/admin/servicios", label: "Servicios", icon: Settings },
+    { href: "/admin/catalogo-elementos", label: "Catálogo elementos", icon: PackageSearch },
     { href: "/admin/residuos/tipos", label: "Residuos", icon: Recycle },
     { href: "/admin/huella/factores", label: "Factores", icon: Leaf },
     { href: "/admin/auditoria", label: "Auditoria", icon: ShieldCheck },
@@ -42,7 +45,9 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/clientes", label: "Clientes", icon: BriefcaseBusiness },
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
     { href: "/admin/eventos", label: "Eventos", icon: Sparkles },
+    { href: "/admin/pedidos", label: "Pedidos", icon: PackageSearch },
     { href: "/admin/servicios", label: "Servicios", icon: Settings },
+    { href: "/admin/catalogo-elementos", label: "Catálogo elementos", icon: PackageSearch },
     { href: "/admin/residuos/tipos", label: "Residuos", icon: Recycle },
     { href: "/admin/huella/factores", label: "Factores", icon: Leaf },
     { href: "/admin/auditoria", label: "Auditoria", icon: ShieldCheck },
@@ -60,6 +65,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/supervisor/dashboard", label: "Dashboard", icon: Home },
     { href: "/supervisor/eventos", label: "Eventos asignados", icon: Sparkles },
     { href: "/worker/dashboard", label: "Panel terreno", icon: Home },
+    { href: "/worker/pedidos", label: "Mis pedidos", icon: PackageSearch },
     { href: "/worker/mis-tareas", label: "Mis tareas", icon: ClipboardList },
     { href: "/worker/incidencias", label: "Incidencias", icon: AlertTriangle },
     { href: "/worker/reportar-incidencia", label: "Reportar incidencia", icon: AlertTriangle },
@@ -70,6 +76,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
   ],
   WORKER: [
     { href: "/worker/dashboard", label: "Inicio", icon: Home },
+    { href: "/worker/pedidos", label: "Mis pedidos", icon: PackageSearch },
     { href: "/worker/mis-tareas", label: "Mis tareas", icon: ClipboardList },
     { href: "/worker/incidencias", label: "Incidencias", icon: AlertTriangle },
     { href: "/worker/reportar-incidencia", label: "Reportar incidencia", icon: AlertTriangle },

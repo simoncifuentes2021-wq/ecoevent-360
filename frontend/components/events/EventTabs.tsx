@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { BarChart3, Camera, ClipboardList, FileText, Leaf, Map, Recycle, Settings2, ShieldAlert, ShieldCheck, Users } from "lucide-react";
+import { BarChart3, Camera, ClipboardList, FileText, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertsTab } from "@/components/alerts/AlertsTab";
@@ -11,6 +11,7 @@ import { CarbonTab } from "@/components/carbon/CarbonTab";
 import { EventDashboardTab } from "@/components/dashboard/EventDashboardTab";
 import { EvidencesTab } from "@/components/evidences/EvidencesTab";
 import { EventServicesTab } from "@/components/event-services/EventServicesTab";
+import { EventOrdersTab } from "@/components/orders/EventOrdersTab";
 import { IncidentsTab } from "@/components/incidents/IncidentsTab";
 import { ReportsTab } from "@/components/reports/ReportsTab";
 import { StaffTab } from "@/components/staff/StaffTab";
@@ -25,6 +26,7 @@ import type { UserRole } from "@/types/roles";
 const adminTabs = [
   { key: "resumen", label: "Resumen", icon: BarChart3, description: "Indicadores generales del evento y actividad reciente." },
   { key: "servicios", label: "Servicios", icon: Settings2, description: "Servicios contratados y valorizacion operacional." },
+  { key: "pedidos", label: "Pedidos", icon: PackageCheck, description: "Elementos fisicos para preparar, cargar, entregar y retornar." },
   { key: "zonas", label: "Zonas", icon: Map, description: "Sectores, puntos criticos y cobertura del recinto." },
   { key: "personal", label: "Personal", icon: Users, description: "Equipo asignado, turnos y responsabilidades." },
   { key: "tareas", label: "Tareas", icon: ClipboardList, description: "Trabajo operativo planificado y avances en terreno." },
@@ -40,6 +42,7 @@ const adminTabs = [
 
 const supervisorTabs = [
   { key: "resumen", label: "Resumen", icon: BarChart3, description: "Vista operativa del evento asignado." },
+  { key: "pedidos", label: "Pedidos", icon: PackageCheck, description: "Pedidos logisticos y checklist de traslado." },
   { key: "zonas", label: "Zonas", icon: Map, description: "Sectores y puntos de trabajo del recinto." },
   { key: "personal", label: "Personal", icon: Users, description: "Equipo disponible para la operacion." },
   { key: "tareas", label: "Tareas", icon: ClipboardList, description: "Trabajo operativo y seguimiento." },
@@ -109,6 +112,7 @@ export function EventTabs({ eventId, event, role, variant = "admin" }: { eventId
 function TabContent({ active, eventId, role, title, description, icon }: { active: string; eventId: string; role?: UserRole | null; title: string; description: string; icon: ReactNode }) {
   if (active === "resumen") return <EventDashboardTab eventId={eventId} />;
   if (active === "servicios") return <EventServicesTab eventId={eventId} role={role} />;
+  if (active === "pedidos") return <EventOrdersTab eventId={eventId} role={role} />;
   if (active === "zonas") return <ZonesTab eventId={eventId} role={role} />;
   if (active === "personal") return <StaffTab eventId={eventId} role={role} />;
   if (active === "tareas") return <TasksTab eventId={eventId} role={role} />;

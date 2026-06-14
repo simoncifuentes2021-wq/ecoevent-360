@@ -51,6 +51,7 @@ app = FastAPI(
         {"name": "surveys", "description": "Importacion CSV desde Google Forms/Sheets."},
         {"name": "dashboard", "description": "Indicadores resumidos por evento."},
         {"name": "reports", "description": "Generacion de reportes PDF para clientes."},
+        {"name": "orders", "description": "Pedidos logisticos, catalogo, checklist y evidencias."},
     ],
 )
 

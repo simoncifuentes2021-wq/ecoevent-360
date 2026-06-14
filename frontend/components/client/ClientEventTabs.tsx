@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { BarChart3, BriefcaseBusiness, Camera, ClipboardList, Cloud, FileText, MessageSquare, Recycle, ShieldAlert } from "lucide-react";
+import { BarChart3, BriefcaseBusiness, Camera, ClipboardList, Cloud, FileText, MessageSquare, PackageCheck, Recycle, ShieldAlert } from "lucide-react";
 
 import { ClientCarbonTab } from "@/components/client/ClientCarbonTab";
 import { ClientEvidencesTab } from "@/components/client/ClientEvidencesTab";
 import { ClientEventSummaryTab } from "@/components/client/ClientEventSummaryTab";
 import { ClientIncidentsTab } from "@/components/client/ClientIncidentsTab";
 import { ClientOperationalProgressTab } from "@/components/client/ClientOperationalProgressTab";
+import { ClientOrdersTab } from "@/components/client/ClientOrdersTab";
 import { ClientReportsTab } from "@/components/client/ClientReportsTab";
 import { ClientServicesTab } from "@/components/client/ClientServicesTab";
 import { ClientSurveysTab } from "@/components/client/ClientSurveysTab";
@@ -16,6 +17,7 @@ import { ClientWasteTab } from "@/components/client/ClientWasteTab";
 const tabs = [
   { key: "resumen", label: "Resumen", icon: BarChart3 },
   { key: "servicios", label: "Servicios", icon: BriefcaseBusiness },
+  { key: "pedidos", label: "Pedidos", icon: PackageCheck },
   { key: "avance", label: "Avance operativo", icon: ClipboardList },
   { key: "incidencias", label: "Incidencias", icon: ShieldAlert },
   { key: "evidencias", label: "Evidencias", icon: Camera },
@@ -40,6 +42,7 @@ export function ClientEventTabs({ eventId }: { eventId: string }) {
       </div>
       {active === "resumen" ? <ClientEventSummaryTab eventId={eventId} /> : null}
       {active === "servicios" ? <ClientServicesTab eventId={eventId} /> : null}
+      {active === "pedidos" ? <ClientOrdersTab eventId={eventId} /> : null}
       {active === "avance" ? <ClientOperationalProgressTab eventId={eventId} /> : null}
       {active === "incidencias" ? <ClientIncidentsTab eventId={eventId} /> : null}
       {active === "evidencias" ? <ClientEvidencesTab eventId={eventId} /> : null}

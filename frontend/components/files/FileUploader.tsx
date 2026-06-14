@@ -7,7 +7,7 @@ import { FileDropzone } from "@/components/files/FileDropzone";
 import { FilePreview } from "@/components/files/FilePreview";
 import type { FileUpload } from "@/types/file";
 
-const allowed = ["image/jpeg", "image/png", "application/pdf"];
+const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const maxSize = 10 * 1024 * 1024;
 
 export function FileUploader({ value, onChange }: { value: FileUpload | null; onChange: (value: FileUpload | null) => void }) {

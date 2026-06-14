@@ -56,6 +56,14 @@ class WasteRecordUpdate(BaseModel):
     recorded_at: datetime | None = None
 
 
+class WasteRecordUserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    full_name: str
+    email: str
+
+
 class WasteRecordRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,6 +78,7 @@ class WasteRecordRead(BaseModel):
     evidence_id: UUID | None = None
     recorded_at: datetime
     created_at: datetime
+    recorder: WasteRecordUserRead | None = None
 
 
 class WasteRecordListResponse(BaseModel):
