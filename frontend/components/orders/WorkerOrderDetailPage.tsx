@@ -41,15 +41,15 @@ export function WorkerOrderDetailPage({ orderId }: { orderId: string }) {
   useEffect(() => { void load(); }, [load]);
 
   async function mark(item: EventOrderItem, stage: OrderEvidenceStage, observation?: string | null) {
-    await markOrderItemStage(item.id, stage, "COMPLETED", observation);
+    const updatedItem = await markOrderItemStage(item.id, stage, "COMPLETED", observation);
+    setOrder((current) => updateOrderItemLocally(current, updatedItem));
     setConfirm(null);
-    await load();
   }
 
   async function uploadFile(item: EventOrderItem, stage: OrderEvidenceStage, file: File, description?: string | null) {
-    await uploadOrderEvidence(orderId, { file, stage, order_item_id: item.id, description });
+    const evidence = await uploadOrderEvidence(orderId, { file, stage, order_item_id: item.id, description });
+    setEvidences((current) => [evidence, ...current]);
     setUpload(null);
-    await load();
   }
 
   if (loading) return <LoadingState label="Cargando pedido..." />;
@@ -114,6 +114,36 @@ function evidencesFor(evidences: OrderEvidence[], itemId: string, stage: OrderEv
   return evidences.filter((evidence) => evidence.order_item_id === itemId && evidence.stage === stage);
 }
 
+function updateOrderItemLocally(order: EventOrder | null, updatedItem: EventOrderItem) {
+  if (!order) return order;
+  const items = (order.items || []).map((item) => (item.id === updatedItem.id ? updatedItem : item));
+  return {
+    ...order,
+    items,
+    progress: buildOrderProgress(items)
+  };
+}
+
+function buildOrderProgress(items: EventOrderItem[]) {
+  const total = items.length;
+  const loaded = items.filter((item) => item.load_status === "COMPLETED").length;
+  const delivered = items.filter((item) => item.delivery_status === "COMPLETED").length;
+  const returned = items.filter((item) => item.return_status === "COMPLETED").length;
+  return {
+    total_items: total,
+    loaded_items: loaded,
+    delivered_items: delivered,
+    returned_items: returned,
+    load_progress_percentage: progressPercent(loaded, total),
+    delivery_progress_percentage: progressPercent(delivered, total),
+    return_progress_percentage: progressPercent(returned, total)
+  };
+}
+
+function progressPercent(value: number, total: number) {
+  return total > 0 ? Math.round((value / total) * 100) : 0;
+}
+
 function WorkerStage({ label, status, evidences, onMark, onUpload }: { label: string; status: EventOrderItem["load_status"]; evidences: OrderEvidence[]; onMark: () => void; onUpload: () => void }) {
   return (
     <div className="rounded-lg border bg-slate-50 p-3">
@@ -122,7 +152,7 @@ function WorkerStage({ label, status, evidences, onMark, onUpload }: { label: st
         <ItemStageBadge status={status} />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <Button className="h-12" onClick={onMark}><CheckCircle2 className="h-4 w-4" />Marcar</Button>
+        <Button className="h-12" disabled={status === "COMPLETED"} onClick={onMark}><CheckCircle2 className="h-4 w-4" />{status === "COMPLETED" ? "Marcado" : "Marcar"}</Button>
         <Button className="h-12" variant="secondary" onClick={onUpload}><Camera className="h-4 w-4" />Foto</Button>
       </div>
       <EvidenceStrip evidences={evidences} />
