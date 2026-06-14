@@ -27,6 +27,7 @@ type QuickItem = {
 
 export function EventOrdersTab({ eventId, role }: { eventId: string; role?: UserRole | null }) {
   const canEdit = role === "SUPER_ADMIN" || role === "ADMIN" || role === "SUPERVISOR";
+  const detailBaseHref = role === "SUPERVISOR" || role === "WORKER" ? "/worker/pedidos" : "/admin/pedidos";
   const [orders, setOrders] = useState<EventOrder[]>([]);
   const [staff, setStaff] = useState<EventStaff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +104,7 @@ export function EventOrdersTab({ eventId, role }: { eventId: string; role?: User
                   <ProgressLine label="Entrega" value={order.progress.delivery_progress_percentage} count={`${order.progress.delivered_items}/${order.progress.total_items}`} />
                   <ProgressLine label="Retorno" value={order.progress.return_progress_percentage} count={`${order.progress.returned_items}/${order.progress.total_items}`} />
                 </div>
-                <Link href={`/admin/pedidos/${order.id}`}>
+                <Link href={`${detailBaseHref}/${order.id}`}>
                   <Button variant="secondary">
                     <Eye className="h-4 w-4" />
                     Ver detalle
