@@ -9,7 +9,7 @@ export type EventStatus =
 export type Event = {
   id: string;
   client_id: string;
-  client?: { id: string; business_name: string; rut?: string | null; contact_email?: string | null };
+  client?: { id: string; business_name: string; rut?: string | null; contact_email?: string | null } | null;
   name: string;
   event_type: string | null;
   description?: string | null;

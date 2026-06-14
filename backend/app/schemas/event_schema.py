@@ -152,7 +152,7 @@ class EventRead(BaseModel):
 
 
 class EventDetailRead(EventRead):
-    client: EventClientRead
+    client: EventClientRead | None = None
     services_count: int
     zones_count: int
 
