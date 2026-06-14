@@ -36,6 +36,7 @@ export function OrderDetailPage({ orderId, readOnly = false, backHref = "/admin/
   const [error, setError] = useState<string | null>(null);
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editFormOpen, setEditFormOpen] = useState(false);
+  const [markingKey, setMarkingKey] = useState<string | null>(null);
   const [evidenceTarget, setEvidenceTarget] = useState<{ item?: EventOrderItem; stage: OrderEvidenceStage } | null>(null);
 
   const load = useCallback(async () => {
@@ -83,8 +84,14 @@ export function OrderDetailPage({ orderId, readOnly = false, backHref = "/admin/
   }
 
   async function mark(item: EventOrderItem, itemStage: OrderEvidenceStage) {
-    await markOrderItemStage(item.id, itemStage, "COMPLETED");
-    await load();
+    const key = stageKey(item.id, itemStage);
+    setMarkingKey(key);
+    try {
+      const updatedItem = await markOrderItemStage(item.id, itemStage, "COMPLETED");
+      setOrder((current) => updateOrderItemLocally(current, updatedItem));
+    } finally {
+      setMarkingKey(null);
+    }
   }
 
   async function removeEvidence(evidence: OrderEvidence) {
@@ -144,7 +151,7 @@ export function OrderDetailPage({ orderId, readOnly = false, backHref = "/admin/
       </div>
       {active === "resumen" ? <Summary order={order} readOnly={readOnly} /> : null}
       {active === "items" ? <ItemsSection order={order} readOnly={readOnly} onAdd={() => setItemFormOpen(true)} onRemove={removeItem} /> : null}
-      {active === "logistica" ? <LogisticsSection order={order} readOnly={readOnly} onMark={mark} onUpload={(item, itemStage) => setEvidenceTarget({ item, stage: itemStage })} /> : null}
+      {active === "logistica" ? <LogisticsSection markingKey={markingKey} order={order} readOnly={readOnly} onMark={mark} onUpload={(item, itemStage) => setEvidenceTarget({ item, stage: itemStage })} /> : null}
       {active === "evidencias" ? <EvidencesSection evidences={evidencesByStage} readOnly={readOnly} stage={stage} onDelete={removeEvidence} onStageChange={setStage} /> : null}
       {editFormOpen ? <EditOrderForm assignees={assignees} order={order} onClose={() => setEditFormOpen(false)} onSubmit={saveOrder} /> : null}
       {itemFormOpen ? <ItemForm catalog={catalog} zones={zones} onClose={() => setItemFormOpen(false)} onSubmit={addItem} /> : null}
@@ -178,16 +185,16 @@ function ItemsSection({ order, readOnly, onAdd, onRemove }: { order: EventOrder;
   );
 }
 
-function LogisticsSection({ order, readOnly, onMark, onUpload }: { order: EventOrder; readOnly: boolean; onMark: (item: EventOrderItem, stage: OrderEvidenceStage) => Promise<void>; onUpload: (item: EventOrderItem, stage: OrderEvidenceStage) => void }) {
+function LogisticsSection({ markingKey, order, readOnly, onMark, onUpload }: { markingKey: string | null; order: EventOrder; readOnly: boolean; onMark: (item: EventOrderItem, stage: OrderEvidenceStage) => Promise<void>; onUpload: (item: EventOrderItem, stage: OrderEvidenceStage) => void }) {
   return (
     <div className="grid gap-3">
       {(order.items || []).map((item) => (
         <Card key={item.id}><CardContent className="grid gap-4 p-5 lg:grid-cols-[1fr_1.4fr]">
           <div><p className="font-bold">{item.item_name_snapshot}</p><p className="text-sm text-slate-600">{numberValue(item.quantity)} {item.unit || ""}</p></div>
           <div className="grid gap-3 md:grid-cols-3">
-            <StageBox label="Carga" status={item.load_status} date={item.loaded_at} readOnly={readOnly} onMark={() => onMark(item, "LOAD")} onUpload={() => onUpload(item, "LOAD")} />
-            <StageBox label="Entrega" status={item.delivery_status} date={item.delivered_at} readOnly={readOnly} onMark={() => onMark(item, "DELIVERY")} onUpload={() => onUpload(item, "DELIVERY")} />
-            <StageBox label="Retorno" status={item.return_status} date={item.returned_at} readOnly={readOnly} onMark={() => onMark(item, "RETURN")} onUpload={() => onUpload(item, "RETURN")} />
+            <StageBox isMarking={markingKey === stageKey(item.id, "LOAD")} label="Carga" status={item.load_status} date={item.loaded_at} readOnly={readOnly} onMark={() => onMark(item, "LOAD")} onUpload={() => onUpload(item, "LOAD")} />
+            <StageBox isMarking={markingKey === stageKey(item.id, "DELIVERY")} label="Entrega" status={item.delivery_status} date={item.delivered_at} readOnly={readOnly} onMark={() => onMark(item, "DELIVERY")} onUpload={() => onUpload(item, "DELIVERY")} />
+            <StageBox isMarking={markingKey === stageKey(item.id, "RETURN")} label="Retorno" status={item.return_status} date={item.returned_at} readOnly={readOnly} onMark={() => onMark(item, "RETURN")} onUpload={() => onUpload(item, "RETURN")} />
           </div>
         </CardContent></Card>
       ))}
@@ -195,8 +202,8 @@ function LogisticsSection({ order, readOnly, onMark, onUpload }: { order: EventO
   );
 }
 
-function StageBox({ label, status, date, readOnly, onMark, onUpload }: { label: string; status: EventOrderItem["load_status"]; date?: string | null; readOnly: boolean; onMark: () => void; onUpload: () => void }) {
-  return <div className="rounded-lg border bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><div className="mt-2"><ItemStageBadge status={status} /></div><p className="mt-2 text-xs text-slate-500">{dateValue(date)}</p>{!readOnly ? <div className="mt-3 grid gap-2"><Button size="sm" onClick={onMark}><CheckCircle2 className="h-4 w-4" />Marcar</Button><Button size="sm" variant="secondary" onClick={onUpload}><Camera className="h-4 w-4" />Subir foto</Button></div> : null}</div>;
+function StageBox({ isMarking, label, status, date, readOnly, onMark, onUpload }: { isMarking: boolean; label: string; status: EventOrderItem["load_status"]; date?: string | null; readOnly: boolean; onMark: () => void; onUpload: () => void }) {
+  return <div className="rounded-lg border bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><div className="mt-2"><ItemStageBadge status={status} /></div><p className="mt-2 text-xs text-slate-500">{dateValue(date)}</p>{!readOnly ? <div className="mt-3 grid gap-2"><Button disabled={isMarking || status === "COMPLETED"} size="sm" onClick={onMark}><CheckCircle2 className="h-4 w-4" />{isMarking ? "Marcando..." : status === "COMPLETED" ? "Marcado" : "Marcar"}</Button><Button size="sm" variant="secondary" onClick={onUpload}><Camera className="h-4 w-4" />Subir foto</Button></div> : null}</div>;
 }
 
 function EvidencesSection({ evidences, stage, readOnly, onStageChange, onDelete }: { evidences: OrderEvidence[]; stage: OrderEvidenceStage; readOnly: boolean; onStageChange: (stage: OrderEvidenceStage) => void; onDelete: (evidence: OrderEvidence) => Promise<void> }) {
@@ -395,4 +402,38 @@ function cleanQuantityInput(value: string) {
     return `${whole.replace(/^0+(?=\d)/, "") || "0"}.${decimal}`;
   }
   return value.replace(/^0+(?=\d)/, "");
+}
+
+function stageKey(itemId: string, stage: OrderEvidenceStage) {
+  return `${itemId}:${stage}`;
+}
+
+function updateOrderItemLocally(order: EventOrder | null, updatedItem: EventOrderItem) {
+  if (!order) return order;
+  const items = (order.items || []).map((item) => (item.id === updatedItem.id ? updatedItem : item));
+  return {
+    ...order,
+    items,
+    progress: buildOrderProgress(items)
+  };
+}
+
+function buildOrderProgress(items: EventOrderItem[]) {
+  const total = items.length;
+  const loaded = items.filter((item) => item.load_status === "COMPLETED").length;
+  const delivered = items.filter((item) => item.delivery_status === "COMPLETED").length;
+  const returned = items.filter((item) => item.return_status === "COMPLETED").length;
+  return {
+    total_items: total,
+    loaded_items: loaded,
+    delivered_items: delivered,
+    returned_items: returned,
+    load_progress_percentage: progressPercent(loaded, total),
+    delivery_progress_percentage: progressPercent(delivered, total),
+    return_progress_percentage: progressPercent(returned, total)
+  };
+}
+
+function progressPercent(value: number, total: number) {
+  return total > 0 ? Math.round((value / total) * 100) : 0;
 }
