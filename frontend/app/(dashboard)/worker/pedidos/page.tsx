@@ -1,10 +1,5 @@
-import { RoleGuard } from "@/components/layout/RoleGuard";
-import { WorkerOrdersPage } from "@/components/orders/WorkerOrdersPage";
+import { redirect } from "next/navigation";
 
-export default function WorkerOrdersRoute() {
-  return (
-    <RoleGuard roles={["LOGISTICS_OPERATOR"]}>
-      <WorkerOrdersPage />
-    </RoleGuard>
-  );
+export default function WorkerOrdersRedirectPage() {
+  redirect("/worker/dashboard");
 }

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user, require_roles
@@ -44,7 +44,6 @@ def create_user(
 @router.get(
     "",
     response_model=UserListResponse,
-    dependencies=[Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN))],
 )
 def list_users(
     q: str | None = None,
@@ -54,7 +53,24 @@ def list_users(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
+    if current_user.role not in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        supervisor_operational_lookup = (
+            current_user.role == UserRole.SUPERVISOR
+            and role in {UserRole.SUPERVISOR, UserRole.WORKER, UserRole.LOGISTICS_OPERATOR}
+            and is_active is True
+            and client_id is None
+        )
+        supervisor_operator_lookup = (
+            current_user.role == UserRole.SUPERVISOR
+            and role == UserRole.LOGISTICS_OPERATOR
+            and is_active is True
+            and client_id is None
+        )
+        if not supervisor_operational_lookup and not supervisor_operator_lookup:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+
     items, total = user_service.list_users(
         db,
         q=q,

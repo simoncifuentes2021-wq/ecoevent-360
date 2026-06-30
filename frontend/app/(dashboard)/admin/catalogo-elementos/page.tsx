@@ -1,10 +1,5 @@
-import { CatalogItemsPage } from "@/components/orders/CatalogItemsPage";
-import { RoleGuard } from "@/components/layout/RoleGuard";
+import { redirect } from "next/navigation";
 
-export default function CatalogItemsRoute() {
-  return (
-    <RoleGuard roles={["SUPER_ADMIN", "ADMIN"]}>
-      <CatalogItemsPage />
-    </RoleGuard>
-  );
+export default function CatalogItemsRedirectPage() {
+  redirect("/admin/stock/productos");
 }

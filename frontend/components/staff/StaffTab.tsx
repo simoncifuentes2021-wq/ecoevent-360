@@ -8,7 +8,6 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { AssignStaffModal } from "@/components/staff/AssignStaffModal";
 import { StaffTable } from "@/components/staff/StaffTable";
 import { Button } from "@/components/ui/button";
-import { getEvent } from "@/lib/api/events";
 import { assignEventStaff, getEventStaff, removeEventStaff } from "@/lib/api/staff";
 import { getUsers } from "@/lib/api/users";
 import { canAssignStaff, canManageStaff } from "@/lib/permissions";
@@ -33,15 +32,11 @@ export function StaffTab({ eventId, role }: { eventId: string; role?: UserRole |
       const staffData = await getEventStaff(eventId);
       setStaff(staffData);
       try {
-        const [eventData, userData] = await Promise.all([
-          getEvent(eventId),
-          getUsers({ is_active: "true", page: 1, limit: 100 })
-        ]);
+        const userData = await loadAssignableUsers(role);
         setUsers(
-          userData.items.filter((user) => {
+          userData.filter((user) => {
             const isAssignable = user.role === "WORKER" || user.role === "SUPERVISOR" || user.role === "LOGISTICS_OPERATOR";
-            const belongsToEventClient = !user.client_id || user.client_id === eventData.client_id;
-            return user.is_active && isAssignable && belongsToEventClient;
+            return user.is_active && isAssignable;
           })
         );
       } catch {
@@ -52,7 +47,7 @@ export function StaffTab({ eventId, role }: { eventId: string; role?: UserRole |
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, role]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -89,4 +84,18 @@ export function StaffTab({ eventId, role }: { eventId: string; role?: UserRole |
       <ConfirmDialog open={Boolean(removing)} title="Quitar personal" description="La persona dejara de estar asignada al evento si no tiene tareas activas." onClose={() => setRemoving(null)} onConfirm={confirmRemove} />
     </div>
   );
+}
+
+async function loadAssignableUsers(role?: UserRole | null) {
+  if (role === "SUPERVISOR") {
+    const responses = await Promise.all([
+      getUsers({ role: "SUPERVISOR", is_active: "true", page: 1, limit: 100 }),
+      getUsers({ role: "WORKER", is_active: "true", page: 1, limit: 100 }),
+      getUsers({ role: "LOGISTICS_OPERATOR", is_active: "true", page: 1, limit: 100 })
+    ]);
+    return responses.flatMap((response) => response.items);
+  }
+
+  const response = await getUsers({ is_active: "true", page: 1, limit: 100 });
+  return response.items;
 }
