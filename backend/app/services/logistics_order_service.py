@@ -21,13 +21,16 @@ from app.models.core import (
 from app.models.enums import LogisticsOrderStatus, StockMovementType, UserRole
 from app.schemas.logistics_order_schema import (
     LogisticsOrderAssign,
+    LogisticsOrderClose,
     LogisticsOrderCreate,
     LogisticsOrderDeliveryConfirm,
     LogisticsOrderDispatch,
     LogisticsOrderItemCreate,
     LogisticsOrderItemDeliver,
     LogisticsOrderItemLoad,
+    LogisticsOrderItemOutcome,
     LogisticsOrderItemUpdate,
+    LogisticsOrderOutcomeConfirm,
     LogisticsOrderStockCheckItem,
     LogisticsOrderStockCheckResponse,
     LogisticsOrderUpdate,
@@ -224,6 +227,101 @@ def _record_reservation_movement(
             created_by=user.id,
         )
     )
+
+
+def _record_outcome_movement(
+    db: Session,
+    *,
+    order: LogisticsOrder,
+    stock: StockBalance,
+    movement_type: StockMovementType,
+    quantity: Decimal,
+    previous_on_hand: Decimal,
+    new_on_hand: Decimal,
+    previous_reserved: Decimal,
+    new_reserved: Decimal,
+    previous_damaged: Decimal,
+    new_damaged: Decimal,
+    user: User,
+    notes: str | None,
+) -> None:
+    movement_label = (
+        "Retorno desde evento"
+        if movement_type == StockMovementType.RETURN_FROM_EVENT
+        else "Producto devuelto danado"
+    )
+    db.add(
+        StockMovement(
+            warehouse_id=stock.warehouse_id,
+            item_id=stock.item_id,
+            stock_balance_id=stock.id,
+            movement_type=movement_type,
+            quantity=quantity,
+            previous_quantity_on_hand=previous_on_hand,
+            new_quantity_on_hand=new_on_hand,
+            previous_quantity_reserved=previous_reserved,
+            new_quantity_reserved=new_reserved,
+            previous_quantity_damaged=previous_damaged,
+            new_quantity_damaged=new_damaged,
+            reference_type="LOGISTICS_ORDER",
+            reference_id=order.id,
+            reason=f"{movement_label} por resultado pedido logistico {order.title}",
+            notes=notes or f"Pedido logistico {order.id} - Evento {order.event_id}",
+            created_by=user.id,
+        )
+    )
+
+
+def _outcome_total(item: LogisticsOrderItem) -> Decimal:
+    return (
+        item.quantity_consumed
+        + item.quantity_returned
+        + item.quantity_returned_damaged
+        + item.quantity_lost
+        + item.quantity_discarded
+    )
+
+
+def _outcome_status(total: Decimal, delivered: Decimal) -> str:
+    if total == 0:
+        return "PENDING"
+    if total == delivered:
+        return "RECORDED"
+    return "PARTIAL"
+
+
+def _ensure_outcome_order_state(order: LogisticsOrder) -> None:
+    if order.status not in {
+        LogisticsOrderStatus.DELIVERED,
+        LogisticsOrderStatus.PARTIALLY_DELIVERED,
+        LogisticsOrderStatus.OUTCOME_PENDING,
+        LogisticsOrderStatus.WITH_DIFFERENCES,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only delivered logistics orders can register outcomes",
+        )
+
+
+def _get_or_create_stock_balance_for_return(
+    db: Session,
+    *,
+    warehouse_id: UUID,
+    item_id: UUID,
+) -> StockBalance:
+    stock = _get_stock_balance(db, warehouse_id=warehouse_id, item_id=item_id, lock=True)
+    if stock:
+        return stock
+    stock = StockBalance(
+        warehouse_id=warehouse_id,
+        item_id=item_id,
+        quantity_on_hand=Decimal("0"),
+        quantity_reserved=Decimal("0"),
+        quantity_damaged=Decimal("0"),
+    )
+    db.add(stock)
+    db.flush()
+    return stock
 
 
 def _recalculate_order_total(db: Session, order: LogisticsOrder) -> None:
@@ -820,6 +918,225 @@ def confirm_logistics_order_delivery(
     order.delivered_by = user.id
     if payload.delivery_notes is not None:
         order.delivery_notes = payload.delivery_notes
+    order.updated_at = datetime.utcnow()
+    db.add(order)
+    db.commit()
+    return get_logistics_order_or_404(db, order.id)
+
+
+def register_logistics_order_item_outcome(
+    db: Session, item_id: UUID, payload: LogisticsOrderItemOutcome, user: User
+) -> LogisticsOrderItem:
+    order_item = get_logistics_order_item_or_404(db, item_id)
+    order = get_logistics_order_or_404(db, order_item.order_id)
+    _ensure_can_reserve_stock(user, order)
+    _ensure_can_operate_order_warehouse(db, user, order)
+    _ensure_outcome_order_state(order)
+    if order_item.quantity_delivered <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item has no delivered quantity")
+
+    total = (
+        payload.quantity_consumed
+        + payload.quantity_returned
+        + payload.quantity_returned_damaged
+        + payload.quantity_lost
+        + payload.quantity_discarded
+    )
+    if total > order_item.quantity_delivered:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Outcome quantities cannot exceed quantity_delivered",
+        )
+    if payload.quantity_returned < order_item.quantity_returned:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="quantity_returned cannot be lower than the previously recorded returned quantity",
+        )
+    if payload.quantity_returned_damaged < order_item.quantity_returned_damaged:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="quantity_returned_damaged cannot be lower than the previously recorded damaged returned quantity",
+        )
+    if order_item.item_type_snapshot == "RETURNABLE" and payload.quantity_consumed > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="RETURNABLE items cannot be marked as consumed",
+        )
+
+    delta_returned = payload.quantity_returned - order_item.quantity_returned
+    delta_returned_damaged = payload.quantity_returned_damaged - order_item.quantity_returned_damaged
+    if delta_returned > 0 or delta_returned_damaged > 0:
+        stock = _get_or_create_stock_balance_for_return(
+            db,
+            warehouse_id=order.warehouse_id,
+            item_id=order_item.item_id,
+        )
+        if delta_returned > 0:
+            previous_on_hand = stock.quantity_on_hand
+            previous_reserved = stock.quantity_reserved
+            previous_damaged = stock.quantity_damaged
+            stock.quantity_on_hand = previous_on_hand + delta_returned
+            stock.updated_at = datetime.utcnow()
+            db.add(stock)
+            _record_outcome_movement(
+                db,
+                order=order,
+                stock=stock,
+                movement_type=StockMovementType.RETURN_FROM_EVENT,
+                quantity=delta_returned,
+                previous_on_hand=previous_on_hand,
+                new_on_hand=stock.quantity_on_hand,
+                previous_reserved=previous_reserved,
+                new_reserved=stock.quantity_reserved,
+                previous_damaged=previous_damaged,
+                new_damaged=stock.quantity_damaged,
+                user=user,
+                notes=payload.notes,
+            )
+        if delta_returned_damaged > 0:
+            previous_on_hand = stock.quantity_on_hand
+            previous_reserved = stock.quantity_reserved
+            previous_damaged = stock.quantity_damaged
+            stock.quantity_on_hand = previous_on_hand + delta_returned_damaged
+            stock.updated_at = datetime.utcnow()
+            db.add(stock)
+            _record_outcome_movement(
+                db,
+                order=order,
+                stock=stock,
+                movement_type=StockMovementType.RETURN_FROM_EVENT,
+                quantity=delta_returned_damaged,
+                previous_on_hand=previous_on_hand,
+                new_on_hand=stock.quantity_on_hand,
+                previous_reserved=previous_reserved,
+                new_reserved=stock.quantity_reserved,
+                previous_damaged=previous_damaged,
+                new_damaged=stock.quantity_damaged,
+                user=user,
+                notes=payload.notes,
+            )
+
+            previous_on_hand = stock.quantity_on_hand
+            previous_reserved = stock.quantity_reserved
+            previous_damaged = stock.quantity_damaged
+            stock.quantity_damaged = previous_damaged + delta_returned_damaged
+            stock.updated_at = datetime.utcnow()
+            db.add(stock)
+            _record_outcome_movement(
+                db,
+                order=order,
+                stock=stock,
+                movement_type=StockMovementType.DAMAGE,
+                quantity=delta_returned_damaged,
+                previous_on_hand=previous_on_hand,
+                new_on_hand=stock.quantity_on_hand,
+                previous_reserved=previous_reserved,
+                new_reserved=stock.quantity_reserved,
+                previous_damaged=previous_damaged,
+                new_damaged=stock.quantity_damaged,
+                user=user,
+                notes=payload.notes,
+            )
+
+    order_item.quantity_consumed = payload.quantity_consumed
+    order_item.quantity_returned = payload.quantity_returned
+    order_item.quantity_returned_damaged = payload.quantity_returned_damaged
+    order_item.quantity_lost = payload.quantity_lost
+    order_item.quantity_discarded = payload.quantity_discarded
+    order_item.outcome_status = _outcome_status(total, order_item.quantity_delivered)
+    order_item.outcome_notes = payload.notes
+    order_item.updated_at = datetime.utcnow()
+    db.add(order_item)
+
+    if order.status in {LogisticsOrderStatus.DELIVERED, LogisticsOrderStatus.PARTIALLY_DELIVERED}:
+        order.status = LogisticsOrderStatus.OUTCOME_PENDING
+        order.updated_at = datetime.utcnow()
+        db.add(order)
+
+    db.commit()
+    db.refresh(order_item)
+    return order_item
+
+
+def confirm_logistics_order_outcome(
+    db: Session, order_id: UUID, payload: LogisticsOrderOutcomeConfirm, user: User
+) -> LogisticsOrder:
+    order = get_logistics_order_or_404(db, order_id)
+    _ensure_can_reserve_stock(user, order)
+    _ensure_can_operate_order_warehouse(db, user, order)
+    _ensure_outcome_order_state(order)
+    if not order.items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Logistics order has no items")
+    if any(item.quantity_delivered <= 0 for item in order.items):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="All items require delivered quantity before confirming outcomes",
+        )
+
+    all_explained = True
+    for order_item in order.items:
+        total = _outcome_total(order_item)
+        if total > order_item.quantity_delivered:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Outcome quantities cannot exceed quantity_delivered",
+            )
+        if total < order_item.quantity_delivered:
+            all_explained = False
+            order_item.outcome_status = "PARTIAL" if total > 0 else "PENDING"
+        else:
+            order_item.outcome_status = "RECORDED"
+        order_item.updated_at = datetime.utcnow()
+        db.add(order_item)
+
+    order.status = LogisticsOrderStatus.OUTCOME_RECORDED if all_explained else LogisticsOrderStatus.WITH_DIFFERENCES
+    order.outcome_recorded_at = datetime.utcnow()
+    order.outcome_recorded_by = user.id
+    order.outcome_notes = payload.outcome_notes
+    order.updated_at = datetime.utcnow()
+    db.add(order)
+    db.commit()
+    return get_logistics_order_or_404(db, order.id)
+
+
+def close_logistics_order(db: Session, order_id: UUID, payload: LogisticsOrderClose, user: User) -> LogisticsOrder:
+    order = get_logistics_order_or_404(db, order_id)
+    _ensure_can_reserve_stock(user, order)
+    _ensure_can_operate_order_warehouse(db, user, order)
+    if order.status == LogisticsOrderStatus.CANCELLED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot close cancelled logistics orders")
+    if order.status == LogisticsOrderStatus.CLOSED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Logistics order is already closed")
+    if order.status == LogisticsOrderStatus.WITH_DIFFERENCES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot close logistics order with unexplained differences",
+        )
+    if order.status != LogisticsOrderStatus.OUTCOME_RECORDED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only orders with recorded outcomes can be closed",
+        )
+    if not order.items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Logistics order has no items")
+
+    for order_item in order.items:
+        explained = _outcome_total(order_item)
+        if explained != order_item.quantity_delivered:
+            pending = order_item.quantity_delivered - explained
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "No se puede cerrar el pedido. "
+                    f"El producto {order_item.item_name_snapshot} tiene "
+                    f"{order_item.quantity_delivered} entregadas, {explained} explicadas y {pending} pendientes."
+                ),
+            )
+
+    order.status = LogisticsOrderStatus.CLOSED
+    order.closed_at = datetime.utcnow()
+    order.closed_by = user.id
+    order.closure_notes = payload.closure_notes
     order.updated_at = datetime.utcnow()
     db.add(order)
     db.commit()

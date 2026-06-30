@@ -9,15 +9,18 @@ from app.models.core import User
 from app.models.enums import LogisticsOrderStatus, UserRole
 from app.schemas.logistics_order_schema import (
     LogisticsOrderAssign,
+    LogisticsOrderClose,
     LogisticsOrderCreate,
     LogisticsOrderDeliveryConfirm,
     LogisticsOrderDispatch,
     LogisticsOrderItemCreate,
     LogisticsOrderItemDeliver,
     LogisticsOrderItemLoad,
+    LogisticsOrderItemOutcome,
     LogisticsOrderItemRead,
     LogisticsOrderItemUpdate,
     LogisticsOrderListResponse,
+    LogisticsOrderOutcomeConfirm,
     LogisticsOrderRead,
     LogisticsOrderStockCheckResponse,
     LogisticsOrderUpdate,
@@ -293,6 +296,78 @@ def confirm_logistics_order_delivery(
         entity_id=order.id,
         event_id=order.event_id,
         new_data=serialize_model_for_audit(order),
+        request=request,
+    )
+    return order
+
+
+@router.patch("/logistics-order-items/{item_id}/outcome", response_model=LogisticsOrderItemRead)
+def register_logistics_order_item_outcome(
+    item_id: UUID,
+    payload: LogisticsOrderItemOutcome,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    item = logistics_order_service.register_logistics_order_item_outcome(db, item_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_ORDER_ITEM_OUTCOME_RECORDED",
+        module="logistics_orders",
+        entity_type="LogisticsOrderItem",
+        entity_id=item.id,
+        new_data=serialize_model_for_audit(item),
+        request=request,
+    )
+    return item
+
+
+@router.post("/logistics-orders/{order_id}/confirm-outcome", response_model=LogisticsOrderRead)
+def confirm_logistics_order_outcome(
+    order_id: UUID,
+    payload: LogisticsOrderOutcomeConfirm,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    order = logistics_order_service.confirm_logistics_order_outcome(db, order_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_ORDER_OUTCOME_CONFIRMED",
+        module="logistics_orders",
+        entity_type="LogisticsOrder",
+        entity_id=order.id,
+        event_id=order.event_id,
+        new_data=serialize_model_for_audit(order),
+        request=request,
+    )
+    return order
+
+
+@router.post("/logistics-orders/{order_id}/close", response_model=LogisticsOrderRead)
+def close_logistics_order(
+    order_id: UUID,
+    payload: LogisticsOrderClose,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    order = logistics_order_service.close_logistics_order(db, order_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_ORDER_CLOSED",
+        module="logistics_orders",
+        entity_type="LogisticsOrder",
+        entity_id=order.id,
+        event_id=order.event_id,
+        new_data={
+            "order_id": str(order.id),
+            "closed_by": str(order.closed_by) if order.closed_by else None,
+            "closed_at": order.closed_at.isoformat() if order.closed_at else None,
+        },
         request=request,
     )
     return order

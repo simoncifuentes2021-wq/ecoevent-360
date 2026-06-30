@@ -11,6 +11,10 @@ export type LogisticsOrderStatus =
   | "OUT_OF_WAREHOUSE"
   | "DELIVERED"
   | "PARTIALLY_DELIVERED"
+  | "OUTCOME_PENDING"
+  | "OUTCOME_RECORDED"
+  | "WITH_DIFFERENCES"
+  | "CLOSED"
   | "OBSERVED"
   | "CANCELLED";
 
@@ -46,6 +50,13 @@ export type LogisticsOrderItem = {
   preparation_status: "PENDING" | "LOADED" | "PARTIALLY_LOADED" | string;
   quantity_delivered: string | number;
   delivery_status: "PENDING" | "DELIVERED" | "PARTIALLY_DELIVERED" | string;
+  quantity_consumed: string | number;
+  quantity_returned: string | number;
+  quantity_returned_damaged: string | number;
+  quantity_lost: string | number;
+  quantity_discarded: string | number;
+  outcome_status: "PENDING" | "RECORDED" | "PARTIAL" | "WITH_DIFFERENCES" | string;
+  outcome_notes: string | null;
   unit_price_snapshot: string | number;
   total_price: string | number;
   notes: string | null;
@@ -74,6 +85,12 @@ export type LogisticsOrder = {
   dispatch_notes: string | null;
   delivered_at: string | null;
   delivered_by: string | null;
+  outcome_recorded_at: string | null;
+  outcome_recorded_by: string | null;
+  outcome_notes: string | null;
+  closed_at: string | null;
+  closed_by: string | null;
+  closure_notes: string | null;
   created_at: string;
   updated_at: string;
   event: LogisticsOrderEvent | null;
@@ -145,4 +162,21 @@ export type LogisticsOrderItemDeliver = {
 
 export type LogisticsOrderDeliveryConfirm = {
   delivery_notes?: string | null;
+};
+
+export type LogisticsOrderItemOutcome = {
+  quantity_consumed: number;
+  quantity_returned: number;
+  quantity_returned_damaged: number;
+  quantity_lost: number;
+  quantity_discarded: number;
+  notes?: string | null;
+};
+
+export type LogisticsOrderOutcomeConfirm = {
+  outcome_notes?: string | null;
+};
+
+export type LogisticsOrderClose = {
+  closure_notes?: string | null;
 };

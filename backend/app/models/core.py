@@ -582,6 +582,16 @@ class LogisticsOrder(Base):
     delivered_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
+    outcome_recorded_at: Mapped[datetime | None] = mapped_column(DateTime)
+    outcome_recorded_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    outcome_notes: Mapped[str | None] = mapped_column(Text)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    closed_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    closure_notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
@@ -593,6 +603,8 @@ class LogisticsOrder(Base):
     preparer: Mapped[User | None] = relationship(foreign_keys=[prepared_by])
     dispatcher: Mapped[User | None] = relationship(foreign_keys=[dispatched_by])
     deliverer: Mapped[User | None] = relationship(foreign_keys=[delivered_by])
+    outcome_recorder: Mapped[User | None] = relationship(foreign_keys=[outcome_recorded_by])
+    closer: Mapped[User | None] = relationship(foreign_keys=[closed_by])
     items: Mapped[list["LogisticsOrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
@@ -611,6 +623,14 @@ class LogisticsOrderItem(Base):
         CheckConstraint("quantity_dispatched <= quantity_loaded"),
         CheckConstraint("quantity_delivered >= 0"),
         CheckConstraint("quantity_delivered <= quantity_dispatched"),
+        CheckConstraint("quantity_consumed >= 0"),
+        CheckConstraint("quantity_returned >= 0"),
+        CheckConstraint("quantity_returned_damaged >= 0"),
+        CheckConstraint("quantity_lost >= 0"),
+        CheckConstraint("quantity_discarded >= 0"),
+        CheckConstraint(
+            "(quantity_consumed + quantity_returned + quantity_returned_damaged + quantity_lost + quantity_discarded) <= quantity_delivered"
+        ),
         CheckConstraint("unit_price_snapshot >= 0"),
         CheckConstraint("total_price >= 0"),
         Index("idx_logistics_order_items_order_id", "order_id"),
@@ -652,6 +672,25 @@ class LogisticsOrderItem(Base):
     delivery_status: Mapped[str] = mapped_column(
         String(40), nullable=False, server_default=text("'PENDING'")
     )
+    quantity_consumed: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    quantity_returned: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    quantity_returned_damaged: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    quantity_lost: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    quantity_discarded: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    outcome_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default=text("'PENDING'")
+    )
+    outcome_notes: Mapped[str | None] = mapped_column(Text)
     unit_price_snapshot: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default=text("0")
     )

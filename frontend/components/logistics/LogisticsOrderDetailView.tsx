@@ -15,12 +15,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   checkLogisticsOrderStock,
+  closeLogisticsOrder,
   confirmLogisticsOrderDelivery,
+  confirmLogisticsOrderOutcome,
   deliverLogisticsOrderItem,
   dispatchLogisticsOrder,
   getLogisticsOrder,
   loadLogisticsOrderItem,
   reserveLogisticsOrderStock,
+  registerLogisticsOrderItemOutcome,
   startLogisticsOrderPreparation,
   unreserveLogisticsOrderStock
 } from "@/lib/api/logistics-orders";
@@ -38,6 +41,10 @@ const statusLabels: Record<LogisticsOrderStatus, string> = {
   OUT_OF_WAREHOUSE: "Salida de bodega",
   DELIVERED: "Entregado",
   PARTIALLY_DELIVERED: "Entrega parcial",
+  OUTCOME_PENDING: "Resultado pendiente",
+  OUTCOME_RECORDED: "Resultados registrados",
+  WITH_DIFFERENCES: "Con diferencias",
+  CLOSED: "Cerrado",
   OBSERVED: "Observado",
   CANCELLED: "Cancelado"
 };
@@ -62,6 +69,9 @@ export function LogisticsOrderDetailView({
   const [dispatchOpen, setDispatchOpen] = useState(false);
   const [deliveryTarget, setDeliveryTarget] = useState<LogisticsOrder["items"][number] | null>(null);
   const [deliveryConfirmOpen, setDeliveryConfirmOpen] = useState(false);
+  const [outcomeTarget, setOutcomeTarget] = useState<LogisticsOrder["items"][number] | null>(null);
+  const [outcomeConfirmOpen, setOutcomeConfirmOpen] = useState(false);
+  const [closureNotes, setClosureNotes] = useState("");
   const canReserve = roles.some((role) => ["SUPER_ADMIN", "ADMIN", "LOGISTICS_OPERATOR"].includes(role));
   const canOperate = canReserve;
 
@@ -183,6 +193,57 @@ export function LogisticsOrderDetailView({
       setDeliveryConfirmOpen(false);
     } catch (err) {
       setStockError(err instanceof Error ? err.message : "No pudimos confirmar la entrega en terreno.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function submitOutcome(
+    itemId: string,
+    payload: {
+      quantity_consumed: number;
+      quantity_returned: number;
+      quantity_returned_damaged: number;
+      quantity_lost: number;
+      quantity_discarded: number;
+      notes?: string | null;
+    }
+  ) {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      await registerLogisticsOrderItemOutcome(itemId, payload);
+      setOutcomeTarget(null);
+      await load();
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos registrar el resultado.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function confirmOutcome(notes?: string | null) {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      setOrder(await confirmLogisticsOrderOutcome(orderId, { outcome_notes: notes }));
+      setOutcomeConfirmOpen(false);
+      await loadStockCheck();
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos confirmar los resultados.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function closeOrder() {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      setOrder(await closeLogisticsOrder(orderId, { closure_notes: closureNotes || null }));
+      setClosureNotes("");
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos cerrar el pedido.");
     } finally {
       setActionLoading(false);
     }
@@ -458,6 +519,136 @@ export function LogisticsOrderDetailView({
                 </CardContent>
               </Card>
             ) : null}
+            {["DELIVERED", "PARTIALLY_DELIVERED", "OUTCOME_PENDING", "OUTCOME_RECORDED", "WITH_DIFFERENCES"].includes(order.status) ? (
+              <Card>
+                <CardContent>
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <div>
+                      <h2 className="text-lg font-bold">Resultado de productos</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Registra consumo, sobrantes, retorno usable, retorno danado, perdida o descarte.
+                      </p>
+                    </div>
+                    {canOperate && ["DELIVERED", "PARTIALLY_DELIVERED", "OUTCOME_PENDING", "WITH_DIFFERENCES"].includes(order.status) ? (
+                      <Button disabled={actionLoading} onClick={() => setOutcomeConfirmOpen(true)} type="button">
+                        Confirmar resultados del pedido
+                      </Button>
+                    ) : null}
+                  </div>
+                  {order.status === "OUTCOME_RECORDED" || order.status === "WITH_DIFFERENCES" ? (
+                    <p className="mt-3 text-sm font-semibold text-emerald-700">
+                      Resultados registrados. Proxima etapa: cierre operativo del pedido.
+                    </p>
+                  ) : null}
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full min-w-[1120px] text-left text-sm">
+                      <thead className="border-b text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="py-3 pr-4">Producto</th>
+                          <th className="py-3 pr-4">Tipo</th>
+                          <th className="py-3 pr-4">Entregado</th>
+                          <th className="py-3 pr-4">Consumido/asignado</th>
+                          <th className="py-3 pr-4">Devuelto usable</th>
+                          <th className="py-3 pr-4">Devuelto danado</th>
+                          <th className="py-3 pr-4">Perdido</th>
+                          <th className="py-3 pr-4">Descartado</th>
+                          <th className="py-3 pr-4">Pendiente</th>
+                          <th className="py-3 pr-4">Estado</th>
+                          <th className="py-3 pr-4">Accion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {order.items.map((item) => (
+                          <tr className="border-b last:border-0" key={item.id}>
+                            <td className="py-3 pr-4 font-semibold">{item.item_name_snapshot}</td>
+                            <td className="py-3 pr-4">{itemTypeLabel(item.item_type_snapshot)}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_delivered)}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_consumed)}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_returned)}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_returned_damaged)}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_lost)}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_discarded)}</td>
+                            <td className="py-3 pr-4">{quantity(outcomePending(item))}</td>
+                            <td className="py-3 pr-4">
+                              <Badge tone={item.outcome_status === "RECORDED" ? "success" : item.outcome_status === "PENDING" ? "neutral" : "warning"}>
+                                {outcomeLabel(item.outcome_status)}
+                              </Badge>
+                            </td>
+                            <td className="py-3 pr-4">
+                              {canOperate && ["DELIVERED", "PARTIALLY_DELIVERED", "OUTCOME_PENDING", "WITH_DIFFERENCES"].includes(order.status) ? (
+                                <Button size="sm" type="button" variant="secondary" onClick={() => setOutcomeTarget(item)}>
+                                  Registrar resultado
+                                </Button>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+            {["OUTCOME_RECORDED", "WITH_DIFFERENCES", "CLOSED"].includes(order.status) ? (
+              <Card>
+                <CardContent>
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-lg font-bold">Cierre operativo</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Cierra el pedido cuando todos los productos esten explicados.
+                      </p>
+                    </div>
+                    {order.status === "CLOSED" ? <Badge tone="success">Pedido cerrado</Badge> : null}
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+                    <ClosureMetric label="Productos entregados" value={quantity(sumOrder(order, "quantity_delivered"))} />
+                    <ClosureMetric label="Consumidos/asignados" value={quantity(sumOrder(order, "quantity_consumed"))} />
+                    <ClosureMetric label="Devueltos usables" value={quantity(sumOrder(order, "quantity_returned"))} />
+                    <ClosureMetric label="Devueltos danados" value={quantity(sumOrder(order, "quantity_returned_damaged"))} />
+                    <ClosureMetric label="Perdidos" value={quantity(sumOrder(order, "quantity_lost"))} />
+                    <ClosureMetric label="Descartados" value={quantity(sumOrder(order, "quantity_discarded"))} />
+                  </div>
+                  <div className="mt-4 rounded-lg border bg-slate-50 p-3 text-sm">
+                    Pendiente por explicar: <span className="font-semibold">{quantity(totalPending(order))}</span>
+                  </div>
+                  {order.status === "WITH_DIFFERENCES" ? (
+                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      <p className="font-semibold">No puedes cerrar este pedido porque existen cantidades pendientes por explicar.</p>
+                      <ul className="mt-2 space-y-1">
+                        {order.items.filter((item) => outcomePending(item) > 0).map((item) => (
+                          <li key={item.id}>
+                            {item.item_name_snapshot}: {quantity(item.quantity_delivered)} entregadas, {quantity(outcomeUsed(item))} explicadas, {quantity(outcomePending(item))} pendientes.
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {order.status === "CLOSED" ? (
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      <ClosureMetric label="Cerrado por" value={order.closed_by || "-"} />
+                      <ClosureMetric label="Fecha de cierre" value={order.closed_at ? new Date(order.closed_at).toLocaleString("es-CL") : "-"} />
+                      <ClosureMetric label="Observacion de cierre" value={order.closure_notes || "-"} />
+                    </div>
+                  ) : null}
+                  {canOperate && order.status === "OUTCOME_RECORDED" ? (
+                    <div className="mt-4 space-y-3">
+                      <label className="grid gap-2 text-sm font-semibold">
+                        Observacion de cierre
+                        <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" value={closureNotes} onChange={(event) => setClosureNotes(event.target.value)} />
+                      </label>
+                      <div className="flex justify-end">
+                        <Button disabled={actionLoading || totalPending(order) > 0} onClick={closeOrder} type="button">
+                          {actionLoading ? "Cerrando..." : "Cerrar pedido"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
             {loadTarget ? (
               <LoadItemModal
                 item={loadTarget}
@@ -490,6 +681,22 @@ export function LogisticsOrderDetailView({
                 onSubmit={confirmDelivery}
               />
             ) : null}
+            {outcomeTarget ? (
+              <OutcomeItemModal
+                item={outcomeTarget}
+                saving={actionLoading}
+                onClose={() => setOutcomeTarget(null)}
+                onSubmit={submitOutcome}
+              />
+            ) : null}
+            {outcomeConfirmOpen ? (
+              <OutcomeConfirmModal
+                order={order}
+                saving={actionLoading}
+                onClose={() => setOutcomeConfirmOpen(false)}
+                onSubmit={confirmOutcome}
+              />
+            ) : null}
           </>
         ) : null}
       </div>
@@ -508,8 +715,22 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ClosureMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-slate-50 p-3">
+      <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
+      <p className="mt-1 break-words text-base font-bold">{value}</p>
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: LogisticsOrderStatus }) {
-  const tone = status === "CANCELLED" ? "danger" : status === "INSUFFICIENT_STOCK" ? "warning" : "success";
+  const tone =
+    status === "CANCELLED"
+      ? "danger"
+      : status === "INSUFFICIENT_STOCK" || status === "WITH_DIFFERENCES"
+        ? "warning"
+        : "success";
   return <Badge tone={tone}>{statusLabels[status]}</Badge>;
 }
 
@@ -557,6 +778,43 @@ function deliveryLabel(status: string) {
   if (status === "DELIVERED") return "Entregado";
   if (status === "PARTIALLY_DELIVERED") return "Entrega parcial";
   return "Pendiente";
+}
+
+function outcomeLabel(status: string) {
+  if (status === "RECORDED") return "Registrado";
+  if (status === "PARTIAL") return "Parcial";
+  if (status === "WITH_DIFFERENCES") return "Con diferencias";
+  return "Pendiente";
+}
+
+function itemTypeLabel(type: string) {
+  if (type === "RETURNABLE") return "Retornable";
+  if (type === "CONSUMABLE") return "Consumible";
+  if (type === "PARTIAL_CONSUMABLE") return "Parcial";
+  if (type === "DISPOSABLE") return "Desechable";
+  return type;
+}
+
+function outcomeUsed(item: LogisticsOrder["items"][number]) {
+  return (
+    Number(item.quantity_consumed || 0) +
+    Number(item.quantity_returned || 0) +
+    Number(item.quantity_returned_damaged || 0) +
+    Number(item.quantity_lost || 0) +
+    Number(item.quantity_discarded || 0)
+  );
+}
+
+function outcomePending(item: LogisticsOrder["items"][number]) {
+  return Math.max(Number(item.quantity_delivered || 0) - outcomeUsed(item), 0);
+}
+
+function totalPending(order: LogisticsOrder) {
+  return order.items.reduce((sum, item) => sum + outcomePending(item), 0);
+}
+
+function sumOrder(order: LogisticsOrder, field: keyof LogisticsOrder["items"][number]) {
+  return order.items.reduce((sum, item) => sum + Number(item[field] || 0), 0);
 }
 
 function LoadItemModal({
@@ -675,6 +933,166 @@ function DeliveryConfirmModal({
         <div className="flex justify-end gap-2">
           <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={saving} type="submit">{saving ? "Confirmando..." : "Confirmar entrega"}</Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+function OutcomeItemModal({
+  item,
+  saving,
+  onClose,
+  onSubmit
+}: {
+  item: LogisticsOrder["items"][number];
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (
+    itemId: string,
+    payload: {
+      quantity_consumed: number;
+      quantity_returned: number;
+      quantity_returned_damaged: number;
+      quantity_lost: number;
+      quantity_discarded: number;
+      notes?: string | null;
+    }
+  ) => Promise<void>;
+}) {
+  const [consumed, setConsumed] = useState(String(item.quantity_consumed || "0"));
+  const [returned, setReturned] = useState(String(item.quantity_returned || "0"));
+  const [returnedDamaged, setReturnedDamaged] = useState(String(item.quantity_returned_damaged || "0"));
+  const [lost, setLost] = useState(String(item.quantity_lost || "0"));
+  const [discarded, setDiscarded] = useState(String(item.quantity_discarded || "0"));
+  const [notes, setNotes] = useState(item.outcome_notes || "");
+  const delivered = Number(item.quantity_delivered || 0);
+  const values = [consumed, returned, returnedDamaged, lost, discarded].map((value) => Number(value || 0));
+  const total = values.reduce((sum, value) => sum + value, 0);
+  const pending = Math.max(delivered - total, 0);
+  const valid =
+    values.every((value) => Number.isFinite(value) && value >= 0) &&
+    total <= delivered &&
+    !(item.item_type_snapshot === "RETURNABLE" && values[0] > 0);
+
+  function markAllConsumed() {
+    setConsumed(String(delivered));
+    setReturned("0");
+    setReturnedDamaged("0");
+    setLost("0");
+    setDiscarded("0");
+  }
+
+  return (
+    <ModalShell title="Registrar resultado" description={item.item_name_snapshot} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!valid) return;
+          void onSubmit(item.id, {
+            quantity_consumed: values[0],
+            quantity_returned: values[1],
+            quantity_returned_damaged: values[2],
+            quantity_lost: values[3],
+            quantity_discarded: values[4],
+            notes: notes || null
+          });
+        }}
+      >
+        <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+          <p>Entregado: <span className="font-semibold">{quantity(item.quantity_delivered)}</span> {item.unit_snapshot || ""}</p>
+          <p className="mt-1">Pendiente por explicar: <span className="font-semibold">{quantity(pending)}</span></p>
+        </div>
+        {item.item_type_snapshot === "CONSUMABLE" ? (
+          <div className="space-y-2 rounded-lg border p-3 text-sm">
+            <p className="text-muted-foreground">
+              Este producto no requiere retorno. Si sobro y volvio fisicamente a bodega, registra cantidad devuelta.
+            </p>
+            <Button type="button" variant="secondary" onClick={markAllConsumed}>
+              Marcar todo como consumido/asignado al evento
+            </Button>
+          </div>
+        ) : null}
+        {item.item_type_snapshot === "RETURNABLE" ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+            Este producto debe volver, registrarse como danado o perdido.
+          </p>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-2">
+          <OutcomeInput label="Consumido/asignado" value={consumed} onChange={setConsumed} disabled={item.item_type_snapshot === "RETURNABLE"} />
+          <OutcomeInput label="Devuelto usable" value={returned} onChange={setReturned} />
+          <OutcomeInput label="Devuelto danado" value={returnedDamaged} onChange={setReturnedDamaged} />
+          <OutcomeInput label="Perdido" value={lost} onChange={setLost} />
+          <OutcomeInput label="Descartado" value={discarded} onChange={setDiscarded} />
+        </div>
+        <label className="grid gap-2 text-sm font-semibold">
+          Observacion
+          <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" value={notes} onChange={(event) => setNotes(event.target.value)} />
+        </label>
+        {!valid ? (
+          <p className="text-sm font-semibold text-amber-700">
+            Las cantidades no pueden ser negativas, la suma no puede superar lo entregado y los retornables no pueden marcarse como consumidos.
+          </p>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Guardar resultado"}</Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+function OutcomeInput({
+  label,
+  value,
+  disabled,
+  onChange
+}: {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-semibold">
+      {label}
+      <Input disabled={disabled} min={0} step="0.01" type="number" value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function OutcomeConfirmModal({
+  order,
+  saving,
+  onClose,
+  onSubmit
+}: {
+  order: LogisticsOrder;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (notes?: string | null) => Promise<void>;
+}) {
+  const [notes, setNotes] = useState(order.outcome_notes || "");
+  const missing = order.items.reduce((sum, item) => sum + outcomePending(item), 0);
+
+  return (
+    <ModalShell title="Confirmar resultados del pedido" description={order.event?.name || "Evento"} onClose={onClose}>
+      <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void onSubmit(notes || null); }}>
+        <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+          <p>Pendiente total por explicar: <span className="font-semibold">{quantity(missing)}</span></p>
+          <p className="mt-1 text-muted-foreground">
+            Si queda pendiente, el pedido quedara con diferencias. Esta accion no cierra el pedido.
+          </p>
+        </div>
+        <label className="grid gap-2 text-sm font-semibold">
+          Observacion general
+          <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" value={notes} onChange={(event) => setNotes(event.target.value)} />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={saving} type="submit">{saving ? "Confirmando..." : "Confirmar resultados"}</Button>
         </div>
       </form>
     </ModalShell>

@@ -32,6 +32,10 @@ const statusLabels: Record<LogisticsOrderStatus, string> = {
   OUT_OF_WAREHOUSE: "Salida de bodega",
   DELIVERED: "Entregado",
   PARTIALLY_DELIVERED: "Entrega parcial",
+  OUTCOME_PENDING: "Resultado pendiente",
+  OUTCOME_RECORDED: "Resultados registrados",
+  WITH_DIFFERENCES: "Con diferencias",
+  CLOSED: "Cerrado",
   OBSERVED: "Observado",
   CANCELLED: "Cancelado"
 };

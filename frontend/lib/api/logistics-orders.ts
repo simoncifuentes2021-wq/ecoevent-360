@@ -3,6 +3,7 @@ import { toQuery, type QueryValue } from "@/lib/api/query";
 import type { ListResponse } from "@/types/common";
 import type {
   LogisticsOrder,
+  LogisticsOrderClose,
   LogisticsOrderCreate,
   LogisticsOrderDeliveryConfirm,
   LogisticsOrderDispatch,
@@ -10,6 +11,8 @@ import type {
   LogisticsOrderItemCreate,
   LogisticsOrderItemDeliver,
   LogisticsOrderItemLoad,
+  LogisticsOrderItemOutcome,
+  LogisticsOrderOutcomeConfirm,
   LogisticsOrderStockCheck,
   LogisticsOrderUpdate
 } from "@/types/logistics-order";
@@ -64,6 +67,18 @@ export function deliverLogisticsOrderItem(id: string, data: LogisticsOrderItemDe
 
 export function confirmLogisticsOrderDelivery(id: string, data: LogisticsOrderDeliveryConfirm) {
   return api.post<LogisticsOrder>(`/logistics-orders/${id}/confirm-delivery`, data);
+}
+
+export function registerLogisticsOrderItemOutcome(id: string, data: LogisticsOrderItemOutcome) {
+  return api.patch<LogisticsOrderItem>(`/logistics-order-items/${id}/outcome`, data);
+}
+
+export function confirmLogisticsOrderOutcome(id: string, data: LogisticsOrderOutcomeConfirm) {
+  return api.post<LogisticsOrder>(`/logistics-orders/${id}/confirm-outcome`, data);
+}
+
+export function closeLogisticsOrder(id: string, data: LogisticsOrderClose) {
+  return api.post<LogisticsOrder>(`/logistics-orders/${id}/close`, data);
 }
 
 export function updateLogisticsOrder(id: string, data: LogisticsOrderUpdate) {

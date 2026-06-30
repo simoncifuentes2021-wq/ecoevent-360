@@ -84,6 +84,47 @@ class LogisticsOrderDeliveryConfirm(BaseModel):
         return value
 
 
+class LogisticsOrderItemOutcome(BaseModel):
+    quantity_consumed: Decimal = Field(ge=0)
+    quantity_returned: Decimal = Field(ge=0)
+    quantity_returned_damaged: Decimal = Field(ge=0)
+    quantity_lost: Decimal = Field(ge=0)
+    quantity_discarded: Decimal = Field(ge=0)
+    notes: str | None = None
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, value):
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+
+class LogisticsOrderOutcomeConfirm(BaseModel):
+    outcome_notes: str | None = None
+
+    @field_validator("outcome_notes", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, value):
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+
+class LogisticsOrderClose(BaseModel):
+    closure_notes: str | None = None
+
+    @field_validator("closure_notes", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, value):
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+
 class LogisticsOrderCreate(BaseModel):
     warehouse_id: UUID
     assigned_operator_id: UUID
@@ -162,6 +203,13 @@ class LogisticsOrderItemRead(BaseModel):
     preparation_status: str
     quantity_delivered: Decimal
     delivery_status: str
+    quantity_consumed: Decimal
+    quantity_returned: Decimal
+    quantity_returned_damaged: Decimal
+    quantity_lost: Decimal
+    quantity_discarded: Decimal
+    outcome_status: str
+    outcome_notes: str | None = None
     unit_price_snapshot: Decimal
     total_price: Decimal
     notes: str | None = None
@@ -192,6 +240,12 @@ class LogisticsOrderRead(BaseModel):
     dispatch_notes: str | None = None
     delivered_at: datetime | None = None
     delivered_by: UUID | None = None
+    outcome_recorded_at: datetime | None = None
+    outcome_recorded_by: UUID | None = None
+    outcome_notes: str | None = None
+    closed_at: datetime | None = None
+    closed_by: UUID | None = None
+    closure_notes: str | None = None
     created_at: datetime
     updated_at: datetime
     event: LogisticsOrderEventRead | None = None
