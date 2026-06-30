@@ -578,6 +578,10 @@ class LogisticsOrder(Base):
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     dispatch_notes: Mapped[str | None] = mapped_column(Text)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    delivered_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
@@ -588,6 +592,7 @@ class LogisticsOrder(Base):
     reserver: Mapped[User | None] = relationship(foreign_keys=[reserved_by])
     preparer: Mapped[User | None] = relationship(foreign_keys=[prepared_by])
     dispatcher: Mapped[User | None] = relationship(foreign_keys=[dispatched_by])
+    deliverer: Mapped[User | None] = relationship(foreign_keys=[delivered_by])
     items: Mapped[list["LogisticsOrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
@@ -604,6 +609,8 @@ class LogisticsOrderItem(Base):
         CheckConstraint("quantity_dispatched >= 0"),
         CheckConstraint("quantity_loaded <= quantity_reserved"),
         CheckConstraint("quantity_dispatched <= quantity_loaded"),
+        CheckConstraint("quantity_delivered >= 0"),
+        CheckConstraint("quantity_delivered <= quantity_dispatched"),
         CheckConstraint("unit_price_snapshot >= 0"),
         CheckConstraint("total_price >= 0"),
         Index("idx_logistics_order_items_order_id", "order_id"),
@@ -637,6 +644,12 @@ class LogisticsOrderItem(Base):
         Numeric(12, 2), nullable=False, server_default=text("0")
     )
     preparation_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default=text("'PENDING'")
+    )
+    quantity_delivered: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    delivery_status: Mapped[str] = mapped_column(
         String(40), nullable=False, server_default=text("'PENDING'")
     )
     unit_price_snapshot: Mapped[Decimal] = mapped_column(

@@ -4,9 +4,11 @@ import type { ListResponse } from "@/types/common";
 import type {
   LogisticsOrder,
   LogisticsOrderCreate,
+  LogisticsOrderDeliveryConfirm,
   LogisticsOrderDispatch,
   LogisticsOrderItem,
   LogisticsOrderItemCreate,
+  LogisticsOrderItemDeliver,
   LogisticsOrderItemLoad,
   LogisticsOrderStockCheck,
   LogisticsOrderUpdate
@@ -54,6 +56,14 @@ export function loadLogisticsOrderItem(id: string, data: LogisticsOrderItemLoad)
 
 export function dispatchLogisticsOrder(id: string, data: LogisticsOrderDispatch) {
   return api.post<LogisticsOrder>(`/logistics-orders/${id}/dispatch`, data);
+}
+
+export function deliverLogisticsOrderItem(id: string, data: LogisticsOrderItemDeliver) {
+  return api.patch<LogisticsOrderItem>(`/logistics-order-items/${id}/deliver`, data);
+}
+
+export function confirmLogisticsOrderDelivery(id: string, data: LogisticsOrderDeliveryConfirm) {
+  return api.post<LogisticsOrder>(`/logistics-orders/${id}/confirm-delivery`, data);
 }
 
 export function updateLogisticsOrder(id: string, data: LogisticsOrderUpdate) {

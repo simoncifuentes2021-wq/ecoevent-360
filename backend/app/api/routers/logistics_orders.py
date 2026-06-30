@@ -10,8 +10,10 @@ from app.models.enums import LogisticsOrderStatus, UserRole
 from app.schemas.logistics_order_schema import (
     LogisticsOrderAssign,
     LogisticsOrderCreate,
+    LogisticsOrderDeliveryConfirm,
     LogisticsOrderDispatch,
     LogisticsOrderItemCreate,
+    LogisticsOrderItemDeliver,
     LogisticsOrderItemLoad,
     LogisticsOrderItemRead,
     LogisticsOrderItemUpdate,
@@ -241,6 +243,51 @@ def dispatch_logistics_order(
         db,
         user=current_user,
         action="LOGISTICS_ORDER_DISPATCHED",
+        module="logistics_orders",
+        entity_type="LogisticsOrder",
+        entity_id=order.id,
+        event_id=order.event_id,
+        new_data=serialize_model_for_audit(order),
+        request=request,
+    )
+    return order
+
+
+@router.patch("/logistics-order-items/{item_id}/deliver", response_model=LogisticsOrderItemRead)
+def deliver_logistics_order_item(
+    item_id: UUID,
+    payload: LogisticsOrderItemDeliver,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    item = logistics_order_service.deliver_logistics_order_item(db, item_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_ORDER_ITEM_DELIVERED",
+        module="logistics_orders",
+        entity_type="LogisticsOrderItem",
+        entity_id=item.id,
+        new_data=serialize_model_for_audit(item),
+        request=request,
+    )
+    return item
+
+
+@router.post("/logistics-orders/{order_id}/confirm-delivery", response_model=LogisticsOrderRead)
+def confirm_logistics_order_delivery(
+    order_id: UUID,
+    payload: LogisticsOrderDeliveryConfirm,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    order = logistics_order_service.confirm_logistics_order_delivery(db, order_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_ORDER_DELIVERY_CONFIRMED",
         module="logistics_orders",
         entity_type="LogisticsOrder",
         entity_id=order.id,

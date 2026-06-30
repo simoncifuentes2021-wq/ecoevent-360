@@ -22,6 +22,8 @@ const statusLabels: Record<LogisticsOrderStatus, string> = {
   IN_PREPARATION: "En preparacion",
   LOADED: "Cargado",
   OUT_OF_WAREHOUSE: "Salida de bodega",
+  DELIVERED: "Entregado",
+  PARTIALLY_DELIVERED: "Entrega parcial",
   OBSERVED: "Observado",
   CANCELLED: "Cancelado"
 };

@@ -9,6 +9,8 @@ export type LogisticsOrderStatus =
   | "IN_PREPARATION"
   | "LOADED"
   | "OUT_OF_WAREHOUSE"
+  | "DELIVERED"
+  | "PARTIALLY_DELIVERED"
   | "OBSERVED"
   | "CANCELLED";
 
@@ -42,6 +44,8 @@ export type LogisticsOrderItem = {
   quantity_loaded: string | number;
   quantity_dispatched: string | number;
   preparation_status: "PENDING" | "LOADED" | "PARTIALLY_LOADED" | string;
+  quantity_delivered: string | number;
+  delivery_status: "PENDING" | "DELIVERED" | "PARTIALLY_DELIVERED" | string;
   unit_price_snapshot: string | number;
   total_price: string | number;
   notes: string | null;
@@ -68,6 +72,8 @@ export type LogisticsOrder = {
   dispatched_at: string | null;
   dispatched_by: string | null;
   dispatch_notes: string | null;
+  delivered_at: string | null;
+  delivered_by: string | null;
   created_at: string;
   updated_at: string;
   event: LogisticsOrderEvent | null;
@@ -130,4 +136,13 @@ export type LogisticsOrderItemLoad = {
 
 export type LogisticsOrderDispatch = {
   dispatch_notes?: string | null;
+};
+
+export type LogisticsOrderItemDeliver = {
+  quantity_delivered: number;
+  notes?: string | null;
+};
+
+export type LogisticsOrderDeliveryConfirm = {
+  delivery_notes?: string | null;
 };

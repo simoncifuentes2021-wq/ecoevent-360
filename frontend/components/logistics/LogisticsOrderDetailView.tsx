@@ -15,6 +15,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   checkLogisticsOrderStock,
+  confirmLogisticsOrderDelivery,
+  deliverLogisticsOrderItem,
   dispatchLogisticsOrder,
   getLogisticsOrder,
   loadLogisticsOrderItem,
@@ -34,6 +36,8 @@ const statusLabels: Record<LogisticsOrderStatus, string> = {
   IN_PREPARATION: "En preparacion",
   LOADED: "Cargado",
   OUT_OF_WAREHOUSE: "Salida de bodega",
+  DELIVERED: "Entregado",
+  PARTIALLY_DELIVERED: "Entrega parcial",
   OBSERVED: "Observado",
   CANCELLED: "Cancelado"
 };
@@ -56,6 +60,8 @@ export function LogisticsOrderDetailView({
   const [stockError, setStockError] = useState<string | null>(null);
   const [loadTarget, setLoadTarget] = useState<LogisticsOrder["items"][number] | null>(null);
   const [dispatchOpen, setDispatchOpen] = useState(false);
+  const [deliveryTarget, setDeliveryTarget] = useState<LogisticsOrder["items"][number] | null>(null);
+  const [deliveryConfirmOpen, setDeliveryConfirmOpen] = useState(false);
   const canReserve = roles.some((role) => ["SUPER_ADMIN", "ADMIN", "LOGISTICS_OPERATOR"].includes(role));
   const canOperate = canReserve;
 
@@ -150,6 +156,33 @@ export function LogisticsOrderDetailView({
       await loadStockCheck();
     } catch (err) {
       setStockError(err instanceof Error ? err.message : "No pudimos confirmar la salida de bodega.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function submitDelivery(itemId: string, quantityDelivered: number, notes?: string | null) {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      await deliverLogisticsOrderItem(itemId, { quantity_delivered: quantityDelivered, notes });
+      setDeliveryTarget(null);
+      await load();
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos registrar la entrega.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function confirmDelivery(notes?: string | null) {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      setOrder(await confirmLogisticsOrderDelivery(orderId, { delivery_notes: notes }));
+      setDeliveryConfirmOpen(false);
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos confirmar la entrega en terreno.");
     } finally {
       setActionLoading(false);
     }
@@ -359,6 +392,72 @@ export function LogisticsOrderDetailView({
                 </CardContent>
               </Card>
             ) : null}
+            {["OUT_OF_WAREHOUSE", "DELIVERED", "PARTIALLY_DELIVERED"].includes(order.status) ? (
+              <Card>
+                <CardContent>
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <div>
+                      <h2 className="text-lg font-bold">Entrega en terreno</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Registra cuanto se entrego efectivamente en el punto del evento.
+                      </p>
+                    </div>
+                    {canOperate && order.status === "OUT_OF_WAREHOUSE" ? (
+                      <Button
+                        disabled={actionLoading || !order.items.some((item) => Number(item.quantity_delivered || 0) > 0)}
+                        onClick={() => setDeliveryConfirmOpen(true)}
+                        type="button"
+                      >
+                        Confirmar entrega en terreno
+                      </Button>
+                    ) : null}
+                  </div>
+                  {order.status === "DELIVERED" || order.status === "PARTIALLY_DELIVERED" ? (
+                    <p className="mt-3 text-sm font-semibold text-emerald-700">
+                      Entrega registrada. Proxima etapa: consumo, sobrantes, retorno, dano o perdida.
+                    </p>
+                  ) : null}
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-left text-sm">
+                      <thead className="border-b text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="py-3 pr-4">Producto</th>
+                          <th className="py-3 pr-4">Despachado</th>
+                          <th className="py-3 pr-4">Entregado</th>
+                          <th className="py-3 pr-4">Unidad</th>
+                          <th className="py-3 pr-4">Estado entrega</th>
+                          <th className="py-3 pr-4">Accion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {order.items.map((item) => (
+                          <tr className="border-b last:border-0" key={item.id}>
+                            <td className="py-3 pr-4 font-semibold">{item.item_name_snapshot}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_dispatched)}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_delivered)}</td>
+                            <td className="py-3 pr-4">{item.unit_snapshot || "-"}</td>
+                            <td className="py-3 pr-4">
+                              <Badge tone={item.delivery_status === "DELIVERED" ? "success" : item.delivery_status === "PARTIALLY_DELIVERED" ? "warning" : "neutral"}>
+                                {deliveryLabel(item.delivery_status)}
+                              </Badge>
+                            </td>
+                            <td className="py-3 pr-4">
+                              {canOperate && order.status === "OUT_OF_WAREHOUSE" ? (
+                                <Button size="sm" type="button" variant="secondary" onClick={() => setDeliveryTarget(item)}>
+                                  Registrar entrega
+                                </Button>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
             {loadTarget ? (
               <LoadItemModal
                 item={loadTarget}
@@ -373,6 +472,22 @@ export function LogisticsOrderDetailView({
                 saving={actionLoading}
                 onClose={() => setDispatchOpen(false)}
                 onSubmit={submitDispatch}
+              />
+            ) : null}
+            {deliveryTarget ? (
+              <DeliverItemModal
+                item={deliveryTarget}
+                saving={actionLoading}
+                onClose={() => setDeliveryTarget(null)}
+                onSubmit={submitDelivery}
+              />
+            ) : null}
+            {deliveryConfirmOpen ? (
+              <DeliveryConfirmModal
+                order={order}
+                saving={actionLoading}
+                onClose={() => setDeliveryConfirmOpen(false)}
+                onSubmit={confirmDelivery}
               />
             ) : null}
           </>
@@ -438,6 +553,12 @@ function preparationLabel(status: string) {
   return "Pendiente";
 }
 
+function deliveryLabel(status: string) {
+  if (status === "DELIVERED") return "Entregado";
+  if (status === "PARTIALLY_DELIVERED") return "Entrega parcial";
+  return "Pendiente";
+}
+
 function LoadItemModal({
   item,
   saving,
@@ -473,6 +594,87 @@ function LoadItemModal({
         <div className="flex justify-end gap-2">
           <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Guardar carga"}</Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+function DeliverItemModal({
+  item,
+  saving,
+  onClose,
+  onSubmit
+}: {
+  item: LogisticsOrder["items"][number];
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (itemId: string, quantityDelivered: number, notes?: string | null) => Promise<void>;
+}) {
+  const [quantityDelivered, setQuantityDelivered] = useState(String(item.quantity_delivered || item.quantity_dispatched || "0"));
+  const [notes, setNotes] = useState(item.notes || "");
+  const delivered = Number(quantityDelivered);
+  const dispatched = Number(item.quantity_dispatched || 0);
+  const valid = Number.isFinite(delivered) && delivered >= 0 && delivered <= dispatched;
+
+  return (
+    <ModalShell title="Registrar entrega" description={item.item_name_snapshot} onClose={onClose}>
+      <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (valid) void onSubmit(item.id, delivered, notes || null); }}>
+        <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+          <p>Despachado: <span className="font-semibold">{quantity(item.quantity_dispatched)}</span> {item.unit_snapshot || ""}</p>
+        </div>
+        <label className="grid gap-2 text-sm font-semibold">
+          Cantidad entregada
+          <Input min={0} max={dispatched} step="0.01" type="number" value={quantityDelivered} onChange={(event) => setQuantityDelivered(event.target.value)} />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Observacion
+          <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" value={notes} onChange={(event) => setNotes(event.target.value)} />
+        </label>
+        {!valid ? <p className="text-sm font-semibold text-amber-700">La cantidad entregada no puede ser negativa ni superar lo despachado.</p> : null}
+        <div className="flex justify-end gap-2">
+          <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Guardar entrega"}</Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+function DeliveryConfirmModal({
+  order,
+  saving,
+  onClose,
+  onSubmit
+}: {
+  order: LogisticsOrder;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (notes?: string | null) => Promise<void>;
+}) {
+  const [notes, setNotes] = useState(order.delivery_notes || "");
+
+  return (
+    <ModalShell title="Confirmar entrega en terreno" description={order.event?.name || "Evento"} onClose={onClose}>
+      <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void onSubmit(notes || null); }}>
+        <div className="rounded-lg border">
+          <div className="divide-y">
+            {order.items.map((item) => (
+              <div className="flex items-center justify-between gap-3 p-3 text-sm" key={item.id}>
+                <span className="font-semibold">{item.item_name_snapshot}</span>
+                <span>{quantity(item.quantity_delivered)} / {quantity(item.quantity_dispatched)} {item.unit_snapshot || ""}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <label className="grid gap-2 text-sm font-semibold">
+          Observacion de entrega
+          <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" value={notes} onChange={(event) => setNotes(event.target.value)} />
+        </label>
+        <p className="text-sm font-semibold text-emerald-700">No se modificara stock en esta etapa.</p>
+        <div className="flex justify-end gap-2">
+          <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={saving} type="submit">{saving ? "Confirmando..." : "Confirmar entrega"}</Button>
         </div>
       </form>
     </ModalShell>

@@ -47,10 +47,35 @@ class LogisticsOrderItemLoad(BaseModel):
         return value
 
 
+class LogisticsOrderItemDeliver(BaseModel):
+    quantity_delivered: Decimal = Field(ge=0)
+    notes: str | None = None
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, value):
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+
 class LogisticsOrderDispatch(BaseModel):
     dispatch_notes: str | None = None
 
     @field_validator("dispatch_notes", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, value):
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+
+class LogisticsOrderDeliveryConfirm(BaseModel):
+    delivery_notes: str | None = None
+
+    @field_validator("delivery_notes", mode="before")
     @classmethod
     def empty_string_to_none(cls, value):
         if isinstance(value, str):
@@ -135,6 +160,8 @@ class LogisticsOrderItemRead(BaseModel):
     quantity_loaded: Decimal
     quantity_dispatched: Decimal
     preparation_status: str
+    quantity_delivered: Decimal
+    delivery_status: str
     unit_price_snapshot: Decimal
     total_price: Decimal
     notes: str | None = None
@@ -163,6 +190,8 @@ class LogisticsOrderRead(BaseModel):
     dispatched_at: datetime | None = None
     dispatched_by: UUID | None = None
     dispatch_notes: str | None = None
+    delivered_at: datetime | None = None
+    delivered_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
     event: LogisticsOrderEventRead | None = None

@@ -22,8 +22,10 @@ from app.models.enums import LogisticsOrderStatus, StockMovementType, UserRole
 from app.schemas.logistics_order_schema import (
     LogisticsOrderAssign,
     LogisticsOrderCreate,
+    LogisticsOrderDeliveryConfirm,
     LogisticsOrderDispatch,
     LogisticsOrderItemCreate,
+    LogisticsOrderItemDeliver,
     LogisticsOrderItemLoad,
     LogisticsOrderItemUpdate,
     LogisticsOrderStockCheckItem,
@@ -735,6 +737,89 @@ def dispatch_logistics_order(
     order.dispatched_at = datetime.utcnow()
     order.dispatched_by = user.id
     order.dispatch_notes = payload.dispatch_notes
+    order.updated_at = datetime.utcnow()
+    db.add(order)
+    db.commit()
+    return get_logistics_order_or_404(db, order.id)
+
+
+def deliver_logistics_order_item(
+    db: Session, item_id: UUID, payload: LogisticsOrderItemDeliver, user: User
+) -> LogisticsOrderItem:
+    order_item = get_logistics_order_item_or_404(db, item_id)
+    order = get_logistics_order_or_404(db, order_item.order_id)
+    _ensure_can_reserve_stock(user, order)
+    _ensure_can_operate_order_warehouse(db, user, order)
+    if order.status == LogisticsOrderStatus.CANCELLED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deliver cancelled logistics orders")
+    if order.status not in {LogisticsOrderStatus.OUT_OF_WAREHOUSE, LogisticsOrderStatus.PARTIALLY_DELIVERED}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only orders out of warehouse can register field delivery",
+        )
+    if order_item.quantity_dispatched <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item has no dispatched quantity")
+    if payload.quantity_delivered > order_item.quantity_dispatched:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="quantity_delivered cannot exceed quantity_dispatched",
+        )
+
+    order_item.quantity_delivered = payload.quantity_delivered
+    order_item.delivery_status = (
+        "DELIVERED" if payload.quantity_delivered == order_item.quantity_dispatched else "PARTIALLY_DELIVERED"
+    )
+    if payload.notes is not None:
+        order_item.notes = payload.notes
+    order_item.updated_at = datetime.utcnow()
+    db.add(order_item)
+    db.commit()
+    db.refresh(order_item)
+    return order_item
+
+
+def confirm_logistics_order_delivery(
+    db: Session, order_id: UUID, payload: LogisticsOrderDeliveryConfirm, user: User
+) -> LogisticsOrder:
+    order = get_logistics_order_or_404(db, order_id)
+    _ensure_can_reserve_stock(user, order)
+    _ensure_can_operate_order_warehouse(db, user, order)
+    if order.status == LogisticsOrderStatus.CANCELLED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deliver cancelled logistics orders")
+    if order.status != LogisticsOrderStatus.OUT_OF_WAREHOUSE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only orders out of warehouse can confirm field delivery",
+        )
+    if not order.items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Logistics order has no items")
+    if any(item.quantity_dispatched <= 0 for item in order.items):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="All items require dispatched quantity before delivery",
+        )
+    if any(item.quantity_delivered > item.quantity_dispatched for item in order.items):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Delivered quantity cannot exceed dispatched quantity",
+        )
+    if not any(item.quantity_delivered > 0 for item in order.items):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one delivered quantity is required before confirming delivery",
+        )
+
+    all_delivered = all(item.quantity_delivered == item.quantity_dispatched for item in order.items)
+    for order_item in order.items:
+        order_item.delivery_status = "DELIVERED" if order_item.quantity_delivered == order_item.quantity_dispatched else "PARTIALLY_DELIVERED"
+        order_item.updated_at = datetime.utcnow()
+        db.add(order_item)
+
+    order.status = LogisticsOrderStatus.DELIVERED if all_delivered else LogisticsOrderStatus.PARTIALLY_DELIVERED
+    order.delivered_at = datetime.utcnow()
+    order.delivered_by = user.id
+    if payload.delivery_notes is not None:
+        order.delivery_notes = payload.delivery_notes
     order.updated_at = datetime.utcnow()
     db.add(order)
     db.commit()
