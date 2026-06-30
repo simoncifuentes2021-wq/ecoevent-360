@@ -210,7 +210,7 @@ function OrderFormModal({
     Boolean(form.warehouse_id) &&
     Boolean(form.assigned_operator_id) &&
     form.items.length > 0 &&
-    form.items.every((row) => row.item_id && Number(row.quantity_requested) > 0) &&
+    form.items.every((row) => row.item_id && isPositiveInteger(row.quantity_requested)) &&
     !duplicateProductId;
 
   async function submit() {
@@ -372,7 +372,7 @@ function OrderFormModal({
                     </div>
                     <label className="grid gap-2 text-sm font-semibold">
                       Cantidad
-                      <Input min={0.01} step="0.01" type="number" value={row.quantity_requested} onChange={(event) => updateRow(index, { quantity_requested: event.target.value })} />
+                      <Input min={1} step="1" type="number" value={row.quantity_requested} onChange={(event) => updateRow(index, { quantity_requested: event.target.value })} />
                     </label>
                     <Info label="Unidad" value={product?.unit || "-"} />
                     <Info label="Valor unitario" value={money(product?.unit_price || 0)} />
@@ -433,8 +433,8 @@ function getValidationMessage(form: OrderFormState, duplicateProductId: string) 
   if (!form.assigned_operator_id) return "Debes seleccionar un operador logistico.";
   if (form.items.length === 0) return "Debes agregar al menos un producto.";
   if (form.items.some((row) => !row.item_id)) return "Debes seleccionar un producto en cada fila.";
-  if (form.items.some((row) => Number(row.quantity_requested) <= 0 || Number.isNaN(Number(row.quantity_requested)))) {
-    return "La cantidad debe ser mayor a 0.";
+  if (form.items.some((row) => !isPositiveInteger(row.quantity_requested))) {
+    return "La cantidad debe ser un numero entero mayor a 0.";
   }
   if (duplicateProductId) return "Este producto ya fue agregado al pedido.";
   return "Revisa los datos antes de guardar.";
@@ -442,4 +442,9 @@ function getValidationMessage(form: OrderFormState, duplicateProductId: string) 
 
 function money(value: string | number) {
   return Number(value || 0).toLocaleString("es-CL", { style: "currency", currency: "CLP" });
+}
+
+function isPositiveInteger(value: string | number) {
+  const numberValue = Number(value);
+  return Number.isInteger(numberValue) && numberValue > 0;
 }

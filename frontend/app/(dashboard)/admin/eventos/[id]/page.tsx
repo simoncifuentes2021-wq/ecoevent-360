@@ -114,7 +114,7 @@ export default function EventDetailPage({ params }: { params: { id: string } }) 
           onClose={() => setVisibilityOpen(false)}
           onConfirm={toggleOperationalVisibility}
         />
-        <StatusChangeDialog event={statusOpen ? event : null} loading={statusLoading} onClose={() => setStatusOpen(false)} onConfirm={updateStatus} />
+        <StatusChangeDialog event={statusOpen ? event : null} loading={statusLoading} role={user?.role} onClose={() => setStatusOpen(false)} onConfirm={updateStatus} />
       </div>
     </RoleGuard>
   );

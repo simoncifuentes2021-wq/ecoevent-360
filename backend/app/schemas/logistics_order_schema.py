@@ -7,10 +7,21 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.models.enums import LogisticsOrderStatus
 
 
+def validate_whole_quantity(value: Decimal) -> Decimal:
+    if value != value.to_integral_value():
+        raise ValueError("Quantity must be a whole number")
+    return value
+
+
 class LogisticsOrderItemCreate(BaseModel):
     item_id: UUID
     quantity_requested: Decimal = Field(gt=0)
     notes: str | None = None
+
+    @field_validator("quantity_requested")
+    @classmethod
+    def quantity_must_be_whole(cls, value: Decimal) -> Decimal:
+        return validate_whole_quantity(value)
 
     @field_validator("notes", mode="before")
     @classmethod
@@ -25,6 +36,11 @@ class LogisticsOrderItemUpdate(BaseModel):
     quantity_requested: Decimal | None = Field(default=None, gt=0)
     notes: str | None = None
 
+    @field_validator("quantity_requested")
+    @classmethod
+    def quantity_must_be_whole(cls, value: Decimal | None) -> Decimal | None:
+        return validate_whole_quantity(value) if value is not None else value
+
     @field_validator("notes", mode="before")
     @classmethod
     def empty_string_to_none(cls, value):
@@ -38,6 +54,11 @@ class LogisticsOrderItemLoad(BaseModel):
     quantity_loaded: Decimal = Field(gt=0)
     notes: str | None = None
 
+    @field_validator("quantity_loaded")
+    @classmethod
+    def quantity_must_be_whole(cls, value: Decimal) -> Decimal:
+        return validate_whole_quantity(value)
+
     @field_validator("notes", mode="before")
     @classmethod
     def empty_string_to_none(cls, value):
@@ -50,6 +71,11 @@ class LogisticsOrderItemLoad(BaseModel):
 class LogisticsOrderItemDeliver(BaseModel):
     quantity_delivered: Decimal = Field(ge=0)
     notes: str | None = None
+
+    @field_validator("quantity_delivered")
+    @classmethod
+    def quantity_must_be_whole(cls, value: Decimal) -> Decimal:
+        return validate_whole_quantity(value)
 
     @field_validator("notes", mode="before")
     @classmethod
@@ -91,6 +117,17 @@ class LogisticsOrderItemOutcome(BaseModel):
     quantity_lost: Decimal = Field(ge=0)
     quantity_discarded: Decimal = Field(ge=0)
     notes: str | None = None
+
+    @field_validator(
+        "quantity_consumed",
+        "quantity_returned",
+        "quantity_returned_damaged",
+        "quantity_lost",
+        "quantity_discarded",
+    )
+    @classmethod
+    def quantities_must_be_whole(cls, value: Decimal) -> Decimal:
+        return validate_whole_quantity(value)
 
     @field_validator("notes", mode="before")
     @classmethod

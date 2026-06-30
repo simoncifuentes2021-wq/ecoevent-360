@@ -87,13 +87,19 @@ def _validate_status_transition(
     if new_status == current_status:
         return
 
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return
+
     if current_status in TERMINAL_STATUSES:
-        if current_user.role != UserRole.SUPER_ADMIN:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only SUPER_ADMIN can revert terminal events",
-            )
-    elif new_status not in VALID_STATUS_TRANSITIONS.get(current_status, set()):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only SUPER_ADMIN can revert terminal events",
+        )
+
+    if current_user.role == UserRole.ADMIN:
+        return
+
+    if new_status not in VALID_STATUS_TRANSITIONS.get(current_status, set()):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid status transition from {current_status} to {new_status}",

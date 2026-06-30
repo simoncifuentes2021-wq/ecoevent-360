@@ -5,6 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { eventStatusLabels } from "@/lib/status-labels";
 import type { Event, EventStatus } from "@/types/event";
+import type { UserRole } from "@/types/roles";
+
+const allStatuses: EventStatus[] = ["QUOTE", "PLANNING", "IN_PROGRESS", "FINISHED", "REPORT_DELIVERED", "CANCELLED"];
 
 const validTransitions: Record<EventStatus, EventStatus[]> = {
   QUOTE: ["PLANNING", "CANCELLED"],
@@ -18,16 +21,21 @@ const validTransitions: Record<EventStatus, EventStatus[]> = {
 type StatusChangeDialogProps = {
   event: Event | null;
   loading?: boolean;
+  role?: UserRole | null;
   onClose: () => void;
   onConfirm: (status: EventStatus) => Promise<void>;
 };
 
-export function StatusChangeDialog({ event, loading, onClose, onConfirm }: StatusChangeDialogProps) {
+export function StatusChangeDialog({ event, loading, role, onClose, onConfirm }: StatusChangeDialogProps) {
   const [status, setStatus] = useState<EventStatus>("PLANNING");
   const options = useMemo(() => {
     if (!event) return [];
+    if (role === "SUPER_ADMIN") return allStatuses.filter((item) => item !== event.status);
+    if (role === "ADMIN" && event.status !== "REPORT_DELIVERED" && event.status !== "CANCELLED") {
+      return allStatuses.filter((item) => item !== event.status);
+    }
     return validTransitions[event.status];
-  }, [event]);
+  }, [event, role]);
 
   useEffect(() => {
     if (options[0]) setStatus(options[0]);
@@ -57,7 +65,7 @@ export function StatusChangeDialog({ event, loading, onClose, onConfirm }: Statu
           </select>
         ) : (
           <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
-            Este evento no tiene cambios de estado disponibles desde su estado actual.
+            Este evento no tiene cambios de estado disponibles para tu rol desde su estado actual.
           </div>
         )}
         <div className="mt-6 flex justify-end gap-3">

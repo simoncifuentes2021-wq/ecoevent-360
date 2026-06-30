@@ -11,6 +11,7 @@ import { EventTable } from "@/components/events/EventTable";
 import { StatusChangeDialog } from "@/components/events/StatusChangeDialog";
 import { RoleGuard } from "@/components/layout/RoleGuard";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 import { getClients } from "@/lib/api/clients";
 import { changeEventOperationalVisibility, changeEventStatus, deleteEvent, getEvents } from "@/lib/api/events";
 import type { Client } from "@/types/client";
@@ -19,6 +20,7 @@ import type { Event, EventStatus } from "@/types/event";
 const limit = 20;
 
 export default function AdminEventsPage() {
+  const { user } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [q, setQ] = useState("");
@@ -168,7 +170,7 @@ export default function AdminEventsPage() {
           onClose={() => setCancelTarget(null)}
           onConfirm={cancelEvent}
         />
-        <StatusChangeDialog event={statusTarget} loading={statusLoading} onClose={() => setStatusTarget(null)} onConfirm={updateStatus} />
+        <StatusChangeDialog event={statusTarget} loading={statusLoading} role={user?.role} onClose={() => setStatusTarget(null)} onConfirm={updateStatus} />
       </div>
     </RoleGuard>
   );

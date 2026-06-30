@@ -296,7 +296,7 @@ function QuickOrderModal({
     form.warehouse_id &&
     form.assigned_operator_id &&
     form.items.length > 0 &&
-    form.items.every((row) => row.item_id && Number(row.quantity_requested) > 0) &&
+    form.items.every((row) => row.item_id && isPositiveInteger(row.quantity_requested)) &&
     !duplicateProductId;
 
   async function submit() {
@@ -557,8 +557,8 @@ function getValidationMessage(form: QuickOrderFormState, duplicateProductId: str
   if (!form.warehouse_id) return "Debes seleccionar una bodega.";
   if (!form.assigned_operator_id) return "Debes seleccionar un operador logistico.";
   if (form.items.length === 0) return "Debes agregar al menos un producto.";
-  if (form.items.some((row) => Number(row.quantity_requested) <= 0 || Number.isNaN(Number(row.quantity_requested)))) {
-    return "La cantidad debe ser mayor a 0.";
+  if (form.items.some((row) => !isPositiveInteger(row.quantity_requested))) {
+    return "La cantidad debe ser un numero entero mayor a 0.";
   }
   if (duplicateProductId) return "Este producto ya fue agregado al pedido.";
   return "Revisa los datos antes de guardar.";
@@ -566,6 +566,11 @@ function getValidationMessage(form: QuickOrderFormState, duplicateProductId: str
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("es-CL");
+}
+
+function isPositiveInteger(value: string | number) {
+  const numberValue = Number(value);
+  return Number.isInteger(numberValue) && numberValue > 0;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {

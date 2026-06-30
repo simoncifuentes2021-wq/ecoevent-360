@@ -276,7 +276,7 @@ function QuickOrderModal({
     form.warehouse_id &&
     form.assigned_operator_id &&
     form.items.length > 0 &&
-    form.items.every((row) => Number(row.quantity_requested) > 0);
+    form.items.every((row) => isPositiveInteger(row.quantity_requested));
 
   function addProduct(product: InventoryItem) {
     setForm((current) => ({
@@ -430,7 +430,7 @@ function QuickOrderModal({
           <p className="text-sm text-muted-foreground">Total estimado</p>
           <p className="text-2xl font-bold">{money(total)}</p>
         </div>
-        {!valid ? <p className="text-sm font-semibold text-amber-700">Selecciona evento, bodega, operador y al menos un producto con cantidad mayor a 0.</p> : null}
+        {!valid ? <p className="text-sm font-semibold text-amber-700">Selecciona evento, bodega, operador y al menos un producto con cantidad entera mayor a 0.</p> : null}
         <div className="flex justify-end gap-2">
           <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Crear pedido"}</Button>
@@ -454,4 +454,9 @@ function StatusBadge({ status }: { status: LogisticsOrderStatus }) {
 
 function money(value: string | number) {
   return Number(value || 0).toLocaleString("es-CL", { style: "currency", currency: "CLP" });
+}
+
+function isPositiveInteger(value: string | number) {
+  const numberValue = Number(value);
+  return Number.isInteger(numberValue) && numberValue > 0;
 }

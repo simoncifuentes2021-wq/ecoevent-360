@@ -832,7 +832,7 @@ function LoadItemModal({
   const [notes, setNotes] = useState(item.notes || "");
   const loaded = Number(quantityLoaded);
   const reserved = Number(item.quantity_reserved || 0);
-  const valid = Number.isFinite(loaded) && loaded > 0 && loaded <= reserved;
+  const valid = Number.isInteger(loaded) && loaded > 0 && loaded <= reserved;
 
   return (
     <ModalShell title="Registrar carga" description={item.item_name_snapshot} onClose={onClose}>
@@ -842,13 +842,13 @@ function LoadItemModal({
         </div>
         <label className="grid gap-2 text-sm font-semibold">
           Cantidad cargada
-          <Input min={0.01} max={reserved} step="0.01" type="number" value={quantityLoaded} onChange={(event) => setQuantityLoaded(event.target.value)} />
+          <Input min={1} max={reserved} step="1" type="number" value={quantityLoaded} onChange={(event) => setQuantityLoaded(event.target.value)} />
         </label>
         <label className="grid gap-2 text-sm font-semibold">
           Observacion
           <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" value={notes} onChange={(event) => setNotes(event.target.value)} />
         </label>
-        {!valid ? <p className="text-sm font-semibold text-amber-700">La cantidad debe ser mayor a 0 y no superar lo reservado.</p> : null}
+        {!valid ? <p className="text-sm font-semibold text-amber-700">La cantidad debe ser un numero entero mayor a 0 y no superar lo reservado.</p> : null}
         <div className="flex justify-end gap-2">
           <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Guardar carga"}</Button>
@@ -873,7 +873,7 @@ function DeliverItemModal({
   const [notes, setNotes] = useState(item.notes || "");
   const delivered = Number(quantityDelivered);
   const dispatched = Number(item.quantity_dispatched || 0);
-  const valid = Number.isFinite(delivered) && delivered >= 0 && delivered <= dispatched;
+  const valid = Number.isInteger(delivered) && delivered >= 0 && delivered <= dispatched;
 
   return (
     <ModalShell title="Registrar entrega" description={item.item_name_snapshot} onClose={onClose}>
@@ -883,13 +883,13 @@ function DeliverItemModal({
         </div>
         <label className="grid gap-2 text-sm font-semibold">
           Cantidad entregada
-          <Input min={0} max={dispatched} step="0.01" type="number" value={quantityDelivered} onChange={(event) => setQuantityDelivered(event.target.value)} />
+          <Input min={0} max={dispatched} step="1" type="number" value={quantityDelivered} onChange={(event) => setQuantityDelivered(event.target.value)} />
         </label>
         <label className="grid gap-2 text-sm font-semibold">
           Observacion
           <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" value={notes} onChange={(event) => setNotes(event.target.value)} />
         </label>
-        {!valid ? <p className="text-sm font-semibold text-amber-700">La cantidad entregada no puede ser negativa ni superar lo despachado.</p> : null}
+        {!valid ? <p className="text-sm font-semibold text-amber-700">La cantidad entregada debe ser un numero entero, no puede ser negativa ni superar lo despachado.</p> : null}
         <div className="flex justify-end gap-2">
           <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Guardar entrega"}</Button>
@@ -971,7 +971,7 @@ function OutcomeItemModal({
   const total = values.reduce((sum, value) => sum + value, 0);
   const pending = Math.max(delivered - total, 0);
   const valid =
-    values.every((value) => Number.isFinite(value) && value >= 0) &&
+    values.every((value) => Number.isInteger(value) && value >= 0) &&
     total <= delivered &&
     !(item.item_type_snapshot === "RETURNABLE" && values[0] > 0);
 
@@ -1032,7 +1032,7 @@ function OutcomeItemModal({
         </label>
         {!valid ? (
           <p className="text-sm font-semibold text-amber-700">
-            Las cantidades no pueden ser negativas, la suma no puede superar lo entregado y los retornables no pueden marcarse como consumidos.
+            Las cantidades deben ser numeros enteros, no pueden ser negativas, la suma no puede superar lo entregado y los retornables no pueden marcarse como consumidos.
           </p>
         ) : null}
         <div className="flex justify-end gap-2">
@@ -1058,7 +1058,7 @@ function OutcomeInput({
   return (
     <label className="grid gap-2 text-sm font-semibold">
       {label}
-      <Input disabled={disabled} min={0} step="0.01" type="number" value={value} onChange={(event) => onChange(event.target.value)} />
+      <Input disabled={disabled} min={0} step="1" type="number" value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
