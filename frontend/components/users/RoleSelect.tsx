@@ -5,7 +5,14 @@ import type { UseFormRegisterReturn } from "react-hook-form";
 import { canCreateSuperAdmin } from "@/lib/permissions";
 import type { UserRole } from "@/types/roles";
 
-const roles: UserRole[] = ["SUPER_ADMIN", "ADMIN", "CLIENT", "SUPERVISOR", "WORKER"];
+const roles: UserRole[] = [
+  "SUPER_ADMIN",
+  "ADMIN",
+  "CLIENT",
+  "SUPERVISOR",
+  "LOGISTICS_OPERATOR",
+  "WORKER"
+];
 
 export function RoleSelect({
   registration,

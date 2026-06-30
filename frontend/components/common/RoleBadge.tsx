@@ -6,6 +6,7 @@ const labels: Record<UserRole, string> = {
   ADMIN: "Admin",
   CLIENT: "Cliente",
   SUPERVISOR: "Supervisor",
+  LOGISTICS_OPERATOR: "Operador logistico",
   WORKER: "Trabajador"
 };
 

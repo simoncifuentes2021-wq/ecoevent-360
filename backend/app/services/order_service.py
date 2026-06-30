@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.permissions import (
     can_access_event,
     can_access_order,
+    can_create_logistics_order,
     can_complete_order_item_stage,
     can_manage_event,
     can_manage_order,
@@ -40,7 +41,12 @@ from app.schemas.order_schema import (
 from app.services.file_storage_service import delete_stored_file, save_order_evidence_file
 
 TERMINAL_ORDER_STATUSES = {OrderStatus.CLOSED, OrderStatus.CANCELLED}
-NON_CLIENT_ROLES = {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.WORKER}
+LOGISTICS_ORDER_ROLES = {
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.SUPERVISOR,
+    UserRole.LOGISTICS_OPERATOR,
+}
 STAGE_FOLDERS = {
     OrderEvidenceStage.LOAD: "load",
     OrderEvidenceStage.DELIVERY: "delivery",
@@ -163,6 +169,15 @@ def _ensure_event_access(db: Session, user: User, event_id: UUID, *, manage: boo
     return event
 
 
+def _ensure_can_create_logistics_order(db: Session, user: User, event_id: UUID) -> Event:
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    if not can_create_logistics_order(user, event_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+    return event
+
+
 def _ensure_order_mutable(order: EventOrder, user: User) -> None:
     if order.status in TERMINAL_ORDER_STATUSES and user.role != UserRole.SUPER_ADMIN:
         raise HTTPException(
@@ -177,10 +192,10 @@ def _validate_assignee(db: Session, event_id: UUID, user_id: UUID | None) -> Non
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assigned user not found")
-    if user.role not in {UserRole.SUPERVISOR, UserRole.WORKER}:
+    if user.role not in {UserRole.SUPERVISOR, UserRole.LOGISTICS_OPERATOR}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Assigned user must be supervisor or worker",
+            detail="Assigned user must be supervisor or logistics operator",
         )
     assigned = db.scalar(
         select(EventStaff.id).where(EventStaff.event_id == event_id, EventStaff.user_id == user_id)
@@ -253,7 +268,7 @@ def _calculate_item_total(quantity: Decimal, unit_price: Decimal | None) -> Deci
 
 
 def create_order(db: Session, event_id: UUID, payload: EventOrderCreate, user: User) -> EventOrder:
-    _ensure_event_access(db, user, event_id, manage=True)
+    _ensure_can_create_logistics_order(db, user, event_id)
     _validate_assignee(db, event_id, payload.assigned_to)
     order = EventOrder(
         event_id=event_id,
@@ -276,9 +291,15 @@ def list_event_orders(
     page: int,
     limit: int,
 ) -> tuple[list[EventOrder], int]:
-    _ensure_event_access(db, user, event_id)
-    filters = [EventOrder.event_id == event_id]
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
     if user.role == UserRole.WORKER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+    if user.role != UserRole.LOGISTICS_OPERATOR:
+        _ensure_event_access(db, user, event_id)
+    filters = [EventOrder.event_id == event_id]
+    if user.role == UserRole.LOGISTICS_OPERATOR:
         filters.append(EventOrder.assigned_to == user.id)
     if status_filter is not None:
         filters.append(EventOrder.status == status_filter)
@@ -299,7 +320,7 @@ def list_event_orders(
 
 
 def list_my_orders(db: Session, *, user: User, page: int, limit: int) -> tuple[list[EventOrder], int]:
-    if user.role not in NON_CLIENT_ROLES:
+    if user.role not in LOGISTICS_ORDER_ROLES:
         return [], 0
     filters = [EventOrder.assigned_to == user.id]
     total = db.scalar(select(func.count()).select_from(EventOrder).where(*filters)) or 0

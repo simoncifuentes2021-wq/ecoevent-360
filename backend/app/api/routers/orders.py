@@ -41,7 +41,7 @@ def list_catalog_items(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    if current_user.role == UserRole.CLIENT:
+    if current_user.role in {UserRole.CLIENT, UserRole.WORKER}:
         return CatalogItemListResponse(items=[], total=0, page=page, limit=limit)
     items, total = order_service.list_catalog_items(
         db, q=q, category=category, is_active=is_active, page=page, limit=limit
@@ -81,7 +81,7 @@ def get_catalog_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    if current_user.role == UserRole.CLIENT:
+    if current_user.role in {UserRole.CLIENT, UserRole.WORKER}:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")

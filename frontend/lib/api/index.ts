@@ -38,6 +38,14 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
     try {
       const data = (await response.json()) as { detail?: unknown };
       if (typeof data.detail === "string") detail = data.detail;
+      if (
+        data.detail &&
+        typeof data.detail === "object" &&
+        "message" in data.detail &&
+        typeof data.detail.message === "string"
+      ) {
+        detail = data.detail.message;
+      }
       if (Array.isArray(data.detail)) detail = "La solicitud contiene datos invalidos.";
     } catch {
       detail = "No se pudo completar la solicitud.";

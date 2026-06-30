@@ -23,7 +23,7 @@ const schema = z
     email: z.string().email("Email inválido"),
     phone: z.string().optional(),
     password: z.string().optional(),
-    role: z.enum(["SUPER_ADMIN", "ADMIN", "CLIENT", "SUPERVISOR", "WORKER"]),
+    role: z.enum(["SUPER_ADMIN", "ADMIN", "CLIENT", "SUPERVISOR", "LOGISTICS_OPERATOR", "WORKER"]),
     client_id: z.string().optional(),
     is_active: z.boolean().optional()
   })

@@ -24,11 +24,14 @@ from app.models.enums import (
     CarbonScope,
     EventStatus,
     IncidentStatus,
+    InventoryItemType,
+    LogisticsOrderStatus,
     OrderEvidenceStage,
     OrderItemStageStatus,
     OrderStatus,
     PriorityLevel,
     ReportStatus,
+    StockMovementType,
     SurveyStatus,
     TaskStatus,
     UserRole,
@@ -67,6 +70,11 @@ order_item_stage_status_enum = Enum(
 )
 order_evidence_stage_enum = Enum(
     OrderEvidenceStage, name="order_evidence_stage", create_type=False
+)
+inventory_item_type_enum = Enum(InventoryItemType, name="inventory_item_type", create_type=False)
+stock_movement_type_enum = Enum(StockMovementType, name="stock_movement_type", create_type=False)
+logistics_order_status_enum = Enum(
+    LogisticsOrderStatus, name="logistics_order_status", create_type=False
 )
 
 
@@ -119,6 +127,7 @@ class User(Base):
     assigned_orders: Mapped[list["EventOrder"]] = relationship(
         back_populates="assignee", foreign_keys="EventOrder.assigned_to"
     )
+    warehouse_assignments: Mapped[list["WarehouseUser"]] = relationship(back_populates="user")
 
 
 class Event(Base):
@@ -174,6 +183,7 @@ class Event(Base):
     reports: Mapped[list["Report"]] = relationship(back_populates="event")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="event")
     orders: Mapped[list["EventOrder"]] = relationship(back_populates="event")
+    logistics_orders: Mapped[list["LogisticsOrder"]] = relationship(back_populates="event")
 
 
 class EventZone(Base):
@@ -356,6 +366,291 @@ class OrderEvidence(Base):
     order: Mapped[EventOrder] = relationship(back_populates="evidences")
     order_item: Mapped[EventOrderItem | None] = relationship(back_populates="evidences")
     uploader: Mapped[User | None] = relationship()
+
+
+class Warehouse(Base):
+    __tablename__ = "warehouses"
+    __table_args__ = (
+        Index("idx_warehouses_is_active", "is_active"),
+        Index("idx_warehouses_city", "city"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    address: Mapped[str | None] = mapped_column(Text)
+    city: Mapped[str | None] = mapped_column(String(120))
+    notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    users: Mapped[list["WarehouseUser"]] = relationship(back_populates="warehouse")
+    stock_balances: Mapped[list["StockBalance"]] = relationship(back_populates="warehouse")
+    stock_movements: Mapped[list["StockMovement"]] = relationship(back_populates="warehouse")
+
+
+class WarehouseUser(Base):
+    __tablename__ = "warehouse_users"
+    __table_args__ = (
+        UniqueConstraint("warehouse_id", "user_id"),
+        Index("idx_warehouse_users_warehouse_id", "warehouse_id"),
+        Index("idx_warehouse_users_user_id", "user_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    warehouse_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    can_view_stock: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    can_manage_stock: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    can_dispatch_orders: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = created_at_column()
+
+    warehouse: Mapped[Warehouse] = relationship(back_populates="users")
+    user: Mapped[User] = relationship(back_populates="warehouse_assignments")
+
+
+class InventoryItem(Base):
+    __tablename__ = "inventory_items"
+    __table_args__ = (
+        CheckConstraint("unit_price >= 0"),
+        CheckConstraint("replacement_cost >= 0"),
+        CheckConstraint("min_stock >= 0"),
+        Index("idx_inventory_items_sku", "sku"),
+        Index("idx_inventory_items_item_type", "item_type"),
+        Index("idx_inventory_items_is_active", "is_active"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    sku: Mapped[str | None] = mapped_column(String(80))
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    item_type: Mapped[InventoryItemType] = mapped_column(inventory_item_type_enum, nullable=False)
+    return_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    unit: Mapped[str | None] = mapped_column(String(50))
+    # Future order flow: copy this to logistics_order_items.unit_price_snapshot and
+    # calculate total_price = quantity_requested * unit_price_snapshot.
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    replacement_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    min_stock: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    creator: Mapped[User | None] = relationship()
+    stock_balances: Mapped[list["StockBalance"]] = relationship(back_populates="item")
+    stock_movements: Mapped[list["StockMovement"]] = relationship(back_populates="item")
+    logistics_order_items: Mapped[list["LogisticsOrderItem"]] = relationship(back_populates="item")
+
+
+class StockBalance(Base):
+    __tablename__ = "stock_balances"
+    __table_args__ = (
+        UniqueConstraint("warehouse_id", "item_id"),
+        CheckConstraint("quantity_on_hand >= 0"),
+        CheckConstraint("quantity_reserved >= 0"),
+        CheckConstraint("quantity_damaged >= 0"),
+        CheckConstraint("quantity_reserved <= quantity_on_hand"),
+        CheckConstraint("quantity_damaged <= quantity_on_hand"),
+        CheckConstraint("(quantity_on_hand - quantity_reserved - quantity_damaged) >= 0"),
+        Index("idx_stock_balances_warehouse_id", "warehouse_id"),
+        Index("idx_stock_balances_item_id", "item_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    warehouse_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="CASCADE"), nullable=False
+    )
+    item_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False
+    )
+    quantity_on_hand: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    quantity_reserved: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    quantity_damaged: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    warehouse: Mapped[Warehouse] = relationship(back_populates="stock_balances")
+    item: Mapped[InventoryItem] = relationship(back_populates="stock_balances")
+    movements: Mapped[list["StockMovement"]] = relationship(back_populates="stock_balance")
+
+
+class StockMovement(Base):
+    __tablename__ = "stock_movements"
+    __table_args__ = (
+        CheckConstraint("quantity > 0"),
+        Index("idx_stock_movements_warehouse_id", "warehouse_id"),
+        Index("idx_stock_movements_item_id", "item_id"),
+        Index("idx_stock_movements_stock_balance_id", "stock_balance_id"),
+        Index("idx_stock_movements_movement_type", "movement_type"),
+        Index("idx_stock_movements_created_at", "created_at"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    warehouse_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="CASCADE"), nullable=False
+    )
+    item_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False
+    )
+    stock_balance_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("stock_balances.id", ondelete="SET NULL")
+    )
+    movement_type: Mapped[StockMovementType] = mapped_column(
+        stock_movement_type_enum, nullable=False
+    )
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    previous_quantity_on_hand: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    new_quantity_on_hand: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    previous_quantity_reserved: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    new_quantity_reserved: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    previous_quantity_damaged: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    new_quantity_damaged: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    reference_type: Mapped[str | None] = mapped_column(String(80))
+    reference_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    reason: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+    warehouse: Mapped[Warehouse] = relationship(back_populates="stock_movements")
+    item: Mapped[InventoryItem] = relationship(back_populates="stock_movements")
+    stock_balance: Mapped[StockBalance | None] = relationship(back_populates="movements")
+    creator: Mapped[User | None] = relationship()
+
+
+class LogisticsOrder(Base):
+    __tablename__ = "logistics_orders"
+    __table_args__ = (
+        Index("idx_logistics_orders_event_id", "event_id"),
+        Index("idx_logistics_orders_warehouse_id", "warehouse_id"),
+        Index("idx_logistics_orders_assigned_operator_id", "assigned_operator_id"),
+        Index("idx_logistics_orders_status", "status"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    warehouse_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False
+    )
+    requested_by: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    assigned_operator_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[LogisticsOrderStatus] = mapped_column(
+        logistics_order_status_enum, nullable=False, server_default=text("'REQUESTED'")
+    )
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    delivery_zone: Mapped[str | None] = mapped_column(String(180))
+    delivery_notes: Mapped[str | None] = mapped_column(Text)
+    total_estimated_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    reserved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reserved_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    prepared_at: Mapped[datetime | None] = mapped_column(DateTime)
+    prepared_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime)
+    dispatched_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    dispatch_notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    event: Mapped[Event] = relationship(back_populates="logistics_orders")
+    warehouse: Mapped[Warehouse] = relationship()
+    requester: Mapped[User] = relationship(foreign_keys=[requested_by])
+    assigned_operator: Mapped[User] = relationship(foreign_keys=[assigned_operator_id])
+    reserver: Mapped[User | None] = relationship(foreign_keys=[reserved_by])
+    preparer: Mapped[User | None] = relationship(foreign_keys=[prepared_by])
+    dispatcher: Mapped[User | None] = relationship(foreign_keys=[dispatched_by])
+    items: Mapped[list["LogisticsOrderItem"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan"
+    )
+
+
+class LogisticsOrderItem(Base):
+    __tablename__ = "logistics_order_items"
+    __table_args__ = (
+        CheckConstraint("quantity_requested > 0"),
+        CheckConstraint("quantity_reserved >= 0"),
+        CheckConstraint("quantity_missing >= 0"),
+        CheckConstraint("quantity_reserved <= quantity_requested"),
+        CheckConstraint("quantity_loaded >= 0"),
+        CheckConstraint("quantity_dispatched >= 0"),
+        CheckConstraint("quantity_loaded <= quantity_reserved"),
+        CheckConstraint("quantity_dispatched <= quantity_loaded"),
+        CheckConstraint("unit_price_snapshot >= 0"),
+        CheckConstraint("total_price >= 0"),
+        Index("idx_logistics_order_items_order_id", "order_id"),
+        Index("idx_logistics_order_items_item_id", "item_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    order_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logistics_orders.id", ondelete="CASCADE"), nullable=False
+    )
+    item_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="RESTRICT"), nullable=False
+    )
+    item_name_snapshot: Mapped[str] = mapped_column(String(180), nullable=False)
+    item_type_snapshot: Mapped[str] = mapped_column(String(60), nullable=False)
+    unit_snapshot: Mapped[str | None] = mapped_column(String(50))
+    quantity_requested: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    quantity_reserved: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    quantity_missing: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    reservation_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default=text("'PENDING'")
+    )
+    quantity_loaded: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    quantity_dispatched: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    preparation_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default=text("'PENDING'")
+    )
+    unit_price_snapshot: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    total_price: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    order: Mapped[LogisticsOrder] = relationship(back_populates="items")
+    item: Mapped[InventoryItem] = relationship(back_populates="logistics_order_items")
 
 
 class Service(Base):

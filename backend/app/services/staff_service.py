@@ -9,7 +9,7 @@ from app.models.core import Event, EventStaff, Task, User
 from app.models.enums import TaskStatus, UserRole
 from app.schemas.staff_schema import EventStaffCreate
 
-ASSIGNABLE_ROLES = {UserRole.SUPERVISOR, UserRole.WORKER}
+ASSIGNABLE_ROLES = {UserRole.SUPERVISOR, UserRole.WORKER, UserRole.LOGISTICS_OPERATOR}
 ACTIVE_TASK_STATUSES = {TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.OBSERVED}
 
 
@@ -35,7 +35,7 @@ def assign_staff(
     if user.role not in ASSIGNABLE_ROLES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only SUPERVISOR or WORKER users can be assigned to events",
+            detail="Only SUPERVISOR, WORKER or LOGISTICS_OPERATOR users can be assigned to events",
         )
 
     existing = db.scalar(

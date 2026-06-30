@@ -36,6 +36,22 @@ export function canOperateEvent(role?: UserRole | null) {
   return role === "SUPER_ADMIN" || role === "ADMIN" || role === "SUPERVISOR";
 }
 
+export function isLogisticsOperator(role?: UserRole | null) {
+  return role === "LOGISTICS_OPERATOR";
+}
+
+export function canViewLogisticsOrders(role?: UserRole | null) {
+  return isAdminRole(role) || role === "SUPERVISOR" || role === "LOGISTICS_OPERATOR";
+}
+
+export function canManageLogisticsOrders(role?: UserRole | null) {
+  return isAdminRole(role) || role === "SUPERVISOR" || role === "LOGISTICS_OPERATOR";
+}
+
+export function canCreateLogisticsOrder(role?: UserRole | null) {
+  return isAdminRole(role) || role === "SUPERVISOR";
+}
+
 export function canManageEventServices(role?: UserRole | null) {
   return isAdminRole(role);
 }

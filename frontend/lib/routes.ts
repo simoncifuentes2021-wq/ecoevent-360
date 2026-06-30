@@ -7,10 +7,12 @@ import {
   FileText,
   Home,
   Leaf,
+  Boxes,
   Recycle,
   Settings,
   ShieldCheck,
   Sparkles,
+  ShoppingCart,
   Upload,
   PackageSearch,
   Users,
@@ -23,6 +25,8 @@ export type NavItem = {
   href: string;
   label: string;
   icon: typeof Home;
+  disabled?: boolean;
+  indent?: boolean;
 };
 
 export const roleNavigation: Record<UserRole, NavItem[]> = {
@@ -32,8 +36,13 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
     { href: "/admin/eventos", label: "Eventos", icon: Sparkles },
     { href: "/admin/pedidos", label: "Pedidos", icon: PackageSearch },
+    { href: "/admin/stock", label: "Stock", icon: Boxes },
+    { href: "/admin/stock/bodegas", label: "Bodegas", icon: Boxes, indent: true },
+    { href: "/admin/stock/productos", label: "Productos", icon: PackageSearch, indent: true },
+    { href: "/admin/stock/movimientos", label: "Movimientos", icon: ClipboardList, indent: true },
+    { href: "/admin/stock/compras", label: "Compras", icon: ShoppingCart, disabled: true, indent: true },
     { href: "/admin/servicios", label: "Servicios", icon: Settings },
-    { href: "/admin/catalogo-elementos", label: "Catálogo elementos", icon: PackageSearch },
+    { href: "/admin/catalogo-elementos", label: "Catalogo pedidos", icon: PackageSearch },
     { href: "/admin/residuos/tipos", label: "Residuos", icon: Recycle },
     { href: "/admin/huella/factores", label: "Factores", icon: Leaf },
     { href: "/admin/auditoria", label: "Auditoria", icon: ShieldCheck },
@@ -46,8 +55,13 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
     { href: "/admin/eventos", label: "Eventos", icon: Sparkles },
     { href: "/admin/pedidos", label: "Pedidos", icon: PackageSearch },
+    { href: "/admin/stock", label: "Stock", icon: Boxes },
+    { href: "/admin/stock/bodegas", label: "Bodegas", icon: Boxes, indent: true },
+    { href: "/admin/stock/productos", label: "Productos", icon: PackageSearch, indent: true },
+    { href: "/admin/stock/movimientos", label: "Movimientos", icon: ClipboardList, indent: true },
+    { href: "/admin/stock/compras", label: "Compras", icon: ShoppingCart, disabled: true, indent: true },
     { href: "/admin/servicios", label: "Servicios", icon: Settings },
-    { href: "/admin/catalogo-elementos", label: "Catálogo elementos", icon: PackageSearch },
+    { href: "/admin/catalogo-elementos", label: "Catalogo pedidos", icon: PackageSearch },
     { href: "/admin/residuos/tipos", label: "Residuos", icon: Recycle },
     { href: "/admin/huella/factores", label: "Factores", icon: Leaf },
     { href: "/admin/auditoria", label: "Auditoria", icon: ShieldCheck },
@@ -65,7 +79,6 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/supervisor/dashboard", label: "Dashboard", icon: Home },
     { href: "/supervisor/eventos", label: "Eventos asignados", icon: Sparkles },
     { href: "/worker/dashboard", label: "Panel terreno", icon: Home },
-    { href: "/worker/pedidos", label: "Mis pedidos", icon: PackageSearch },
     { href: "/worker/mis-tareas", label: "Mis tareas", icon: ClipboardList },
     { href: "/worker/incidencias", label: "Incidencias", icon: AlertTriangle },
     { href: "/worker/reportar-incidencia", label: "Reportar incidencia", icon: AlertTriangle },
@@ -74,9 +87,16 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/worker/registrar-consumo", label: "Consumos", icon: Leaf },
     { href: "/supervisor/alertas", label: "Alertas", icon: ShieldCheck }
   ],
+  LOGISTICS_OPERATOR: [
+    { href: "/logistica/dashboard", label: "Dashboard", icon: Home },
+    { href: "/logistica/mis-pedidos", label: "Mis pedidos", icon: PackageSearch },
+    { href: "/logistica/stock", label: "Inventario", icon: Boxes },
+    { href: "/logistica/stock/movimientos", label: "Movimientos", icon: ClipboardList, indent: true },
+    { href: "/logistica/productos", label: "Productos", icon: PackageSearch, disabled: true },
+    { href: "/logistica/compras", label: "Compras", icon: ShoppingCart, disabled: true }
+  ],
   WORKER: [
     { href: "/worker/dashboard", label: "Inicio", icon: Home },
-    { href: "/worker/pedidos", label: "Mis pedidos", icon: PackageSearch },
     { href: "/worker/mis-tareas", label: "Mis tareas", icon: ClipboardList },
     { href: "/worker/incidencias", label: "Incidencias", icon: AlertTriangle },
     { href: "/worker/reportar-incidencia", label: "Reportar incidencia", icon: AlertTriangle },

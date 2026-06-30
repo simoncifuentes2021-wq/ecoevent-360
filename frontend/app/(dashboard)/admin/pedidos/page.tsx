@@ -172,7 +172,7 @@ function QuickOrderModal({ events, onClose, onSubmit }: { events: Event[]; onClo
     void loadContext();
   }, [eventId]);
 
-  const assignees = staff.filter((item) => item.user && ["WORKER", "SUPERVISOR"].includes(item.user.role));
+  const assignees = staff.filter((item) => item.user && ["SUPERVISOR", "LOGISTICS_OPERATOR"].includes(item.user.role));
   const selectedItems = Object.values(selected);
   const filteredCatalog = catalog.filter((item) => `${item.name} ${item.category || ""}`.toLowerCase().includes(query.toLowerCase()));
   const valid = Boolean(eventId && form.title?.trim());

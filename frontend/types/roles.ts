@@ -1,1 +1,7 @@
-export type UserRole = "SUPER_ADMIN" | "ADMIN" | "CLIENT" | "SUPERVISOR" | "WORKER";
+export type UserRole =
+  | "SUPER_ADMIN"
+  | "ADMIN"
+  | "CLIENT"
+  | "SUPERVISOR"
+  | "LOGISTICS_OPERATOR"
+  | "WORKER";

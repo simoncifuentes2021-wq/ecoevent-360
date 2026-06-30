@@ -39,7 +39,7 @@ export function StaffTab({ eventId, role }: { eventId: string; role?: UserRole |
         ]);
         setUsers(
           userData.items.filter((user) => {
-            const isAssignable = user.role === "WORKER" || user.role === "SUPERVISOR";
+            const isAssignable = user.role === "WORKER" || user.role === "SUPERVISOR" || user.role === "LOGISTICS_OPERATOR";
             const belongsToEventClient = !user.client_id || user.client_id === eventData.client_id;
             return user.is_active && isAssignable && belongsToEventClient;
           })

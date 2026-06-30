@@ -27,13 +27,13 @@ type QuickItem = {
 
 export function EventOrdersTab({ eventId, role }: { eventId: string; role?: UserRole | null }) {
   const canEdit = role === "SUPER_ADMIN" || role === "ADMIN" || role === "SUPERVISOR";
-  const detailBaseHref = role === "SUPERVISOR" || role === "WORKER" ? "/worker/pedidos" : "/admin/pedidos";
+  const detailBaseHref = role === "LOGISTICS_OPERATOR" ? "/logistica/mis-pedidos" : "/admin/pedidos";
   const [orders, setOrders] = useState<EventOrder[]>([]);
   const [staff, setStaff] = useState<EventStaff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const assignees = useMemo(() => staff.filter((item) => item.user && ["WORKER", "SUPERVISOR"].includes(item.user.role)), [staff]);
+  const assignees = useMemo(() => staff.filter((item) => item.user && ["SUPERVISOR", "LOGISTICS_OPERATOR"].includes(item.user.role)), [staff]);
 
   const load = useCallback(async () => {
     setLoading(true);

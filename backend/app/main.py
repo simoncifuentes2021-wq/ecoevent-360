@@ -52,6 +52,10 @@ app = FastAPI(
         {"name": "dashboard", "description": "Indicadores resumidos por evento."},
         {"name": "reports", "description": "Generacion de reportes PDF para clientes."},
         {"name": "orders", "description": "Pedidos logisticos, catalogo, checklist y evidencias."},
+        {"name": "logistics orders", "description": "Pedidos logisticos nuevos con inventario y snapshots de precio."},
+        {"name": "warehouses", "description": "Bodegas y operadores logisticos asignados."},
+        {"name": "inventory", "description": "Catalogo de productos de inventario logistico."},
+        {"name": "stock", "description": "Balances de stock por bodega y producto."},
     ],
 )
 

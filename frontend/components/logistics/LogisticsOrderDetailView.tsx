@@ -1,0 +1,520 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowLeft, RefreshCcw } from "lucide-react";
+
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
+import { ModalShell } from "@/components/common/ModalShell";
+import { PageHeader } from "@/components/common/PageHeader";
+import { RoleGuard } from "@/components/layout/RoleGuard";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  checkLogisticsOrderStock,
+  dispatchLogisticsOrder,
+  getLogisticsOrder,
+  loadLogisticsOrderItem,
+  reserveLogisticsOrderStock,
+  startLogisticsOrderPreparation,
+  unreserveLogisticsOrderStock
+} from "@/lib/api/logistics-orders";
+import type { LogisticsOrder, LogisticsOrderStatus, LogisticsOrderStockCheck } from "@/types/logistics-order";
+import type { UserRole } from "@/types/roles";
+
+const statusLabels: Record<LogisticsOrderStatus, string> = {
+  REQUESTED: "Solicitado",
+  ASSIGNED: "Asignado",
+  STOCK_REVIEW: "Revision stock",
+  RESERVED: "Stock reservado",
+  INSUFFICIENT_STOCK: "Stock insuficiente",
+  IN_PREPARATION: "En preparacion",
+  LOADED: "Cargado",
+  OUT_OF_WAREHOUSE: "Salida de bodega",
+  OBSERVED: "Observado",
+  CANCELLED: "Cancelado"
+};
+
+export function LogisticsOrderDetailView({
+  orderId,
+  backHref,
+  roles
+}: {
+  orderId: string;
+  backHref: string;
+  roles: UserRole[];
+}) {
+  const [order, setOrder] = useState<LogisticsOrder | null>(null);
+  const [stockCheck, setStockCheck] = useState<LogisticsOrderStockCheck | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [stockError, setStockError] = useState<string | null>(null);
+  const [loadTarget, setLoadTarget] = useState<LogisticsOrder["items"][number] | null>(null);
+  const [dispatchOpen, setDispatchOpen] = useState(false);
+  const canReserve = roles.some((role) => ["SUPER_ADMIN", "ADMIN", "LOGISTICS_OPERATOR"].includes(role));
+  const canOperate = canReserve;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setOrder(await getLogisticsOrder(orderId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No pudimos cargar el pedido.");
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId]);
+
+  const loadStockCheck = useCallback(async () => {
+    setStockLoading(true);
+    setStockError(null);
+    try {
+      setStockCheck(await checkLogisticsOrderStock(orderId));
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos revisar el stock.");
+    } finally {
+      setStockLoading(false);
+    }
+  }, [orderId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function reserveStock() {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      setOrder(await reserveLogisticsOrderStock(orderId));
+      await loadStockCheck();
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos reservar el stock.");
+      await loadStockCheck();
+      await load();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function unreserveStock() {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      setOrder(await unreserveLogisticsOrderStock(orderId));
+      await loadStockCheck();
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos liberar la reserva.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function startPreparation() {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      setOrder(await startLogisticsOrderPreparation(orderId));
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos iniciar la preparacion.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function submitLoad(itemId: string, quantityLoaded: number, notes?: string | null) {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      await loadLogisticsOrderItem(itemId, { quantity_loaded: quantityLoaded, notes });
+      setLoadTarget(null);
+      await load();
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos registrar la carga.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function submitDispatch(notes?: string | null) {
+    setActionLoading(true);
+    setStockError(null);
+    try {
+      setOrder(await dispatchLogisticsOrder(orderId, { dispatch_notes: notes }));
+      setDispatchOpen(false);
+      await loadStockCheck();
+    } catch (err) {
+      setStockError(err instanceof Error ? err.message : "No pudimos confirmar la salida de bodega.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  return (
+    <RoleGuard roles={roles}>
+      <div className="space-y-6">
+        <Link href={backHref}>
+          <Button type="button" variant="secondary">
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </Button>
+        </Link>
+        {loading ? <LoadingState /> : null}
+        {error ? <ErrorState message={error} onRetry={load} /> : null}
+        {order ? (
+          <>
+            <PageHeader
+              title={order.title}
+              description={`Evento: ${order.event?.name || "-"} - Bodega: ${order.warehouse?.name || "-"}`}
+              actions={<StatusBadge status={order.status} />}
+            />
+            <div className="grid gap-4 md:grid-cols-3">
+              <Metric label="Total estimado" value={money(order.total_estimated_amount)} />
+              <Metric label="Zona/lugar entrega" value={order.delivery_zone || "-"} />
+              <Metric label="Operador" value={order.assigned_operator?.full_name || "-"} />
+            </div>
+            {order.delivery_notes ? (
+              <Card>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">Observaciones</p>
+                  <p className="mt-1 font-semibold">{order.delivery_notes}</p>
+                </CardContent>
+              </Card>
+            ) : null}
+            <Card>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-left text-sm">
+                    <thead className="border-b text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="py-3 pr-4">Producto</th>
+                        <th className="py-3 pr-4">Tipo</th>
+                        <th className="py-3 pr-4">Unidad</th>
+                        <th className="py-3 pr-4">Cantidad</th>
+                        <th className="py-3 pr-4">Precio usado</th>
+                        <th className="py-3 pr-4">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {order.items.map((item) => (
+                        <tr className="border-b last:border-0" key={item.id}>
+                          <td className="py-3 pr-4 font-semibold">{item.item_name_snapshot}</td>
+                          <td className="py-3 pr-4">{item.item_type_snapshot}</td>
+                          <td className="py-3 pr-4">{item.unit_snapshot || "-"}</td>
+                          <td className="py-3 pr-4">{quantity(item.quantity_requested)}</td>
+                          <td className="py-3 pr-4">{money(item.unit_price_snapshot)}</td>
+                          <td className="py-3 pr-4">{money(item.total_price)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent>
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                  <div>
+                    <h2 className="text-lg font-bold">Disponibilidad de stock</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Solo se considera stock disponible en la bodega del pedido: {order.warehouse?.name || "-"}.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button disabled={stockLoading || actionLoading} onClick={loadStockCheck} type="button" variant="secondary">
+                      <RefreshCcw className="h-4 w-4" />
+                      Revisar stock
+                    </Button>
+                    {canReserve && (order.status === "ASSIGNED" || order.status === "INSUFFICIENT_STOCK") ? (
+                      <Button
+                        disabled={actionLoading || stockLoading || (stockCheck ? !stockCheck.can_reserve_all : false)}
+                        onClick={reserveStock}
+                        type="button"
+                      >
+                        Reservar stock
+                      </Button>
+                    ) : null}
+                    {canReserve && order.status === "RESERVED" ? (
+                      <Button disabled={actionLoading} onClick={unreserveStock} type="button" variant="secondary">
+                        Liberar reserva
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                {stockError ? <p className="mt-3 text-sm font-semibold text-amber-700">{stockError}</p> : null}
+                {order.status === "RESERVED" ? <p className="mt-3 text-sm font-semibold text-emerald-700">Stock reservado.</p> : null}
+                {order.status === "INSUFFICIENT_STOCK" || (stockCheck && !stockCheck.can_reserve_all) ? (
+                  <p className="mt-3 text-sm font-semibold text-amber-700">
+                    No hay stock suficiente en esta bodega para reservar este pedido.
+                  </p>
+                ) : null}
+                {stockLoading ? <LoadingState /> : null}
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[980px] text-left text-sm">
+                    <thead className="border-b text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="py-3 pr-4">Producto</th>
+                        <th className="py-3 pr-4">Solicitado</th>
+                        <th className="py-3 pr-4">Reservado</th>
+                        <th className="py-3 pr-4">Stock fisico</th>
+                        <th className="py-3 pr-4">Ya reservado en bodega</th>
+                        <th className="py-3 pr-4">Danado</th>
+                        <th className="py-3 pr-4">Disponible</th>
+                        <th className="py-3 pr-4">Faltante</th>
+                        <th className="py-3 pr-4">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(stockCheck?.items || order.items.map(itemToStockRow)).map((item) => (
+                        <tr className="border-b last:border-0" key={item.item_id}>
+                          <td className="py-3 pr-4 font-semibold">{item.item_name_snapshot}</td>
+                          <td className="py-3 pr-4">{quantity(item.quantity_requested)}</td>
+                          <td className="py-3 pr-4">{quantity(item.quantity_reserved)}</td>
+                          <td className="py-3 pr-4">{quantity(item.quantity_on_hand)}</td>
+                          <td className="py-3 pr-4">{quantity(item.quantity_reserved_in_stock)}</td>
+                          <td className="py-3 pr-4">{quantity(item.quantity_damaged)}</td>
+                          <td className="py-3 pr-4">{quantity(item.available_quantity)}</td>
+                          <td className="py-3 pr-4">{quantity(item.missing_quantity)}</td>
+                          <td className="py-3 pr-4">
+                            <Badge tone={stockTone(item.can_reserve, Number(item.missing_quantity || 0))}>
+                              {stockLabel(item.can_reserve, Number(item.missing_quantity || 0), Number(item.quantity_reserved || 0))}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+            {["RESERVED", "IN_PREPARATION", "LOADED", "OUT_OF_WAREHOUSE"].includes(order.status) ? (
+              <Card>
+                <CardContent>
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <div>
+                      <h2 className="text-lg font-bold">Preparacion y salida</h2>
+                      <p className="text-sm text-muted-foreground">Registra la carga de productos reservados antes de confirmar salida de bodega.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {canOperate && order.status === "RESERVED" ? (
+                        <Button disabled={actionLoading} onClick={startPreparation} type="button">
+                          Iniciar preparacion
+                        </Button>
+                      ) : null}
+                      {canOperate && order.status === "LOADED" ? (
+                        <Button disabled={actionLoading} onClick={() => setDispatchOpen(true)} type="button">
+                          Confirmar salida de bodega
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {order.status === "OUT_OF_WAREHOUSE" ? (
+                    <p className="mt-3 text-sm font-semibold text-emerald-700">
+                      Pedido salio de bodega. Proxima etapa: entrega en terreno.
+                    </p>
+                  ) : null}
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-left text-sm">
+                      <thead className="border-b text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="py-3 pr-4">Producto</th>
+                          <th className="py-3 pr-4">Reservado</th>
+                          <th className="py-3 pr-4">Cargado</th>
+                          <th className="py-3 pr-4">Unidad</th>
+                          <th className="py-3 pr-4">Estado preparacion</th>
+                          <th className="py-3 pr-4">Accion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {order.items.map((item) => (
+                          <tr className="border-b last:border-0" key={item.id}>
+                            <td className="py-3 pr-4 font-semibold">{item.item_name_snapshot}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_reserved)}</td>
+                            <td className="py-3 pr-4">{quantity(item.quantity_loaded)}</td>
+                            <td className="py-3 pr-4">{item.unit_snapshot || "-"}</td>
+                            <td className="py-3 pr-4">
+                              <Badge tone={item.preparation_status === "LOADED" ? "success" : item.preparation_status === "PARTIALLY_LOADED" ? "warning" : "neutral"}>
+                                {preparationLabel(item.preparation_status)}
+                              </Badge>
+                            </td>
+                            <td className="py-3 pr-4">
+                              {canOperate && ["IN_PREPARATION", "LOADED"].includes(order.status) ? (
+                                <Button size="sm" type="button" variant="secondary" onClick={() => setLoadTarget(item)}>
+                                  Registrar carga
+                                </Button>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+            {loadTarget ? (
+              <LoadItemModal
+                item={loadTarget}
+                saving={actionLoading}
+                onClose={() => setLoadTarget(null)}
+                onSubmit={submitLoad}
+              />
+            ) : null}
+            {dispatchOpen ? (
+              <DispatchModal
+                order={order}
+                saving={actionLoading}
+                onClose={() => setDispatchOpen(false)}
+                onSubmit={submitDispatch}
+              />
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </RoleGuard>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <Card>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="mt-1 text-xl font-bold">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusBadge({ status }: { status: LogisticsOrderStatus }) {
+  const tone = status === "CANCELLED" ? "danger" : status === "INSUFFICIENT_STOCK" ? "warning" : "success";
+  return <Badge tone={tone}>{statusLabels[status]}</Badge>;
+}
+
+function money(value: string | number) {
+  return Number(value || 0).toLocaleString("es-CL", { style: "currency", currency: "CLP" });
+}
+
+function quantity(value: string | number) {
+  return Number(value || 0).toLocaleString("es-CL");
+}
+
+function itemToStockRow(item: LogisticsOrder["items"][number]) {
+  return {
+    item_id: item.id,
+    item_name_snapshot: item.item_name_snapshot,
+    quantity_requested: item.quantity_requested,
+    quantity_reserved: item.quantity_reserved,
+    quantity_on_hand: 0,
+    quantity_reserved_in_stock: 0,
+    quantity_damaged: 0,
+    available_quantity: 0,
+    missing_quantity: item.quantity_missing,
+    can_reserve: item.reservation_status !== "INSUFFICIENT_STOCK"
+  };
+}
+
+function stockTone(canReserve: boolean, missing: number) {
+  if (missing > 0 || !canReserve) return "warning";
+  return "success";
+}
+
+function stockLabel(canReserve: boolean, missing: number, reserved: number) {
+  if (reserved > 0 && missing === 0) return "Reservado";
+  if (missing > 0 || !canReserve) return "Insuficiente";
+  return "Disponible";
+}
+
+function preparationLabel(status: string) {
+  if (status === "LOADED") return "Cargado";
+  if (status === "PARTIALLY_LOADED") return "Carga parcial";
+  return "Pendiente";
+}
+
+function LoadItemModal({
+  item,
+  saving,
+  onClose,
+  onSubmit
+}: {
+  item: LogisticsOrder["items"][number];
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (itemId: string, quantityLoaded: number, notes?: string | null) => Promise<void>;
+}) {
+  const [quantityLoaded, setQuantityLoaded] = useState(String(item.quantity_loaded || item.quantity_reserved || ""));
+  const [notes, setNotes] = useState(item.notes || "");
+  const loaded = Number(quantityLoaded);
+  const reserved = Number(item.quantity_reserved || 0);
+  const valid = Number.isFinite(loaded) && loaded > 0 && loaded <= reserved;
+
+  return (
+    <ModalShell title="Registrar carga" description={item.item_name_snapshot} onClose={onClose}>
+      <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (valid) void onSubmit(item.id, loaded, notes || null); }}>
+        <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+          <p>Reservado: <span className="font-semibold">{quantity(item.quantity_reserved)}</span> {item.unit_snapshot || ""}</p>
+        </div>
+        <label className="grid gap-2 text-sm font-semibold">
+          Cantidad cargada
+          <Input min={0.01} max={reserved} step="0.01" type="number" value={quantityLoaded} onChange={(event) => setQuantityLoaded(event.target.value)} />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Observacion
+          <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" value={notes} onChange={(event) => setNotes(event.target.value)} />
+        </label>
+        {!valid ? <p className="text-sm font-semibold text-amber-700">La cantidad debe ser mayor a 0 y no superar lo reservado.</p> : null}
+        <div className="flex justify-end gap-2">
+          <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Guardar carga"}</Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+function DispatchModal({
+  order,
+  saving,
+  onClose,
+  onSubmit
+}: {
+  order: LogisticsOrder;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (notes?: string | null) => Promise<void>;
+}) {
+  const [notes, setNotes] = useState(order.dispatch_notes || "");
+
+  return (
+    <ModalShell title="Confirmar salida de bodega" description={order.warehouse?.name || "Bodega origen"} onClose={onClose}>
+      <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void onSubmit(notes || null); }}>
+        <div className="rounded-lg border">
+          <div className="divide-y">
+            {order.items.map((item) => (
+              <div className="flex items-center justify-between gap-3 p-3 text-sm" key={item.id}>
+                <span className="font-semibold">{item.item_name_snapshot}</span>
+                <span>{quantity(item.quantity_loaded)} {item.unit_snapshot || ""}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <label className="grid gap-2 text-sm font-semibold">
+          Observacion de salida
+          <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" value={notes} onChange={(event) => setNotes(event.target.value)} />
+        </label>
+        <p className="text-sm font-semibold text-amber-700">Esta accion descuenta stock fisico y libera la reserva.</p>
+        <div className="flex justify-end gap-2">
+          <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={saving} type="submit">{saving ? "Confirmando..." : "Confirmar salida"}</Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}

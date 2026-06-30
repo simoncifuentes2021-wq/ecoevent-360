@@ -65,7 +65,7 @@ export function OrderDetailPage({ orderId, readOnly = false, backHref = "/admin/
   useEffect(() => { void load(); }, [load]);
 
   const evidencesByStage = useMemo(() => evidences.filter((item) => item.stage === stage), [evidences, stage]);
-  const assignees = useMemo(() => staff.filter((item) => item.user && ["WORKER", "SUPERVISOR"].includes(item.user.role)), [staff]);
+  const assignees = useMemo(() => staff.filter((item) => item.user && ["SUPERVISOR", "LOGISTICS_OPERATOR"].includes(item.user.role)), [staff]);
 
   if (loading) return <LoadingState label="Cargando pedido..." />;
   if (error || !order) return <ErrorState message={error || "Pedido no encontrado"} title="No pudimos cargar el pedido" onRetry={load} />;
@@ -276,7 +276,7 @@ function EditOrderForm({ assignees, order, onClose, onSubmit }: { assignees: Eve
           Descripcion
           <Input value={form.description || ""} onChange={(event) => setForm({ ...form, description: event.target.value })} />
         </label>
-        {assignees.length === 0 ? <p className="rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-800">No hay trabajadores o supervisores asignados al evento todavia.</p> : null}
+        {assignees.length === 0 ? <p className="rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-800">No hay supervisores u operadores logisticos asignados al evento todavia.</p> : null}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button disabled={!valid || saving} type="submit">{saving ? "Guardando..." : "Guardar cambios"}</Button>

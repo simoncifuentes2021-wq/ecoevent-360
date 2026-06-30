@@ -24,14 +24,14 @@ const schema = z.object({
 
 export function AssignStaffModal({ users, assigned, loading, onClose, onSubmit }: { users: User[]; assigned: EventStaff[]; loading?: boolean; onClose: () => void; onSubmit: (data: EventStaffCreate) => Promise<void> }) {
   const assignedIds = useMemo(() => new Set(assigned.map((item) => item.user_id)), [assigned]);
-  const options = users.filter((user) => user.is_active && (user.role === "WORKER" || user.role === "SUPERVISOR") && !assignedIds.has(user.id));
+  const options = users.filter((user) => user.is_active && (user.role === "WORKER" || user.role === "SUPERVISOR" || user.role === "LOGISTICS_OPERATOR") && !assignedIds.has(user.id));
   const { register, handleSubmit, formState: { errors } } = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: { role_in_event: "Operativo" }
   });
 
   return (
-    <ModalShell title="Asignar personal" description="Selecciona trabajadores o supervisores activos para el evento." onClose={onClose}>
+    <ModalShell title="Asignar personal" description="Selecciona personal operativo activo para el evento." onClose={onClose}>
       <form className="space-y-4" onSubmit={handleSubmit((values) => onSubmit({ ...values, shift_start: values.shift_start || null, shift_end: values.shift_end || null }))}>
         <label className="grid gap-2 text-sm font-semibold">Persona
           <select className="h-12 rounded-2xl border px-4" {...register("user_id")}>
@@ -40,7 +40,7 @@ export function AssignStaffModal({ users, assigned, loading, onClose, onSubmit }
           </select>
           {options.length === 0 ? (
             <span className="rounded-2xl bg-amber-50 p-3 text-xs font-medium text-amber-800">
-              No hay WORKER o SUPERVISOR activos disponibles para este cliente/evento. Crea usuarios operativos o revisa que no estén ya asignados.
+              No hay personal operativo activo disponible para este cliente/evento. Crea usuarios operativos o revisa que no esten ya asignados.
             </span>
           ) : null}
           {errors.user_id ? <span className="text-xs text-rose-600">{errors.user_id.message}</span> : null}

@@ -36,8 +36,9 @@ export function clearSession() {
 }
 
 export function defaultRouteForRole(role: UserRole) {
-  if (role === "CLIENT") return "/client/dashboard";
-  if (role === "SUPERVISOR") return "/supervisor/dashboard";
-  if (role === "WORKER") return "/worker/dashboard";
+  if (role === "CLIENT") return "/client/mis-eventos";
+  if (role === "SUPERVISOR") return "/supervisor/eventos";
+  if (role === "LOGISTICS_OPERATOR") return "/logistica/dashboard";
+  if (role === "WORKER") return "/worker/mis-tareas";
   return "/admin/dashboard";
 }

@@ -3,7 +3,7 @@ import { WorkerOrdersPage } from "@/components/orders/WorkerOrdersPage";
 
 export default function WorkerOrdersRoute() {
   return (
-    <RoleGuard roles={["WORKER", "SUPERVISOR"]}>
+    <RoleGuard roles={["LOGISTICS_OPERATOR"]}>
       <WorkerOrdersPage />
     </RoleGuard>
   );

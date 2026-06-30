@@ -8,7 +8,7 @@ from app.models.core import Event, EventOrder, EventOrderItem, OrderEvidence, Ev
 from app.models.enums import EventStatus, UserRole
 
 CLOSURE_WINDOW_DAYS = 7
-OPERATIONAL_ROLES = {UserRole.SUPERVISOR, UserRole.WORKER}
+OPERATIONAL_ROLES = {UserRole.SUPERVISOR, UserRole.WORKER, UserRole.LOGISTICS_OPERATOR}
 
 
 def can_access_client(user: User, client_id: UUID, db: Session) -> bool:
@@ -110,10 +110,19 @@ def can_manage_event(user: User, event_id: UUID, db: Session) -> bool:
     return False
 
 
-def can_access_order(user: User, order_id: UUID, db: Session) -> bool:
-    order = db.get(EventOrder, order_id)
-    if order is None:
-        return False
+def is_logistics_operator(user: User) -> bool:
+    return user.role == UserRole.LOGISTICS_OPERATOR
+
+
+def can_create_logistics_order(user: User, event_id: UUID, db: Session) -> bool:
+    if user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        return True
+    if user.role == UserRole.SUPERVISOR:
+        return can_manage_event(user, event_id, db)
+    return False
+
+
+def can_access_logistics_order(user: User, order: EventOrder, db: Session) -> bool:
     if user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
         return True
     if user.role == UserRole.CLIENT:
@@ -121,20 +130,31 @@ def can_access_order(user: User, order_id: UUID, db: Session) -> bool:
         return event is not None and user.client_id is not None and event.client_id == user.client_id
     if user.role == UserRole.SUPERVISOR:
         return can_access_event(user, order.event_id, db)
-    if user.role == UserRole.WORKER:
-        return order.assigned_to == user.id or can_access_event(user, order.event_id, db)
+    if is_logistics_operator(user):
+        return order.assigned_to == user.id
     return False
+
+
+def can_manage_logistics_order(user: User, order: EventOrder, db: Session) -> bool:
+    if user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        return True
+    if user.role == UserRole.SUPERVISOR:
+        return can_manage_event(user, order.event_id, db)
+    return False
+
+
+def can_access_order(user: User, order_id: UUID, db: Session) -> bool:
+    order = db.get(EventOrder, order_id)
+    if order is None:
+        return False
+    return can_access_logistics_order(user, order, db)
 
 
 def can_manage_order(user: User, order_id: UUID, db: Session) -> bool:
     order = db.get(EventOrder, order_id)
     if order is None:
         return False
-    if user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
-        return True
-    if user.role == UserRole.SUPERVISOR:
-        return can_manage_event(user, order.event_id, db)
-    return False
+    return can_manage_logistics_order(user, order, db)
 
 
 def can_complete_order_item_stage(user: User, item_id: UUID, db: Session) -> bool:
@@ -148,7 +168,7 @@ def can_complete_order_item_stage(user: User, item_id: UUID, db: Session) -> boo
         return True
     if user.role == UserRole.SUPERVISOR:
         return can_manage_event(user, order.event_id, db)
-    if user.role == UserRole.WORKER:
+    if is_logistics_operator(user):
         return order.assigned_to == user.id
     return False
 
@@ -161,7 +181,7 @@ def can_upload_order_evidence(user: User, order_id: UUID, db: Session) -> bool:
         return True
     if user.role == UserRole.SUPERVISOR:
         return can_manage_event(user, order.event_id, db)
-    if user.role == UserRole.WORKER:
+    if is_logistics_operator(user):
         return order.assigned_to == user.id
     return False
 

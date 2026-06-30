@@ -22,6 +22,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     user.role === "WORKER" ? ["/worker"] :
     user.role === "CLIENT" ? ["/client"] :
     user.role === "SUPERVISOR" ? ["/supervisor", "/worker", "/alerts"] :
+    user.role === "LOGISTICS_OPERATOR" ? ["/logistica"] :
     ["/admin", "/reports", "/settings", "/alerts", "/worker"];
 
   if (!allowedPrefixes.some((prefix) => pathname.startsWith(prefix))) {
