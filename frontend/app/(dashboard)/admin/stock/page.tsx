@@ -112,7 +112,6 @@ export default function AdminStockPage() {
         movement_type: "CORRECTION",
         quantity: correctionQuantity(formTarget, data),
         quantity_on_hand: data.quantity_on_hand,
-        quantity_reserved: data.quantity_reserved,
         quantity_damaged: data.quantity_damaged,
         reason: data.reason || "Correccion manual de stock"
       });
@@ -122,7 +121,6 @@ export default function AdminStockPage() {
         item_id: data.item_id,
         movement_type: "INITIAL_STOCK",
         quantity: data.quantity_on_hand || 0,
-        quantity_reserved: data.quantity_reserved,
         quantity_damaged: data.quantity_damaged,
         reason: "Carga inicial de stock"
       });
@@ -424,8 +422,11 @@ function StockFormModal({
             <Input min={0} step="0.01" type="number" value={form.quantity_on_hand} onChange={(event) => setForm({ ...form, quantity_on_hand: event.target.value })} />
           </label>
           <label className="grid gap-2 text-sm font-semibold">
-            Reservado
-            <Input min={0} step="0.01" type="number" value={form.quantity_reserved} onChange={(event) => setForm({ ...form, quantity_reserved: event.target.value })} />
+            Reservado por pedidos
+            <Input disabled min={0} step="1" type="number" value={form.quantity_reserved} />
+            <span className="text-xs font-normal text-muted-foreground">
+              Se calcula desde pedidos logisticos activos. Para cambiarlo, libera o reserva desde el pedido.
+            </span>
           </label>
           <label className="grid gap-2 text-sm font-semibold">
             Danado / no disponible
@@ -525,7 +526,6 @@ function getStockFormMessage({
 function correctionQuantity(current: StockBalance, data: StockBalanceCreate) {
   return Math.max(
     Math.abs(Number(data.quantity_on_hand || 0) - Number(current.quantity_on_hand || 0)),
-    Math.abs(Number(data.quantity_reserved || 0) - Number(current.quantity_reserved || 0)),
     Math.abs(Number(data.quantity_damaged || 0) - Number(current.quantity_damaged || 0)),
     1
   );

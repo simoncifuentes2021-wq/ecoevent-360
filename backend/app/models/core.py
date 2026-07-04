@@ -25,11 +25,14 @@ from app.models.enums import (
     EventStatus,
     IncidentStatus,
     InventoryItemType,
+    LogisticsEvidenceStage,
     LogisticsOrderStatus,
     OrderEvidenceStage,
     OrderItemStageStatus,
     OrderStatus,
     PriorityLevel,
+    PurchaseDeliveryMode,
+    PurchaseRequestStatus,
     ReportStatus,
     StockMovementType,
     SurveyStatus,
@@ -73,6 +76,15 @@ order_evidence_stage_enum = Enum(
 )
 inventory_item_type_enum = Enum(InventoryItemType, name="inventory_item_type", create_type=False)
 stock_movement_type_enum = Enum(StockMovementType, name="stock_movement_type", create_type=False)
+purchase_request_status_enum = Enum(
+    PurchaseRequestStatus, name="purchase_request_status", create_type=False
+)
+purchase_delivery_mode_enum = Enum(
+    PurchaseDeliveryMode, name="purchase_delivery_mode", create_type=False
+)
+logistics_evidence_stage_enum = Enum(
+    LogisticsEvidenceStage, name="logistics_evidence_stage", create_type=False
+)
 logistics_order_status_enum = Enum(
     LogisticsOrderStatus, name="logistics_order_status", create_type=False
 )
@@ -184,6 +196,7 @@ class Event(Base):
     alerts: Mapped[list["Alert"]] = relationship(back_populates="event")
     orders: Mapped[list["EventOrder"]] = relationship(back_populates="event")
     logistics_orders: Mapped[list["LogisticsOrder"]] = relationship(back_populates="event")
+    purchase_requests: Mapped[list["PurchaseRequest"]] = relationship(back_populates="event")
 
 
 class EventZone(Base):
@@ -387,6 +400,7 @@ class Warehouse(Base):
     users: Mapped[list["WarehouseUser"]] = relationship(back_populates="warehouse")
     stock_balances: Mapped[list["StockBalance"]] = relationship(back_populates="warehouse")
     stock_movements: Mapped[list["StockMovement"]] = relationship(back_populates="warehouse")
+    purchase_requests: Mapped[list["PurchaseRequest"]] = relationship(back_populates="warehouse")
 
 
 class WarehouseUser(Base):
@@ -447,6 +461,7 @@ class InventoryItem(Base):
     stock_balances: Mapped[list["StockBalance"]] = relationship(back_populates="item")
     stock_movements: Mapped[list["StockMovement"]] = relationship(back_populates="item")
     logistics_order_items: Mapped[list["LogisticsOrderItem"]] = relationship(back_populates="item")
+    purchase_request_items: Mapped[list["PurchaseRequestItem"]] = relationship(back_populates="item")
 
 
 class StockBalance(Base):
@@ -608,6 +623,7 @@ class LogisticsOrder(Base):
     items: Mapped[list["LogisticsOrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
+    purchase_requests: Mapped[list["PurchaseRequest"]] = relationship(back_populates="logistics_order")
 
 
 class LogisticsOrderItem(Base):
@@ -703,6 +719,193 @@ class LogisticsOrderItem(Base):
 
     order: Mapped[LogisticsOrder] = relationship(back_populates="items")
     item: Mapped[InventoryItem] = relationship(back_populates="logistics_order_items")
+
+
+class PurchaseRequest(Base):
+    __tablename__ = "purchase_requests"
+    __table_args__ = (
+        CheckConstraint("total_estimated_amount >= 0"),
+        CheckConstraint("total_purchased_amount >= 0"),
+        Index("idx_purchase_requests_event_id", "event_id"),
+        Index("idx_purchase_requests_logistics_order_id", "logistics_order_id"),
+        Index("idx_purchase_requests_warehouse_id", "warehouse_id"),
+        Index("idx_purchase_requests_status", "status"),
+        Index("idx_purchase_requests_delivery_mode", "delivery_mode"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="SET NULL")
+    )
+    logistics_order_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logistics_orders.id", ondelete="SET NULL")
+    )
+    requested_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    approved_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    purchased_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    received_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    warehouse_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="SET NULL")
+    )
+    status: Mapped[PurchaseRequestStatus] = mapped_column(
+        purchase_request_status_enum, nullable=False, server_default=text("'REQUESTED'")
+    )
+    delivery_mode: Mapped[PurchaseDeliveryMode] = mapped_column(
+        purchase_delivery_mode_enum, nullable=False, server_default=text("'TO_WAREHOUSE'")
+    )
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text("NOW()"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime)
+    purchased_at: Mapped[datetime | None] = mapped_column(DateTime)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    total_estimated_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    total_purchased_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    event: Mapped[Event | None] = relationship(back_populates="purchase_requests")
+    logistics_order: Mapped[LogisticsOrder | None] = relationship(back_populates="purchase_requests")
+    warehouse: Mapped[Warehouse | None] = relationship(back_populates="purchase_requests")
+    requester: Mapped[User | None] = relationship(foreign_keys=[requested_by])
+    approver: Mapped[User | None] = relationship(foreign_keys=[approved_by])
+    purchaser: Mapped[User | None] = relationship(foreign_keys=[purchased_by])
+    receiver: Mapped[User | None] = relationship(foreign_keys=[received_by])
+    items: Mapped[list["PurchaseRequestItem"]] = relationship(
+        back_populates="purchase_request", cascade="all, delete-orphan"
+    )
+
+
+class PurchaseRequestItem(Base):
+    __tablename__ = "purchase_request_items"
+    __table_args__ = (
+        CheckConstraint("quantity_requested > 0"),
+        CheckConstraint("quantity_purchased >= 0"),
+        CheckConstraint("quantity_received >= 0"),
+        CheckConstraint("unit_price_estimated >= 0"),
+        CheckConstraint("unit_price_purchased >= 0"),
+        CheckConstraint("total_estimated >= 0"),
+        CheckConstraint("total_purchased >= 0"),
+        Index("idx_purchase_request_items_purchase_request_id", "purchase_request_id"),
+        Index("idx_purchase_request_items_logistics_order_item_id", "logistics_order_item_id"),
+        Index("idx_purchase_request_items_item_id", "item_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    purchase_request_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("purchase_requests.id", ondelete="CASCADE"), nullable=False
+    )
+    logistics_order_item_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logistics_order_items.id", ondelete="SET NULL")
+    )
+    item_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="RESTRICT"), nullable=False
+    )
+    item_name_snapshot: Mapped[str] = mapped_column(String(180), nullable=False)
+    unit_snapshot: Mapped[str | None] = mapped_column(String(50))
+    quantity_requested: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    quantity_purchased: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    quantity_received: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    unit_price_estimated: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    unit_price_purchased: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    total_estimated: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    total_purchased: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    purchase_request: Mapped[PurchaseRequest] = relationship(back_populates="items")
+    logistics_order_item: Mapped[LogisticsOrderItem | None] = relationship()
+    item: Mapped[InventoryItem] = relationship(back_populates="purchase_request_items")
+
+
+class LogisticsEvidence(Base):
+    __tablename__ = "logistics_evidences"
+    __table_args__ = (
+        Index("idx_logistics_evidences_event_id", "event_id"),
+        Index("idx_logistics_evidences_order_id", "logistics_order_id"),
+        Index("idx_logistics_evidences_order_item_id", "logistics_order_item_id"),
+        Index("idx_logistics_evidences_purchase_request_id", "purchase_request_id"),
+        Index("idx_logistics_evidences_purchase_request_item_id", "purchase_request_item_id"),
+        Index("idx_logistics_evidences_stock_movement_id", "stock_movement_id"),
+        Index("idx_logistics_evidences_warehouse_id", "warehouse_id"),
+        Index("idx_logistics_evidences_stage", "evidence_stage"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="SET NULL")
+    )
+    logistics_order_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logistics_orders.id", ondelete="CASCADE")
+    )
+    logistics_order_item_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logistics_order_items.id", ondelete="SET NULL")
+    )
+    purchase_request_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("purchase_requests.id", ondelete="CASCADE")
+    )
+    purchase_request_item_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("purchase_request_items.id", ondelete="SET NULL")
+    )
+    stock_movement_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("stock_movements.id", ondelete="SET NULL")
+    )
+    warehouse_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="SET NULL")
+    )
+    evidence_stage: Mapped[LogisticsEvidenceStage] = mapped_column(
+        logistics_evidence_stage_enum, nullable=False
+    )
+    file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    file_key: Mapped[str | None] = mapped_column(Text)
+    file_name: Mapped[str | None] = mapped_column(Text)
+    file_type: Mapped[str | None] = mapped_column(String(80))
+    mime_type: Mapped[str | None] = mapped_column(String(120))
+    size_bytes: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text)
+    uploaded_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    event: Mapped[Event | None] = relationship()
+    logistics_order: Mapped[LogisticsOrder | None] = relationship()
+    logistics_order_item: Mapped[LogisticsOrderItem | None] = relationship()
+    purchase_request: Mapped[PurchaseRequest | None] = relationship()
+    purchase_request_item: Mapped[PurchaseRequestItem | None] = relationship()
+    stock_movement: Mapped[StockMovement | None] = relationship()
+    warehouse: Mapped[Warehouse | None] = relationship()
+    uploader: Mapped[User | None] = relationship()
 
 
 class Service(Base):

@@ -10,6 +10,7 @@ from app.core.permissions import can_access_event, can_create_logistics_order, c
 from app.models.core import (
     Event,
     InventoryItem,
+    LogisticsEvidence,
     LogisticsOrder,
     LogisticsOrderItem,
     StockBalance,
@@ -18,7 +19,7 @@ from app.models.core import (
     Warehouse,
     WarehouseUser,
 )
-from app.models.enums import LogisticsOrderStatus, StockMovementType, UserRole
+from app.models.enums import LogisticsEvidenceStage, LogisticsOrderStatus, StockMovementType, UserRole
 from app.schemas.logistics_order_schema import (
     LogisticsOrderAssign,
     LogisticsOrderClose,
@@ -42,6 +43,12 @@ MANAGE_STATUSES = {
     LogisticsOrderStatus.STOCK_REVIEW,
     LogisticsOrderStatus.INSUFFICIENT_STOCK,
     LogisticsOrderStatus.OBSERVED,
+}
+ACTIVE_STOCK_RESERVATION_STATUSES = {
+    LogisticsOrderStatus.INSUFFICIENT_STOCK,
+    LogisticsOrderStatus.RESERVED,
+    LogisticsOrderStatus.IN_PREPARATION,
+    LogisticsOrderStatus.LOADED,
 }
 
 
@@ -168,6 +175,80 @@ def _available_quantity(stock: StockBalance | None) -> Decimal:
     return stock.quantity_on_hand - stock.quantity_reserved - stock.quantity_damaged
 
 
+def _reserved_quantity_from_active_orders(db: Session, warehouse_id: UUID, item_id: UUID) -> Decimal:
+    return db.scalar(
+        select(func.coalesce(func.sum(LogisticsOrderItem.quantity_reserved), 0))
+        .join(LogisticsOrder, LogisticsOrder.id == LogisticsOrderItem.order_id)
+        .where(
+            LogisticsOrder.warehouse_id == warehouse_id,
+            LogisticsOrder.status.in_(ACTIVE_STOCK_RESERVATION_STATUSES),
+            LogisticsOrderItem.item_id == item_id,
+            LogisticsOrderItem.quantity_reserved > 0,
+        )
+    ) or Decimal("0")
+
+
+def _evidence_count(
+    db: Session,
+    *,
+    stage: LogisticsEvidenceStage,
+    order_id: UUID | None = None,
+    item_id: UUID | None = None,
+) -> int:
+    filters = [LogisticsEvidence.evidence_stage == stage]
+    if order_id:
+        filters.append(LogisticsEvidence.logistics_order_id == order_id)
+    if item_id:
+        filters.append(LogisticsEvidence.logistics_order_item_id == item_id)
+    return db.scalar(select(func.count()).select_from(LogisticsEvidence).where(*filters)) or 0
+
+
+def _require_order_evidence(db: Session, order_id: UUID, stage: LogisticsEvidenceStage, message: str) -> None:
+    if _evidence_count(db, order_id=order_id, stage=stage) <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
+
+def _sync_stock_reservation_from_orders(
+    db: Session,
+    *,
+    stock: StockBalance,
+    user: User,
+    order: LogisticsOrder,
+) -> StockBalance:
+    expected_reserved = _reserved_quantity_from_active_orders(db, stock.warehouse_id, stock.item_id)
+    minimum_on_hand = expected_reserved + stock.quantity_damaged
+    if stock.quantity_reserved == expected_reserved and stock.quantity_on_hand >= minimum_on_hand:
+        return stock
+
+    previous_on_hand = stock.quantity_on_hand
+    previous_reserved = stock.quantity_reserved
+    previous_damaged = stock.quantity_damaged
+    stock.quantity_reserved = expected_reserved
+    if stock.quantity_on_hand < minimum_on_hand:
+        stock.quantity_on_hand = minimum_on_hand
+    stock.updated_at = datetime.utcnow()
+    db.add(stock)
+    _record_reservation_movement(
+        db,
+        order=order,
+        stock=stock,
+        movement_type=StockMovementType.CORRECTION,
+        quantity=max(
+            abs(stock.quantity_on_hand - previous_on_hand),
+            abs(stock.quantity_reserved - previous_reserved),
+            Decimal("1"),
+        ),
+        previous_reserved=previous_reserved,
+        new_reserved=stock.quantity_reserved,
+        user=user,
+        previous_on_hand=previous_on_hand,
+        new_on_hand=stock.quantity_on_hand,
+        previous_damaged=previous_damaged,
+        new_damaged=stock.quantity_damaged,
+    )
+    return stock
+
+
 def _get_stock_balance(
     db: Session,
     *,
@@ -205,6 +286,8 @@ def _record_reservation_movement(
         else f"Liberacion reserva pedido logistico {order.title}"
         if movement_type == StockMovementType.UNRESERVE
         else f"Salida de bodega por pedido logistico {order.title}"
+        if movement_type == StockMovementType.OUT_TO_EVENT
+        else f"Reparacion de reserva agregada para pedido logistico {order.title}"
     )
     notes = f"Pedido logistico {order.id} - Evento {order.event_id}"
     db.add(
@@ -513,15 +596,21 @@ def check_logistics_order_stock(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Warehouse not found")
 
     checks: list[LogisticsOrderStockCheckItem] = []
+    repaired_stock = False
     for order_item in order.items:
         inventory_item = db.get(InventoryItem, order_item.item_id)
         stock = _get_stock_balance(
             db,
             warehouse_id=order.warehouse_id,
             item_id=order_item.item_id,
+            lock=order.status in ACTIVE_STOCK_RESERVATION_STATUSES,
         )
+        if stock and order.status in ACTIVE_STOCK_RESERVATION_STATUSES:
+            stock = _sync_stock_reservation_from_orders(db, stock=stock, user=user, order=order)
+            repaired_stock = True
         available = _available_quantity(stock) if inventory_item and inventory_item.is_active else Decimal("0")
-        missing = max(order_item.quantity_requested - available, Decimal("0"))
+        covered_quantity = order_item.quantity_reserved + available
+        missing = max(order_item.quantity_requested - covered_quantity, Decimal("0"))
         checks.append(
             LogisticsOrderStockCheckItem(
                 item_id=order_item.item_id,
@@ -538,6 +627,24 @@ def check_logistics_order_stock(
                 can_reserve=missing == 0 and bool(inventory_item and inventory_item.is_active),
             )
         )
+
+    if (
+        order.status == LogisticsOrderStatus.INSUFFICIENT_STOCK
+        and order.items
+        and all(item.quantity_reserved == item.quantity_requested and item.quantity_reserved > 0 for item in order.items)
+    ):
+        order.status = LogisticsOrderStatus.RESERVED
+        order.updated_at = datetime.utcnow()
+        db.add(order)
+        for item in order.items:
+            item.quantity_missing = Decimal("0")
+            item.reservation_status = "RESERVED"
+            item.updated_at = datetime.utcnow()
+            db.add(item)
+        repaired_stock = True
+
+    if repaired_stock:
+        db.commit()
 
     return LogisticsOrderStockCheckResponse(
         order_id=order.id,
@@ -790,6 +897,12 @@ def dispatch_logistics_order(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="All items require loaded quantity before dispatch")
     if any(item.quantity_loaded != item.quantity_reserved for item in order.items):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Complete loading is required before dispatch")
+    _require_order_evidence(
+        db,
+        order.id,
+        LogisticsEvidenceStage.LOGISTICS_DISPATCH,
+        "At least one dispatch evidence is required before confirming warehouse dispatch",
+    )
 
     for order_item in order.items:
         stock = _get_stock_balance(
@@ -800,6 +913,7 @@ def dispatch_logistics_order(
         )
         if not stock:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stock balance not found")
+        stock = _sync_stock_reservation_from_orders(db, stock=stock, user=user, order=order)
         if stock.quantity_reserved < order_item.quantity_loaded:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Reserved stock is lower than loaded quantity")
         previous_on_hand = stock.quantity_on_hand
@@ -906,6 +1020,12 @@ def confirm_logistics_order_delivery(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one delivered quantity is required before confirming delivery",
         )
+    _require_order_evidence(
+        db,
+        order.id,
+        LogisticsEvidenceStage.LOGISTICS_DELIVERY,
+        "At least one delivery evidence is required before confirming field delivery",
+    )
 
     all_delivered = all(item.quantity_delivered == item.quantity_dispatched for item in order.items)
     for order_item in order.items:
@@ -961,6 +1081,20 @@ def register_logistics_order_item_outcome(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="RETURNABLE items cannot be marked as consumed",
+        )
+    if payload.quantity_returned_damaged > 0 and _evidence_count(
+        db, item_id=order_item.id, stage=LogisticsEvidenceStage.LOGISTICS_DAMAGED_RETURN
+    ) <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Damaged returned products require photographic evidence",
+        )
+    if payload.quantity_lost > 0 and not (payload.notes or "").strip() and _evidence_count(
+        db, item_id=order_item.id, stage=LogisticsEvidenceStage.LOGISTICS_LOSS
+    ) <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lost products require evidence or notes",
         )
 
     delta_returned = payload.quantity_returned - order_item.quantity_returned

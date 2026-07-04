@@ -7,8 +7,17 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.core import InventoryItem, StockBalance, StockMovement, User, Warehouse, WarehouseUser
-from app.models.enums import StockMovementType, UserRole
+from app.models.core import (
+    InventoryItem,
+    LogisticsOrder,
+    LogisticsOrderItem,
+    StockBalance,
+    StockMovement,
+    User,
+    Warehouse,
+    WarehouseUser,
+)
+from app.models.enums import LogisticsOrderStatus, StockMovementType, UserRole
 from app.schemas.stock_schema import (
     StockBalanceCreate,
     StockBalanceRead,
@@ -24,6 +33,12 @@ STOCK_VIEW_ROLES = {
     UserRole.LOGISTICS_OPERATOR,
 }
 STOCK_MANAGE_ROLES = {UserRole.SUPER_ADMIN, UserRole.ADMIN}
+ACTIVE_STOCK_RESERVATION_STATUSES = {
+    LogisticsOrderStatus.INSUFFICIENT_STOCK,
+    LogisticsOrderStatus.RESERVED,
+    LogisticsOrderStatus.IN_PREPARATION,
+    LogisticsOrderStatus.LOADED,
+}
 
 
 def can_view_stock(user: User) -> bool:
@@ -120,6 +135,38 @@ def _validate_quantities(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="available_quantity cannot be negative",
         )
+
+
+def _reserved_quantity_from_active_orders(db: Session, warehouse_id: UUID, item_id: UUID) -> Decimal:
+    return db.scalar(
+        select(func.coalesce(func.sum(LogisticsOrderItem.quantity_reserved), 0))
+        .join(LogisticsOrder, LogisticsOrder.id == LogisticsOrderItem.order_id)
+        .where(
+            LogisticsOrder.warehouse_id == warehouse_id,
+            LogisticsOrder.status.in_(ACTIVE_STOCK_RESERVATION_STATUSES),
+            LogisticsOrderItem.item_id == item_id,
+            LogisticsOrderItem.quantity_reserved > 0,
+        )
+    ) or Decimal("0")
+
+
+def _ensure_reserved_is_order_controlled(
+    db: Session,
+    *,
+    warehouse_id: UUID,
+    item_id: UUID,
+    requested_reserved: Decimal | None,
+) -> Decimal:
+    expected_reserved = _reserved_quantity_from_active_orders(db, warehouse_id, item_id)
+    if requested_reserved is not None and requested_reserved != expected_reserved:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "quantity_reserved is controlled by active logistics orders. "
+                "Use order reservation/unreservation actions instead of editing stock reserved manually."
+            ),
+        )
+    return expected_reserved
 
 
 def _stock_query():
@@ -289,6 +336,12 @@ def create_stock_balance(db: Session, payload: StockBalanceCreate, user: User) -
     _ensure_active_warehouse(db, payload.warehouse_id)
     _ensure_active_item(db, payload.item_id)
     data = payload.model_dump()
+    data["quantity_reserved"] = _ensure_reserved_is_order_controlled(
+        db,
+        warehouse_id=payload.warehouse_id,
+        item_id=payload.item_id,
+        requested_reserved=data.get("quantity_reserved"),
+    )
     _validate_quantities(
         data["quantity_on_hand"],
         data["quantity_reserved"],
@@ -363,6 +416,20 @@ def update_stock_balance(
     stock = get_stock_balance_or_404(db, stock_id)
     _ensure_can_manage_warehouse_stock(db, user, stock.warehouse_id)
     data = payload.model_dump(exclude_unset=True)
+    if "quantity_reserved" in data:
+        data["quantity_reserved"] = _ensure_reserved_is_order_controlled(
+            db,
+            warehouse_id=stock.warehouse_id,
+            item_id=stock.item_id,
+            requested_reserved=data["quantity_reserved"],
+        )
+    else:
+        data["quantity_reserved"] = _ensure_reserved_is_order_controlled(
+            db,
+            warehouse_id=stock.warehouse_id,
+            item_id=stock.item_id,
+            requested_reserved=None,
+        )
     quantity_on_hand = data.get("quantity_on_hand", stock.quantity_on_hand)
     quantity_reserved = data.get("quantity_reserved", stock.quantity_reserved)
     quantity_damaged = data.get("quantity_damaged", stock.quantity_damaged)
@@ -460,8 +527,11 @@ def create_stock_movement(db: Session, payload: StockMovementCreate, user: User)
 
     if payload.movement_type == StockMovementType.INITIAL_STOCK:
         new_on_hand = previous_on_hand + payload.quantity
-        new_reserved = (
-            payload.quantity_reserved if payload.quantity_reserved is not None else previous_reserved
+        new_reserved = _ensure_reserved_is_order_controlled(
+            db,
+            warehouse_id=payload.warehouse_id,
+            item_id=payload.item_id,
+            requested_reserved=payload.quantity_reserved,
         )
         new_damaged = (
             payload.quantity_damaged if payload.quantity_damaged is not None else previous_damaged
@@ -478,8 +548,11 @@ def create_stock_movement(db: Session, payload: StockMovementCreate, user: User)
         new_damaged = previous_damaged - payload.quantity
     elif payload.movement_type == StockMovementType.CORRECTION:
         new_on_hand = payload.quantity_on_hand if payload.quantity_on_hand is not None else previous_on_hand
-        new_reserved = (
-            payload.quantity_reserved if payload.quantity_reserved is not None else previous_reserved
+        new_reserved = _ensure_reserved_is_order_controlled(
+            db,
+            warehouse_id=payload.warehouse_id,
+            item_id=payload.item_id,
+            requested_reserved=payload.quantity_reserved,
         )
         new_damaged = (
             payload.quantity_damaged if payload.quantity_damaged is not None else previous_damaged

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Warehouse } from "lucide-react";
+import { FileImage, Plus, Warehouse } from "lucide-react";
 
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { ModalShell } from "@/components/common/ModalShell";
 import { PageHeader } from "@/components/common/PageHeader";
 import { RoleGuard } from "@/components/layout/RoleGuard";
+import { LogisticsEvidenceUploader } from "@/components/logistics/LogisticsEvidenceUploader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +19,7 @@ import { getInventoryItems } from "@/lib/api/inventory";
 import { createStockMovement, getStockBalances, getStockMovements } from "@/lib/api/stock";
 import { getMyWarehouseAssignments } from "@/lib/api/warehouses";
 import type { InventoryItem } from "@/types/inventory";
+import type { LogisticsEvidenceStage } from "@/types/logistics-evidence";
 import type { StockBalance, StockMovement, StockMovementCreate, StockMovementType } from "@/types/stock";
 import type { MyWarehouseAssignment } from "@/types/warehouse";
 
@@ -73,6 +75,7 @@ export default function LogisticsStockMovementsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [evidenceTarget, setEvidenceTarget] = useState<StockMovement | null>(null);
   const loadSeq = useRef(0);
 
   const selectedAssignment = assignments.find((assignment) => assignment.warehouse_id === warehouseId);
@@ -238,6 +241,12 @@ export default function LogisticsStockMovementsPage() {
               onPageChange={setPage}
               page={page}
               total={total}
+              actions={(item) => (
+                <Button size="sm" type="button" variant="secondary" onClick={() => setEvidenceTarget(item)}>
+                  <FileImage className="h-4 w-4" />
+                  Evidencias
+                </Button>
+              )}
             />
 
             {formOpen ? (
@@ -249,6 +258,21 @@ export default function LogisticsStockMovementsPage() {
                 onClose={() => setFormOpen(false)}
                 onSubmit={saveMovement}
               />
+            ) : null}
+
+            {evidenceTarget ? (
+              <ModalShell
+                title="Evidencias del movimiento"
+                description={`${evidenceTarget.item_name} - ${movementTypeLabels[evidenceTarget.movement_type]}`}
+                onClose={() => setEvidenceTarget(null)}
+              >
+                <LogisticsEvidenceUploader
+                  stockMovementId={evidenceTarget.id}
+                  stage={stockMovementEvidenceStage(evidenceTarget.movement_type)}
+                  title="Evidencias del movimiento de stock"
+                  required={["DAMAGE", "LOSS", "CORRECTION"].includes(evidenceTarget.movement_type)}
+                />
+              </ModalShell>
             ) : null}
           </>
         )}
@@ -292,7 +316,6 @@ function MovementFormModal({
   );
   const quantityValue = numberOrNull(form.quantity);
   const onHandCorrection = optionalNumber(form.quantity_on_hand);
-  const reservedCorrection = optionalNumber(form.quantity_reserved);
   const damagedCorrection = optionalNumber(form.quantity_damaged);
   const reasonRequired = ["DAMAGE", "LOSS", "CORRECTION"].includes(form.movement_type);
   const warning = movementWarning({
@@ -300,7 +323,6 @@ function MovementFormModal({
     amount: quantityValue,
     stock: currentStock,
     onHandCorrection,
-    reservedCorrection,
     damagedCorrection
   });
   const valid =
@@ -322,7 +344,6 @@ function MovementFormModal({
         movement_type: form.movement_type,
         quantity: quantityValue,
         quantity_on_hand: form.movement_type === "CORRECTION" ? onHandCorrection : undefined,
-        quantity_reserved: form.movement_type === "CORRECTION" ? reservedCorrection : undefined,
         quantity_damaged: form.movement_type === "CORRECTION" ? damagedCorrection : undefined,
         reason: form.reason || null,
         notes: form.notes || null
@@ -401,8 +422,11 @@ function MovementFormModal({
               <Input min={0} step="0.01" type="number" value={form.quantity_on_hand} onChange={(event) => setForm({ ...form, quantity_on_hand: event.target.value })} />
             </label>
             <label className="grid gap-2 text-sm font-semibold">
-              Nuevo reservado
-              <Input min={0} step="0.01" type="number" value={form.quantity_reserved} onChange={(event) => setForm({ ...form, quantity_reserved: event.target.value })} />
+              Reservado por pedidos
+              <Input disabled type="number" value={String(currentStock?.quantity_reserved ?? 0)} />
+              <span className="text-xs font-normal text-muted-foreground">
+                Se cambia desde la reserva o liberacion del pedido logistico.
+              </span>
             </label>
             <label className="grid gap-2 text-sm font-semibold">
               Nuevo danado
@@ -433,14 +457,12 @@ function movementWarning({
   amount,
   stock,
   onHandCorrection,
-  reservedCorrection,
   damagedCorrection
 }: {
   type: StockMovementType;
   amount: number | null;
   stock?: StockBalance;
   onHandCorrection: number | null | undefined;
-  reservedCorrection: number | null | undefined;
   damagedCorrection: number | null | undefined;
 }) {
   if (amount === null || amount <= 0) return "La cantidad debe ser mayor a 0.";
@@ -455,7 +477,7 @@ function movementWarning({
   }
   if (type === "CORRECTION") {
     const nextOnHand = onHandCorrection ?? Number(stock?.quantity_on_hand || 0);
-    const nextReserved = reservedCorrection ?? Number(stock?.quantity_reserved || 0);
+    const nextReserved = Number(stock?.quantity_reserved || 0);
     const nextDamaged = damagedCorrection ?? Number(stock?.quantity_damaged || 0);
     if (nextReserved > nextOnHand) return "El reservado no puede ser mayor que el stock total.";
     if (nextDamaged > nextOnHand) return "El danado no puede ser mayor que el stock total.";
@@ -468,6 +490,13 @@ function movementTone(type: StockMovementType) {
   if (["ADJUSTMENT_IN", "INITIAL_STOCK", "RECOVER_DAMAGED"].includes(type)) return "success";
   if (["DAMAGE", "LOSS", "ADJUSTMENT_OUT", "CORRECTION"].includes(type)) return "warning";
   return "neutral";
+}
+
+function stockMovementEvidenceStage(type: StockMovementType): LogisticsEvidenceStage {
+  if (type === "DAMAGE") return "STOCK_DAMAGE";
+  if (type === "LOSS") return "STOCK_LOSS";
+  if (type === "CORRECTION") return "STOCK_CORRECTION";
+  return "STOCK_ADJUSTMENT";
 }
 
 function numberOrNull(value: string) {
