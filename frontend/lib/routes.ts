@@ -91,8 +91,8 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/logistica/mis-pedidos", label: "Mis pedidos", icon: PackageSearch },
     { href: "/logistica/stock", label: "Inventario", icon: Boxes },
     { href: "/logistica/stock/movimientos", label: "Movimientos", icon: ClipboardList, indent: true },
-    { href: "/logistica/productos", label: "Productos", icon: PackageSearch, disabled: true },
-    { href: "/logistica/compras", label: "Compras", icon: ShoppingCart, disabled: true }
+    { href: "/logistica/productos", label: "Productos", icon: PackageSearch },
+    { href: "/logistica/compras", label: "Compras", icon: ShoppingCart }
   ],
   WORKER: [
     { href: "/worker/dashboard", label: "Inicio", icon: Home },

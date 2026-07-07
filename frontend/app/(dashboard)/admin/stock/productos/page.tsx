@@ -13,6 +13,7 @@ import { RoleGuard } from "@/components/layout/RoleGuard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api";
 import {
   createInventoryItem,
@@ -52,6 +53,7 @@ type ProductFormState = {
 };
 
 export default function AdminInventoryProductsPage() {
+  const { user } = useAuth();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [q, setQ] = useState("");
   const [itemType, setItemType] = useState("");
@@ -62,6 +64,7 @@ export default function AdminInventoryProductsPage() {
   const [error, setError] = useState<string | null>(null);
   const [formTarget, setFormTarget] = useState<InventoryItem | null | undefined>(undefined);
   const [deactivating, setDeactivating] = useState<InventoryItem | null>(null);
+  const canManageState = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,10 +91,11 @@ export default function AdminInventoryProductsPage() {
   }, [load]);
 
   async function saveProduct(data: InventoryItemCreate & { is_active?: boolean }) {
+    const payload = canManageState ? data : withoutState(data);
     if (formTarget) {
-      await updateInventoryItem(formTarget.id, data);
+      await updateInventoryItem(formTarget.id, payload);
     } else {
-      await createInventoryItem(data);
+      await createInventoryItem(payload);
     }
     setFormTarget(undefined);
     await load();
@@ -145,7 +149,7 @@ export default function AdminInventoryProductsPage() {
   ];
 
   return (
-    <RoleGuard roles={["SUPER_ADMIN", "ADMIN"]}>
+    <RoleGuard roles={["SUPER_ADMIN", "ADMIN", "LOGISTICS_OPERATOR"]}>
       <div className="space-y-6">
         <PageHeader
           title="Productos de inventario"
@@ -200,7 +204,7 @@ export default function AdminInventoryProductsPage() {
               <Button size="sm" type="button" variant="secondary" onClick={() => setFormTarget(item)}>
                 <Edit className="h-4 w-4" />
               </Button>
-              {item.is_active ? (
+              {canManageState && item.is_active ? (
                 <Button size="sm" type="button" variant="ghost" onClick={() => setDeactivating(item)}>
                   <Power className="h-4 w-4" />
                 </Button>
@@ -221,6 +225,7 @@ export default function AdminInventoryProductsPage() {
         />
         {formTarget !== undefined ? (
           <ProductFormModal
+            canManageState={canManageState}
             initialData={formTarget || undefined}
             onClose={() => setFormTarget(undefined)}
             onSubmit={saveProduct}
@@ -239,10 +244,12 @@ export default function AdminInventoryProductsPage() {
 }
 
 function ProductFormModal({
+  canManageState,
   initialData,
   onClose,
   onSubmit
 }: {
+  canManageState: boolean;
   initialData?: InventoryItem;
   onClose: () => void;
   onSubmit: (data: InventoryItemCreate & { is_active?: boolean }) => Promise<void>;
@@ -377,15 +384,17 @@ function ProductFormModal({
             <Input min={0} step="1" type="number" value={form.min_stock} onChange={(event) => setForm({ ...form, min_stock: event.target.value })} />
           </label>
         </div>
-        <label className="flex items-center gap-2 text-sm font-semibold">
-          <input
-            checked={form.is_active}
-            className="h-4 w-4"
-            type="checkbox"
-            onChange={(event) => setForm({ ...form, is_active: event.target.checked })}
-          />
-          Producto activo
-        </label>
+        {canManageState ? (
+          <label className="flex items-center gap-2 text-sm font-semibold">
+            <input
+              checked={form.is_active}
+              className="h-4 w-4"
+              type="checkbox"
+              onChange={(event) => setForm({ ...form, is_active: event.target.checked })}
+            />
+            Producto activo
+          </label>
+        ) : null}
         <div className="flex justify-end gap-2">
           <Button disabled={saving} type="button" variant="secondary" onClick={onClose}>
             Cancelar
@@ -428,4 +437,9 @@ function numberValue(value: string | number | null) {
 function money(value: string | number | null) {
   if (value === null || value === undefined || value === "") return "-";
   return Number(value).toLocaleString("es-CL", { style: "currency", currency: "CLP" });
+}
+
+function withoutState(data: InventoryItemCreate & { is_active?: boolean }): InventoryItemCreate {
+  const { is_active: _isActive, ...payload } = data;
+  return payload;
 }

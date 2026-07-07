@@ -261,7 +261,11 @@ function WarehouseUsersModal({ warehouse, onClose }: { warehouse: Warehouse; onC
   const [error, setError] = useState<string | null>(null);
 
   const assignedIds = useMemo(() => new Set(assignments.map((assignment) => assignment.user_id)), [assignments]);
-  const options = users.filter((user) => user.is_active && ["LOGISTICS_OPERATOR", "ADMIN", "SUPER_ADMIN"].includes(user.role) && !assignedIds.has(user.id));
+  const options = useMemo(
+    () => users.filter((user) => user.is_active && ["LOGISTICS_OPERATOR", "ADMIN", "SUPER_ADMIN"].includes(user.role) && !assignedIds.has(user.id)),
+    [assignedIds, users]
+  );
+  const hasAssignableUsers = options.length > 0;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -284,6 +288,11 @@ function WarehouseUsersModal({ warehouse, onClose }: { warehouse: Warehouse; onC
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (selectedUserId && options.some((user) => user.id === selectedUserId)) return;
+    setSelectedUserId(options[0]?.id || "");
+  }, [options, selectedUserId]);
+
   async function assign() {
     if (!selectedUserId) return;
     setSaving(true);
@@ -295,7 +304,6 @@ function WarehouseUsersModal({ warehouse, onClose }: { warehouse: Warehouse; onC
         can_manage_stock: canManageStock,
         can_dispatch_orders: canDispatchOrders
       });
-      setSelectedUserId("");
       setCanViewStock(true);
       setCanManageStock(false);
       setCanDispatchOrders(true);
@@ -349,19 +357,29 @@ function WarehouseUsersModal({ warehouse, onClose }: { warehouse: Warehouse; onC
   }
 
   return (
-    <ModalShell title="Permisos de bodega" description={`Bodega: ${warehouse.name}`} onClose={onClose}>
+    <ModalShell title="Permisos de bodega" description={`Bodega: ${warehouse.name}`} size="lg" onClose={onClose}>
       <div className="space-y-4">
         {error ? <ErrorState message={error} /> : null}
-        <div className="rounded-lg border bg-slate-50 p-3">
-          <p className="text-sm font-semibold text-slate-900">Asignar usuario a esta bodega</p>
+        <div className="rounded-lg border bg-slate-50 p-3 sm:p-4">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Asignar usuario a esta bodega</p>
+              <p className="text-xs text-slate-500">
+                Solo aparecen usuarios activos con rol logistico o administrador que aun no estan asignados.
+              </p>
+            </div>
+            <Link className="text-xs font-semibold text-primary hover:underline" href="/admin/usuarios/nuevo">
+              Crear usuario
+            </Link>
+          </div>
           <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto]">
             <select
               className="h-10 rounded-md border bg-white px-3 text-sm"
-              disabled={loading || saving}
+              disabled={loading || saving || !hasAssignableUsers}
               value={selectedUserId}
               onChange={(event) => setSelectedUserId(event.target.value)}
             >
-              <option value="">Seleccionar operador</option>
+              <option value="">{hasAssignableUsers ? "Seleccionar operador" : "Sin usuarios disponibles"}</option>
               {options.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.full_name} - {user.role}
@@ -370,9 +388,14 @@ function WarehouseUsersModal({ warehouse, onClose }: { warehouse: Warehouse; onC
             </select>
             <Button disabled={!selectedUserId || saving || !canViewStock} type="button" onClick={assign}>
               <UserPlus className="h-4 w-4" />
-              Asignar permisos
+              {saving ? "Asignando..." : "Asignar permisos"}
             </Button>
           </div>
+          {!loading && !hasAssignableUsers ? (
+            <p className="mt-2 text-xs font-semibold text-amber-700">
+              Todos los usuarios disponibles ya tienen permisos en esta bodega o no hay operadores activos para asignar.
+            </p>
+          ) : null}
           <div className="mt-3 grid gap-2 text-sm md:grid-cols-3">
             <label className="flex items-center gap-2 font-semibold">
               <input

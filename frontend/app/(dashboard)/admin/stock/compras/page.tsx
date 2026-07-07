@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
 import {
   approvePurchaseRequest,
   cancelPurchaseRequest,
@@ -22,7 +23,9 @@ import {
   receivePurchaseRequest,
   rejectPurchaseRequest
 } from "@/lib/api/purchase-requests";
+import { getMyWarehouseAssignments } from "@/lib/api/warehouses";
 import type { PurchaseDeliveryMode, PurchaseRequest, PurchaseRequestStatus } from "@/types/purchase-request";
+import type { MyWarehouseAssignment } from "@/types/warehouse";
 
 const statusLabels: Record<PurchaseRequestStatus, string> = {
   REQUESTED: "Solicitada",
@@ -41,13 +44,17 @@ const modeLabels: Record<PurchaseDeliveryMode, string> = {
 };
 
 export default function AdminPurchasesPage() {
+  const { user } = useAuth();
   const [purchases, setPurchases] = useState<PurchaseRequest[]>([]);
+  const [assignments, setAssignments] = useState<MyWarehouseAssignment[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<PurchaseRequest | null>(null);
   const [action, setAction] = useState<{ type: "reject" | "purchase" | "receive" | "direct"; purchase: PurchaseRequest } | null>(null);
   const [saving, setSaving] = useState(false);
+  const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  const isLogisticsOperator = user?.role === "LOGISTICS_OPERATOR";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,6 +72,13 @@ export default function AdminPurchasesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!isLogisticsOperator) return;
+    void getMyWarehouseAssignments()
+      .then(setAssignments)
+      .catch(() => setAssignments([]));
+  }, [isLogisticsOperator]);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -117,7 +131,7 @@ export default function AdminPurchasesPage() {
   }
 
   return (
-    <RoleGuard roles={["SUPER_ADMIN", "ADMIN"]}>
+    <RoleGuard roles={["SUPER_ADMIN", "ADMIN", "LOGISTICS_OPERATOR"]}>
       <div className="space-y-6">
         <PageHeader
           eyebrow="Stock"
@@ -149,7 +163,7 @@ export default function AdminPurchasesPage() {
               <Button size="sm" type="button" variant="secondary" onClick={() => setDetail(purchase)}>
                 <Eye className="h-4 w-4" />
               </Button>
-              {purchase.status === "REQUESTED" ? (
+              {isAdmin && purchase.status === "REQUESTED" ? (
                 <>
                   <Button size="sm" type="button" onClick={() => void runAction(() => approvePurchaseRequest(purchase.id))}>
                     <Check className="h-4 w-4" />
@@ -159,12 +173,12 @@ export default function AdminPurchasesPage() {
                   </Button>
                 </>
               ) : null}
-              {purchase.status === "APPROVED" ? (
+              {canMarkPurchased(purchase, isAdmin, assignments) ? (
                 <Button size="sm" type="button" variant="secondary" onClick={() => setAction({ type: "purchase", purchase })}>
                   <ShoppingCart className="h-4 w-4" />
                 </Button>
               ) : null}
-              {purchase.status === "PURCHASED" || purchase.status === "PARTIALLY_RECEIVED" ? (
+              {canReceivePurchase(purchase, isAdmin, assignments) ? (
                 <Button
                   size="sm"
                   type="button"
@@ -174,7 +188,7 @@ export default function AdminPurchasesPage() {
                   {purchase.delivery_mode === "DIRECT_TO_EVENT" ? <Truck className="h-4 w-4" /> : <PackageCheck className="h-4 w-4" />}
                 </Button>
               ) : null}
-              {["REQUESTED", "APPROVED", "PURCHASED", "PARTIALLY_RECEIVED"].includes(purchase.status) ? (
+              {canCancelPurchase(purchase, user?.id, isAdmin) ? (
                 <Button size="sm" type="button" variant="ghost" onClick={() => void runAction(() => cancelPurchaseRequest(purchase.id))}>
                   Cancelar
                 </Button>
@@ -455,4 +469,25 @@ function money(value: string | number) {
 
 function quantity(value: string | number) {
   return Number(value || 0).toLocaleString("es-CL", { maximumFractionDigits: 0 });
+}
+
+function canMarkPurchased(purchase: PurchaseRequest, isAdmin: boolean, assignments: MyWarehouseAssignment[]) {
+  if (purchase.status !== "APPROVED") return false;
+  if (isAdmin) return true;
+  if (!purchase.warehouse_id) return false;
+  return assignments.some((assignment) => assignment.warehouse_id === purchase.warehouse_id && assignment.can_manage_stock);
+}
+
+function canReceivePurchase(purchase: PurchaseRequest, isAdmin: boolean, assignments: MyWarehouseAssignment[]) {
+  if (!["APPROVED", "PURCHASED", "PARTIALLY_RECEIVED"].includes(purchase.status)) return false;
+  if (purchase.delivery_mode === "DIRECT_TO_EVENT") return isAdmin || purchase.logistics_order_id !== null;
+  if (isAdmin) return true;
+  if (!purchase.warehouse_id) return false;
+  return assignments.some((assignment) => assignment.warehouse_id === purchase.warehouse_id && assignment.can_manage_stock);
+}
+
+function canCancelPurchase(purchase: PurchaseRequest, userId: string | undefined, isAdmin: boolean) {
+  if (!["REQUESTED", "APPROVED", "PURCHASED", "PARTIALLY_RECEIVED"].includes(purchase.status)) return false;
+  if (isAdmin) return true;
+  return purchase.status === "REQUESTED" && Boolean(userId) && purchase.requested_by === userId;
 }
