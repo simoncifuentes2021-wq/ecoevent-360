@@ -703,7 +703,32 @@ CREATE POLICY clients_rls ON clients
 
 CREATE POLICY events_rls ON events
     FOR ALL
-    USING (app_can_view_event(id))
+    USING (
+        app_is_admin()
+        OR (
+            app_current_role() = 'CLIENT'
+            AND app_current_client_id() = client_id
+        )
+        OR (
+            app_current_role() IN ('SUPERVISOR', 'WORKER', 'LOGISTICS_OPERATOR')
+            AND status <> 'QUOTE'
+            AND hidden_from_operations = FALSE
+            AND (
+                EXISTS (
+                    SELECT 1
+                    FROM event_staff es
+                    WHERE es.event_id = events.id
+                      AND es.user_id = app_current_user_id()
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM tasks t
+                    WHERE t.event_id = events.id
+                      AND t.assigned_to = app_current_user_id()
+                )
+            )
+        )
+    )
     WITH CHECK (app_is_admin() OR app_can_access_client(client_id));
 
 CREATE POLICY event_zones_rls ON event_zones

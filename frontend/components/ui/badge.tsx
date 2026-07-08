@@ -6,7 +6,7 @@ export function Badge({ children, tone = "neutral" }: { children: ReactNode; ton
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-sm px-2 py-1 text-xs font-semibold",
+        "inline-flex items-center whitespace-nowrap rounded-sm px-2 py-1 text-xs font-semibold",
         tone === "success" && "bg-emerald-50 text-emerald-700",
         tone === "warning" && "bg-amber-50 text-amber-700",
         tone === "danger" && "bg-rose-50 text-rose-700",
