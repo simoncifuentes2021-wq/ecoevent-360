@@ -28,6 +28,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+    public_app_url: str | None = Field(default=None, validation_alias=AliasChoices("PUBLIC_APP_URL", "FRONTEND_PUBLIC_URL"))
     cloudflare_r2_bucket: str | None = None
     cloudflare_r2_account_id: str | None = None
     cloudflare_r2_access_key_id: str | None = None

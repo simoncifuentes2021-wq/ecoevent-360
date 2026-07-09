@@ -3,7 +3,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, inspect, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import can_access_event
@@ -13,9 +13,11 @@ from app.models.core import (
     CarbonRecord,
     Client,
     Event,
+    EventForm,
     EventStaff,
     EventZone,
     Evidence,
+    FormResponse,
     Incident,
     Report,
     SurveyResponse,
@@ -25,6 +27,7 @@ from app.models.core import (
     WasteType,
 )
 from app.models.enums import (
+    EventFormStatus,
     EventStatus,
     IncidentStatus,
     PriorityLevel,
@@ -69,6 +72,10 @@ def _rate(part: float, total: float) -> float:
 
 def _count(db: Session, model: type, *filters) -> int:
     return int(db.scalar(select(func.count()).select_from(model).where(*filters)) or 0)
+
+
+def _table_exists(db: Session, table_name: str) -> bool:
+    return inspect(db.get_bind()).has_table(table_name)
 
 
 def _sum(db: Session, column, *filters) -> float:
@@ -492,13 +499,15 @@ def get_worker_dashboard(db: Session, user: User) -> dict:
     }
 
 
-def get_event_dashboard(db: Session, event_id: UUID, user: User) -> dict:
+def get_event_dashboard(db: Session, event_id: UUID, user: User, session_id: UUID | None = None) -> dict:
     event = db.get(Event, event_id)
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
     if not can_access_event(user, event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
 
+    session_filter = [FormResponse.session_id == session_id] if session_id else []
+    form_filter = [EventForm.session_id == session_id] if session_id else []
     total_tasks = _count(db, Task, Task.event_id == event_id)
     completed_tasks = _count(db, Task, Task.event_id == event_id, Task.status == TaskStatus.COMPLETED)
     total_waste, recovered_waste, waste_rate = _event_waste(db, event_id)
@@ -515,6 +524,26 @@ def get_event_dashboard(db: Session, event_id: UUID, user: User) -> dict:
     bathroom_average = _float(
         db.scalar(select(func.avg(SurveyResponse.bathroom_rating)).where(SurveyResponse.event_id == event_id))
     )
+    if _table_exists(db, "event_forms") and _table_exists(db, "form_responses"):
+        total_forms = _count(db, EventForm, EventForm.event_id == event_id, *form_filter, EventForm.status != EventFormStatus.ARCHIVED)
+        active_forms = _count(db, EventForm, EventForm.event_id == event_id, *form_filter, EventForm.status == EventFormStatus.ACTIVE)
+        total_form_responses = _count(db, FormResponse, FormResponse.event_id == event_id, *session_filter)
+        forms_summary = [
+            {"id": form_id, "title": title, "responses": _float(count)}
+            for form_id, title, count in db.execute(
+                select(EventForm.id, EventForm.title, func.count(FormResponse.id))
+                .select_from(EventForm)
+                .outerjoin(FormResponse, FormResponse.form_id == EventForm.id)
+                .where(EventForm.event_id == event_id, *form_filter, EventForm.status != EventFormStatus.ARCHIVED)
+                .group_by(EventForm.id, EventForm.title)
+                .order_by(EventForm.created_at.desc())
+            ).all()
+        ]
+    else:
+        total_forms = 0
+        active_forms = 0
+        total_form_responses = 0
+        forms_summary = []
     recent_evidences = list(
         db.scalars(select(Evidence).where(Evidence.event_id == event_id).order_by(Evidence.created_at.desc()).limit(5)).all()
     )
@@ -568,6 +597,12 @@ def get_event_dashboard(db: Session, event_id: UUID, user: User) -> dict:
             "main_problems": _count_buckets(db, SurveyResponse.main_problem, SurveyResponse.event_id == event_id),
             "responses_by_zone": _event_survey_by_zone(db, event_id),
             "main_problem": "Sin dato",
+        },
+        "forms": {
+            "total_forms": total_forms,
+            "active_forms": active_forms,
+            "total_form_responses": total_form_responses,
+            "forms_summary": forms_summary,
         },
         "evidences": {
             "total": _count(db, Evidence, Evidence.event_id == event_id),

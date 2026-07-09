@@ -96,10 +96,11 @@ def get_event(
 @router.get("/{event_id}/dashboard", response_model=EventDashboardResponse)
 def get_event_dashboard(
     event_id: UUID,
+    session_id: UUID | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return dashboard_service.get_event_dashboard(db, event_id, current_user)
+    return dashboard_service.get_event_dashboard(db, event_id, current_user, session_id=session_id)
 
 
 @router.get("/{event_id}/reports", response_model=ReportListResponse)

@@ -174,6 +174,7 @@ class EventDashboardResponse(BaseModel):
     waste: dict
     carbon: dict
     survey: dict
+    forms: dict = {}
     evidences: dict
     alerts: dict
     critical_zones: list[DashboardBucket] = []

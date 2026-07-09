@@ -1,10 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
     text,
 )
@@ -22,7 +24,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.enums import (
     CarbonScope,
+    BikeZoneStatus,
     EventStatus,
+    EventFormStatus,
+    EventFormType,
+    FormFieldType,
     IncidentStatus,
     InventoryItemType,
     LogisticsEvidenceStage,
@@ -66,6 +72,10 @@ priority_level_enum = Enum(PriorityLevel, name="priority_level", create_type=Fal
 waste_destination_enum = Enum(WasteDestination, name="waste_destination", create_type=False)
 carbon_scope_enum = Enum(CarbonScope, name="carbon_scope", create_type=False)
 survey_status_enum = Enum(SurveyStatus, name="survey_status", create_type=False)
+event_form_type_enum = Enum(EventFormType, name="event_form_type", create_type=False)
+event_form_status_enum = Enum(EventFormStatus, name="event_form_status", create_type=False)
+form_field_type_enum = Enum(FormFieldType, name="form_field_type", create_type=False)
+bike_zone_status_enum = Enum(BikeZoneStatus, name="bike_zone_status", create_type=False)
 report_status_enum = Enum(ReportStatus, name="report_status", create_type=False)
 order_status_enum = Enum(OrderStatus, name="order_status", create_type=False)
 order_item_stage_status_enum = Enum(
@@ -192,6 +202,9 @@ class Event(Base):
     carbon_records: Mapped[list["CarbonRecord"]] = relationship(back_populates="event")
     surveys: Mapped[list["Survey"]] = relationship(back_populates="event")
     survey_responses: Mapped[list["SurveyResponse"]] = relationship(back_populates="event")
+    sessions: Mapped[list["EventSession"]] = relationship(back_populates="event")
+    forms: Mapped[list["EventForm"]] = relationship(back_populates="event")
+    form_responses: Mapped[list["FormResponse"]] = relationship(back_populates="event")
     reports: Mapped[list["Report"]] = relationship(back_populates="event")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="event")
     orders: Mapped[list["EventOrder"]] = relationship(back_populates="event")
@@ -1258,6 +1271,289 @@ class WaterRecord(Base):
 
     event: Mapped[Event] = relationship()
     recorder: Mapped[User | None] = relationship()
+
+
+class EventSession(Base):
+    __tablename__ = "event_sessions"
+    __table_args__ = (
+        Index("idx_event_sessions_event_id", "event_id"),
+        Index("idx_event_sessions_status", "status"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    session_date: Mapped[date | None] = mapped_column(Date)
+    start_time: Mapped[time | None] = mapped_column(Time)
+    end_time: Mapped[time | None] = mapped_column(Time)
+    venue_name: Mapped[str | None] = mapped_column(String(180))
+    stage_name: Mapped[str | None] = mapped_column(String(180))
+    expected_attendees: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    real_attendees: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, server_default=text("'PLANNED'"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    event: Mapped[Event] = relationship(back_populates="sessions")
+    forms: Mapped[list["EventForm"]] = relationship(back_populates="session")
+    responses: Mapped[list["FormResponse"]] = relationship(back_populates="session")
+
+
+class EventForm(Base):
+    __tablename__ = "event_forms"
+    __table_args__ = (
+        Index("idx_event_forms_event_id", "event_id"),
+        Index("idx_event_forms_session_id", "session_id"),
+        Index("idx_event_forms_status", "status"),
+        UniqueConstraint("public_slug", name="uq_event_forms_public_slug"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    form_type: Mapped[EventFormType] = mapped_column(event_form_type_enum, nullable=False)
+    public_slug: Mapped[str] = mapped_column(String(220), nullable=False)
+    status: Mapped[EventFormStatus] = mapped_column(
+        event_form_status_enum, nullable=False, server_default=text("'DRAFT'")
+    )
+    banner_url: Mapped[str | None] = mapped_column(Text)
+    primary_logo_url: Mapped[str | None] = mapped_column(Text)
+    secondary_logo_url: Mapped[str | None] = mapped_column(Text)
+    primary_color: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'#16b86a'"))
+    show_event_name: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    show_session_name: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    collect_personal_data: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    default_language: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'es'"))
+    available_languages: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[\"es\"]'::jsonb"))
+    requires_language_selection: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    opens_at: Mapped[datetime | None] = mapped_column(DateTime)
+    closes_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    event: Mapped[Event] = relationship(back_populates="forms")
+    session: Mapped[EventSession | None] = relationship(back_populates="forms")
+    creator: Mapped[User | None] = relationship()
+    fields: Mapped[list["FormField"]] = relationship(back_populates="form", order_by="FormField.sort_order")
+    responses: Mapped[list["FormResponse"]] = relationship(back_populates="form")
+    qr_codes: Mapped[list["FormQRCode"]] = relationship(back_populates="form")
+
+
+class FormField(Base):
+    __tablename__ = "form_fields"
+    __table_args__ = (
+        Index("idx_form_fields_form_id", "form_id"),
+        UniqueConstraint("form_id", "field_key", name="uq_form_fields_form_key"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    form_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_forms.id", ondelete="CASCADE"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(220), nullable=False)
+    field_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    field_type: Mapped[FormFieldType] = mapped_column(form_field_type_enum, nullable=False)
+    help_text: Mapped[str | None] = mapped_column(Text)
+    placeholder: Mapped[str | None] = mapped_column(String(220))
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    min_value: Mapped[Decimal | None] = mapped_column(Numeric)
+    max_value: Mapped[Decimal | None] = mapped_column(Numeric)
+    max_length: Mapped[int | None] = mapped_column(Integer)
+    analytics_key: Mapped[str | None] = mapped_column(String(120))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    form: Mapped[EventForm] = relationship(back_populates="fields")
+    options: Mapped[list["FormFieldOption"]] = relationship(back_populates="field", order_by="FormFieldOption.sort_order")
+    answers: Mapped[list["FormAnswer"]] = relationship(back_populates="field")
+    translations: Mapped[list["FormFieldTranslation"]] = relationship(back_populates="field")
+
+
+class FormFieldOption(Base):
+    __tablename__ = "form_field_options"
+    __table_args__ = (
+        Index("idx_form_field_options_field_id", "field_id"),
+        UniqueConstraint("field_id", "value", name="uq_form_field_options_field_value"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    field_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("form_fields.id", ondelete="CASCADE"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(180), nullable=False)
+    value: Mapped[str] = mapped_column(String(120), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = created_at_column()
+
+    field: Mapped[FormField] = relationship(back_populates="options")
+    translations: Mapped[list["FormFieldOptionTranslation"]] = relationship(back_populates="option")
+
+
+class FormFieldTranslation(Base):
+    __tablename__ = "form_field_translations"
+    __table_args__ = (UniqueConstraint("field_id", "language", name="uq_form_field_translations_field_language"),)
+
+    id: Mapped[UUID] = uuid_pk()
+    field_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("form_fields.id", ondelete="CASCADE"), nullable=False
+    )
+    language: Mapped[str] = mapped_column(String(10), nullable=False)
+    label: Mapped[str] = mapped_column(String(220), nullable=False)
+    help_text: Mapped[str | None] = mapped_column(Text)
+    placeholder: Mapped[str | None] = mapped_column(String(220))
+    created_at: Mapped[datetime] = created_at_column()
+
+    field: Mapped[FormField] = relationship(back_populates="translations")
+
+
+class FormFieldOptionTranslation(Base):
+    __tablename__ = "form_field_option_translations"
+    __table_args__ = (UniqueConstraint("option_id", "language", name="uq_form_field_option_translations_option_language"),)
+
+    id: Mapped[UUID] = uuid_pk()
+    option_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("form_field_options.id", ondelete="CASCADE"), nullable=False
+    )
+    language: Mapped[str] = mapped_column(String(10), nullable=False)
+    label: Mapped[str] = mapped_column(String(180), nullable=False)
+    created_at: Mapped[datetime] = created_at_column()
+
+    option: Mapped[FormFieldOption] = relationship(back_populates="translations")
+
+
+class FormResponse(Base):
+    __tablename__ = "form_responses"
+    __table_args__ = (
+        Index("idx_form_responses_form_id", "form_id"),
+        Index("idx_form_responses_event_id", "event_id"),
+        Index("idx_form_responses_session_id", "session_id"),
+        UniqueConstraint("response_code", name="uq_form_responses_response_code"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    form_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_forms.id", ondelete="CASCADE"), nullable=False
+    )
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL"))
+    response_code: Mapped[str | None] = mapped_column(String(100))
+    respondent_name: Mapped[str | None] = mapped_column(String(180))
+    respondent_email: Mapped[str | None] = mapped_column(String(180))
+    respondent_phone: Mapped[str | None] = mapped_column(String(60))
+    language: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'es'"))
+    raw_data: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, server_default=text("'{}'::jsonb"))
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text("NOW()"))
+
+    form: Mapped[EventForm] = relationship(back_populates="responses")
+    event: Mapped[Event] = relationship(back_populates="form_responses")
+    session: Mapped[EventSession | None] = relationship(back_populates="responses")
+    answers: Mapped[list["FormAnswer"]] = relationship(back_populates="response")
+
+
+class FormAnswer(Base):
+    __tablename__ = "form_answers"
+    __table_args__ = (
+        Index("idx_form_answers_response_id", "response_id"),
+        Index("idx_form_answers_field_id", "field_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    response_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False
+    )
+    field_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("form_fields.id", ondelete="CASCADE"), nullable=False
+    )
+    value_text: Mapped[str | None] = mapped_column(Text)
+    value_number: Mapped[Decimal | None] = mapped_column(Numeric)
+    value_boolean: Mapped[bool | None] = mapped_column(Boolean)
+    value_date: Mapped[date | None] = mapped_column(Date)
+    value_json: Mapped[dict | list | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = created_at_column()
+
+    response: Mapped[FormResponse] = relationship(back_populates="answers")
+    field: Mapped[FormField] = relationship(back_populates="answers")
+
+
+class BikeZoneRecord(Base):
+    __tablename__ = "bike_zone_records"
+    __table_args__ = (
+        Index("idx_bike_zone_records_event_id", "event_id"),
+        Index("idx_bike_zone_records_session_id", "session_id"),
+        UniqueConstraint("code", name="uq_bike_zone_records_code"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    response_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False
+    )
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL"))
+    code: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[BikeZoneStatus] = mapped_column(
+        bike_zone_status_enum, nullable=False, server_default=text("'REGISTERED'")
+    )
+    check_in_at: Mapped[datetime | None] = mapped_column(DateTime)
+    check_out_at: Mapped[datetime | None] = mapped_column(DateTime)
+    checked_in_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    checked_out_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    response: Mapped[FormResponse] = relationship()
+    event: Mapped[Event] = relationship()
+    session: Mapped[EventSession | None] = relationship()
+
+
+class FormQRCode(Base):
+    __tablename__ = "form_qr_codes"
+    __table_args__ = (
+        Index("idx_form_qr_codes_form_id", "form_id"),
+        Index("idx_form_qr_codes_event_id", "event_id"),
+        Index("idx_form_qr_codes_session_id", "session_id"),
+        Index("idx_form_qr_codes_qr_type", "qr_type"),
+        UniqueConstraint("form_id", "qr_type", "language", name="uq_form_qr_codes_form_type_language"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    form_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_forms.id", ondelete="CASCADE"), nullable=False
+    )
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL"))
+    label: Mapped[str] = mapped_column(String(180), nullable=False)
+    target_url: Mapped[str] = mapped_column(Text, nullable=False)
+    qr_type: Mapped[str] = mapped_column(String(50), nullable=False, server_default=text("'FORM'"))
+    language: Mapped[str | None] = mapped_column(String(10))
+    file_url: Mapped[str | None] = mapped_column(Text)
+    file_path: Mapped[str | None] = mapped_column(Text)
+    format: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'PNG'"))
+    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = created_at_column()
+
+    form: Mapped[EventForm] = relationship(back_populates="qr_codes")
+    event: Mapped[Event] = relationship()
+    session: Mapped[EventSession | None] = relationship()
+    creator: Mapped[User | None] = relationship()
 
 
 class Survey(Base):

@@ -65,6 +65,43 @@ class SurveyStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
 
 
+class EventFormType(StrEnum):
+    TRANSPORT_SURVEY = "TRANSPORT_SURVEY"
+    BIKE_ZONE_REGISTRATION = "BIKE_ZONE_REGISTRATION"
+    EXPERIENCE_SURVEY = "EXPERIENCE_SURVEY"
+    CUSTOM = "CUSTOM"
+
+
+class EventFormStatus(StrEnum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    CLOSED = "CLOSED"
+    ARCHIVED = "ARCHIVED"
+
+
+class FormFieldType(StrEnum):
+    TEXT = "TEXT"
+    EMAIL = "EMAIL"
+    PHONE = "PHONE"
+    NUMBER = "NUMBER"
+    TEXTAREA = "TEXTAREA"
+    SELECT = "SELECT"
+    MULTI_SELECT = "MULTI_SELECT"
+    RADIO = "RADIO"
+    CHECKBOX = "CHECKBOX"
+    DATE = "DATE"
+    RATING_1_5 = "RATING_1_5"
+    RATING_1_7 = "RATING_1_7"
+    YES_NO = "YES_NO"
+    FILE = "FILE"
+
+
+class BikeZoneStatus(StrEnum):
+    REGISTERED = "REGISTERED"
+    CHECKED_IN = "CHECKED_IN"
+    CHECKED_OUT = "CHECKED_OUT"
+
+
 class ReportStatus(StrEnum):
     DRAFT = "DRAFT"
     GENERATED = "GENERATED"

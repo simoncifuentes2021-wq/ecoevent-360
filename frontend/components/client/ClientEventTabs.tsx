@@ -11,6 +11,7 @@ import { ClientOperationalProgressTab } from "@/components/client/ClientOperatio
 import { ClientOrdersTab } from "@/components/client/ClientOrdersTab";
 import { ClientReportsTab } from "@/components/client/ClientReportsTab";
 import { ClientServicesTab } from "@/components/client/ClientServicesTab";
+import { ClientFormsTab } from "@/components/client/ClientFormsTab";
 import { ClientSurveysTab } from "@/components/client/ClientSurveysTab";
 import { ClientWasteTab } from "@/components/client/ClientWasteTab";
 
@@ -23,6 +24,7 @@ const tabs = [
   { key: "evidencias", label: "Evidencias", icon: Camera },
   { key: "residuos", label: "Residuos", icon: Recycle },
   { key: "huella", label: "Huella", icon: Cloud },
+  { key: "formularios", label: "Formularios", icon: MessageSquare },
   { key: "encuestas", label: "Encuestas", icon: MessageSquare },
   { key: "reportes", label: "Reportes", icon: FileText }
 ];
@@ -48,6 +50,7 @@ export function ClientEventTabs({ eventId }: { eventId: string }) {
       {active === "evidencias" ? <ClientEvidencesTab eventId={eventId} /> : null}
       {active === "residuos" ? <ClientWasteTab eventId={eventId} /> : null}
       {active === "huella" ? <ClientCarbonTab eventId={eventId} /> : null}
+      {active === "formularios" ? <ClientFormsTab eventId={eventId} /> : null}
       {active === "encuestas" ? <ClientSurveysTab eventId={eventId} /> : null}
       {active === "reportes" ? <ClientReportsTab eventId={eventId} /> : null}
     </div>

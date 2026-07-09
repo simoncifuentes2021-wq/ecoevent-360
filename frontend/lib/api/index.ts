@@ -4,12 +4,14 @@ import { clearSession, getStoredToken } from "@/lib/auth";
 export class ApiError extends Error {
   status: number;
   detail: string;
+  rawDetail: unknown;
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, rawDetail?: unknown) {
     super(detail);
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
+    this.rawDetail = rawDetail;
   }
 }
 
@@ -35,8 +37,10 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
 
   if (!response.ok) {
     let detail = `Error ${response.status}`;
+    let rawDetail: unknown = undefined;
     try {
       const data = (await response.json()) as { detail?: unknown };
+      rawDetail = data.detail;
       if (typeof data.detail === "string") detail = data.detail;
       if (
         data.detail &&
@@ -46,11 +50,11 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
       ) {
         detail = data.detail.message;
       }
-      if (Array.isArray(data.detail)) detail = "La solicitud contiene datos invalidos.";
+      if (Array.isArray(data.detail)) detail = "Revisa los campos marcados.";
     } catch {
       detail = "No se pudo completar la solicitud.";
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, rawDetail);
   }
 
   if (response.status === 204) return undefined as T;

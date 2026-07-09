@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { BarChart3, Camera, ClipboardList, FileText, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, Users } from "lucide-react";
+import { BarChart3, CalendarDays, Camera, ClipboardList, FileText, FileInput, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertsTab } from "@/components/alerts/AlertsTab";
@@ -11,6 +11,8 @@ import { CarbonTab } from "@/components/carbon/CarbonTab";
 import { EventDashboardTab } from "@/components/dashboard/EventDashboardTab";
 import { EvidencesTab } from "@/components/evidences/EvidencesTab";
 import { EventServicesTab } from "@/components/event-services/EventServicesTab";
+import { EventFormsTab } from "@/components/event-forms/EventFormsTab";
+import { EventSessionsTab } from "@/components/event-sessions/EventSessionsTab";
 import { LogisticsOrdersTab } from "@/components/logistics/LogisticsOrdersTab";
 import { IncidentsTab } from "@/components/incidents/IncidentsTab";
 import { ReportsTab } from "@/components/reports/ReportsTab";
@@ -27,6 +29,8 @@ const adminTabs = [
   { key: "resumen", label: "Resumen", icon: BarChart3, description: "Indicadores generales del evento y actividad reciente." },
   { key: "servicios", label: "Servicios", icon: Settings2, description: "Servicios contratados y valorizacion operacional." },
   { key: "logistica", label: "Logistica", icon: PackageCheck, description: "Pedidos logisticos asignados a operadores." },
+  { key: "programacion", label: "Programacion", icon: CalendarDays, description: "Shows, jornadas y funciones del evento." },
+  { key: "formularios", label: "Formularios", icon: FileInput, description: "Formularios publicos propios, QR y respuestas." },
   { key: "zonas", label: "Zonas", icon: Map, description: "Sectores, puntos criticos y cobertura del recinto." },
   { key: "personal", label: "Personal", icon: Users, description: "Equipo asignado, turnos y responsabilidades." },
   { key: "tareas", label: "Tareas", icon: ClipboardList, description: "Trabajo operativo planificado y avances en terreno." },
@@ -43,6 +47,8 @@ const adminTabs = [
 const supervisorTabs = [
   { key: "resumen", label: "Resumen", icon: BarChart3, description: "Vista operativa del evento asignado." },
   { key: "logistica", label: "Logistica", icon: PackageCheck, description: "Pedidos logisticos para operadores asignados." },
+  { key: "programacion", label: "Programacion", icon: CalendarDays, description: "Shows, jornadas y funciones asignadas." },
+  { key: "formularios", label: "Formularios", icon: FileInput, description: "Links publicos, formularios activos y registros." },
   { key: "zonas", label: "Zonas", icon: Map, description: "Sectores y puntos de trabajo del recinto." },
   { key: "personal", label: "Personal", icon: Users, description: "Equipo disponible para la operacion." },
   { key: "tareas", label: "Tareas", icon: ClipboardList, description: "Trabajo operativo y seguimiento." },
@@ -113,6 +119,8 @@ function TabContent({ active, eventId, event, role, title, description, icon }: 
   if (active === "resumen") return <EventDashboardTab eventId={eventId} />;
   if (active === "servicios") return <EventServicesTab eventId={eventId} role={role} />;
   if (active === "logistica") return <LogisticsOrdersTab eventId={eventId} eventName={event?.name} role={role} />;
+  if (active === "programacion") return <EventSessionsTab eventId={eventId} role={role} />;
+  if (active === "formularios") return <EventFormsTab eventId={eventId} role={role} />;
   if (active === "zonas") return <ZonesTab eventId={eventId} role={role} />;
   if (active === "personal") return <StaffTab eventId={eventId} role={role} />;
   if (active === "tareas") return <TasksTab eventId={eventId} role={role} />;
