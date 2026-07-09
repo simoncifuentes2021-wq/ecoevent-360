@@ -313,6 +313,10 @@ def test_client_can_list_and_download_but_not_create_qr(db, ctx):
     assert form_qr_service.list_form_qr_codes(db, form.id, ctx["client_user"])
     path = form_qr_service.get_download_path(db, qr.id, ctx["client_user"])
     assert path.read_bytes().startswith(b"\x89PNG")
+    content, content_type, filename = form_qr_service.get_download_content(db, qr.id, ctx["client_user"])
+    assert content.startswith(b"\x89PNG")
+    assert content_type == "image/png"
+    assert filename.endswith(".png")
     with pytest.raises(HTTPException) as exc:
         form_qr_service.create_form_qr(
             db,

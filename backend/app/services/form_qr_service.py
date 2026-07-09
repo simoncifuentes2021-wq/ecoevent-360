@@ -116,6 +116,16 @@ def get_download_path(db: Session, qr_id: UUID, user: User) -> Path:
     return target
 
 
+def get_download_content(db: Session, qr_id: UUID, user: User) -> tuple[bytes, str, str]:
+    qr = get_qr_or_404(db, qr_id)
+    _ensure_can_access_event(db, qr.event_id, user)
+    source = qr.file_url or qr.file_path
+    if not source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QR file not found")
+    content, content_type = file_storage_service.read_stored_file(source)
+    return content, content_type, _download_filename(qr)
+
+
 def delete_qr(db: Session, qr_id: UUID, user: User) -> None:
     qr = get_qr_or_404(db, qr_id)
     _ensure_can_manage_event(db, qr.event_id, user)
@@ -274,6 +284,11 @@ def _delete_qr_file(qr: FormQRCode) -> None:
     path = Path(qr.file_path or qr.file_url or "")
     if path.is_file():
         path.unlink(missing_ok=True)
+
+
+def _download_filename(qr: FormQRCode) -> str:
+    safe_label = "".join(char for char in qr.label.lower() if char.isalnum() or char in {"-", "_"}) or "qr"
+    return f"{safe_label}.png"
 
 
 def _ensure_can_view_qr(db: Session, form: EventForm, user: User) -> None:

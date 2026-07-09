@@ -2,7 +2,7 @@ from uuid import UUID
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
@@ -175,10 +175,12 @@ def list_form_qr_codes(
 
 @router.get("/form-qr/{qr_id}/download")
 def download_form_qr(qr_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
-    target = form_qr_service.get_download_target(db, qr_id, current_user)
-    if isinstance(target, str):
-        return RedirectResponse(target)
-    return FileResponse(target, media_type="image/png", filename=target.name)
+    content, content_type, filename = form_qr_service.get_download_content(db, qr_id, current_user)
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.delete("/form-qr/{qr_id}", status_code=status.HTTP_204_NO_CONTENT)

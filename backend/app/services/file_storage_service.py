@@ -107,6 +107,19 @@ def delete_stored_file(file_url: str) -> None:
         return
 
 
+def read_stored_file(file_url: str) -> tuple[bytes, str]:
+    if settings.use_r2_storage and _is_r2_public_url(file_url):
+        return _read_from_r2(file_url)
+
+    path = Path(file_url)
+    try:
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            return path.read_bytes(), "image/png"
+    except OSError:
+        pass
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored file not found")
+
+
 def _read_upload_file(file: UploadFile) -> bytes:
     content = file.file.read(settings.max_upload_size_bytes + 1)
     _ensure_allowed_size(len(content))
@@ -175,11 +188,29 @@ def _save_to_r2(key: str, content: bytes, content_type: str) -> str:
 
 
 def _delete_from_r2(file_url: str) -> None:
-    public_base_url = str(settings.cloudflare_r2_public_base_url).rstrip("/")
-    if not file_url.startswith(f"{public_base_url}/"):
+    if not _is_r2_public_url(file_url):
         return
-    key = file_url.removeprefix(f"{public_base_url}/")
+    key = _r2_key_from_url(file_url)
     try:
         _r2_client().delete_object(Bucket=settings.cloudflare_r2_bucket, Key=key)
     except Exception:
         return
+
+
+def _read_from_r2(file_url: str) -> tuple[bytes, str]:
+    key = _r2_key_from_url(file_url)
+    try:
+        response = _r2_client().get_object(Bucket=settings.cloudflare_r2_bucket, Key=key)
+        return response["Body"].read(), response.get("ContentType") or "application/octet-stream"
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored file not found") from exc
+
+
+def _is_r2_public_url(file_url: str) -> bool:
+    public_base_url = str(settings.cloudflare_r2_public_base_url or "").rstrip("/")
+    return bool(public_base_url) and file_url.startswith(f"{public_base_url}/")
+
+
+def _r2_key_from_url(file_url: str) -> str:
+    public_base_url = str(settings.cloudflare_r2_public_base_url).rstrip("/")
+    return file_url.removeprefix(f"{public_base_url}/")
