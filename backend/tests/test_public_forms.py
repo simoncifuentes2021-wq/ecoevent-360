@@ -349,3 +349,16 @@ def test_qr_force_updates_existing(db, ctx):
     second = form_qr_service.create_form_qr(db, form.id, FormQRCodeCreate(label="QR Forced", qr_type="FORM", force=True), ctx["admin"])
     assert second.id == first.id
     assert second.label == "QR Forced"
+
+
+def test_qr_list_refreshes_stale_public_url(db, ctx, monkeypatch):
+    form = make_form(db, ctx["event"], ctx["suffix"])
+    qr = form_qr_service.create_form_qr(db, form.id, FormQRCodeCreate(label="QR One", qr_type="FORM"), ctx["admin"])
+    qr.target_url = f"http://localhost:3000/f/{form.public_slug}"
+    db.commit()
+
+    monkeypatch.setattr(form_qr_service.settings, "public_app_url", "https://ecoevent-360.vercel.app")
+
+    refreshed = form_qr_service.list_form_qr_codes(db, form.id, ctx["admin"])[0]
+    assert refreshed.target_url == f"https://ecoevent-360.vercel.app/f/{form.public_slug}"
+    assert refreshed.file_path

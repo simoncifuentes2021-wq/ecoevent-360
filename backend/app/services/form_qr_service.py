@@ -29,6 +29,9 @@ def create_form_qr(db: Session, form_id: UUID, payload: FormQRCodeCreate, user: 
     target_url = _target_url(form, qr_type, language)
     existing = _find_existing(db, form.id, qr_type, language)
     if existing and not payload.force:
+        if _sync_qr_target(existing):
+            db.commit()
+            db.refresh(existing)
         return existing
     png = _render_png(target_url)
     file_url, file_path = _save_png(png, form.public_slug, qr_type, language)
@@ -65,13 +68,21 @@ def create_form_qr(db: Session, form_id: UUID, payload: FormQRCodeCreate, user: 
 def list_form_qr_codes(db: Session, form_id: UUID, user: User) -> list[FormQRCode]:
     form = get_form_or_404(db, form_id)
     _ensure_can_view_qr(db, form, user)
-    return list(
+    qr_codes = list(
         db.scalars(
             select(FormQRCode)
             .where(FormQRCode.form_id == form.id)
             .order_by(FormQRCode.created_at.desc())
         ).all()
     )
+    changed = False
+    for qr in qr_codes:
+        changed = _sync_qr_target(qr) or changed
+    if changed:
+        db.commit()
+        for qr in qr_codes:
+            db.refresh(qr)
+    return qr_codes
 
 
 def get_qr_or_404(db: Session, qr_id: UUID) -> FormQRCode:
@@ -187,6 +198,29 @@ def _target_url(form: EventForm, qr_type: str, language: str | None) -> str:
 
 def _public_app_url() -> str:
     return (settings.public_app_url or "http://localhost:3000").rstrip("/")
+
+
+def _sync_qr_target(qr: FormQRCode) -> bool:
+    if not settings.public_app_url:
+        return False
+    if qr.qr_type == "BIKE_ZONE_PERSONAL":
+        if not qr.language:
+            return False
+        target_url = f"{_public_app_url()}/bike-zone/{qr.language}"
+        asset_slug = qr.language.lower()
+    else:
+        target_url = _target_url(qr.form, qr.qr_type, qr.language)
+        asset_slug = qr.form.public_slug
+    if qr.target_url == target_url:
+        return False
+    png = _render_png(target_url)
+    file_url, file_path = _save_png(png, asset_slug, qr.qr_type, qr.language)
+    _delete_qr_file(qr)
+    qr.target_url = target_url
+    qr.file_url = file_url
+    qr.file_path = file_path
+    qr.format = "PNG"
+    return True
 
 
 def _render_png(target_url: str) -> bytes:
