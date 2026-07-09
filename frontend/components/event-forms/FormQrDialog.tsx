@@ -95,7 +95,7 @@ export function FormQrDialog({ form, canCreate = true, canDelete, onClose }: { f
             <div className="flex flex-wrap gap-2">
               <CopyPublicLinkButton url={publicUrl} />
               {canCreate ? (
-                <Button disabled={Boolean(saving)} type="button" onClick={() => generateGeneral(false)}>
+                <Button disabled={Boolean(saving)} type="button" onClick={() => generateGeneral(true)}>
                   <QrCode className="h-4 w-4" />
                   {saving === "FORM" ? "Generando..." : "Generar QR"}
                 </Button>
@@ -117,7 +117,7 @@ export function FormQrDialog({ form, canCreate = true, canDelete, onClose }: { f
                     <div className="mt-3 flex flex-wrap gap-2">
                       <CopyPublicLinkButton label="Copiar" url={url} />
                       {canCreate ? (
-                        <Button disabled={Boolean(saving)} size="sm" type="button" onClick={() => generateLanguage(language, false)}>
+                        <Button disabled={Boolean(saving)} size="sm" type="button" onClick={() => generateLanguage(language, true)}>
                           <QrCode className="h-4 w-4" />
                           {saving === language ? "Generando..." : "Generar"}
                         </Button>

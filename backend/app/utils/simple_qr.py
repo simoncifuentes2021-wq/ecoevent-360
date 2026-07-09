@@ -25,7 +25,32 @@ def _init_gf() -> None:
 _init_gf()
 
 
-def make_qr_png(data: str, *, scale: int = 10, border: int = 4) -> bytes:
+def make_qr_png(data: str, *, scale: int = 14, border: int = 4) -> bytes:
+    try:
+        return _make_standard_qr_png(data, scale=scale, border=border)
+    except ImportError:
+        return _make_builtin_qr_png(data, scale=scale, border=border)
+
+
+def _make_standard_qr_png(data: str, *, scale: int, border: int) -> bytes:
+    import qrcode
+    from qrcode.constants import ERROR_CORRECT_M
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=ERROR_CORRECT_M,
+        box_size=scale,
+        border=border,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+    output = BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
+def _make_builtin_qr_png(data: str, *, scale: int, border: int) -> bytes:
     raw = data.encode("utf-8")
     version = _pick_version(len(raw))
     matrix, reserved = _base_matrix(version)
