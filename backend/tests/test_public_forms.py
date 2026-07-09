@@ -362,3 +362,18 @@ def test_qr_list_refreshes_stale_public_url(db, ctx, monkeypatch):
     refreshed = form_qr_service.list_form_qr_codes(db, form.id, ctx["admin"])[0]
     assert refreshed.target_url == f"https://ecoevent-360.vercel.app/f/{form.public_slug}"
     assert refreshed.file_path
+
+
+def test_qr_uses_request_public_base_url_when_env_is_missing(db, ctx, monkeypatch):
+    form = make_form(db, ctx["event"], ctx["suffix"])
+    monkeypatch.setattr(form_qr_service.settings, "public_app_url", None)
+
+    qr = form_qr_service.create_form_qr(
+        db,
+        form.id,
+        FormQRCodeCreate(label="QR One", qr_type="FORM"),
+        ctx["admin"],
+        public_base_url="https://ecoevent-360.vercel.app",
+    )
+
+    assert qr.target_url == f"https://ecoevent-360.vercel.app/f/{form.public_slug}"

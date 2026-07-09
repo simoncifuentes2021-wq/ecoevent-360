@@ -21,15 +21,21 @@ QR_CONTENT_TYPES = {"image/png": ".png"}
 LOCAL_UPLOAD_ROOT = Path("uploads") / QR_UPLOAD_FOLDER
 
 
-def create_form_qr(db: Session, form_id: UUID, payload: FormQRCodeCreate, user: User) -> FormQRCode:
+def create_form_qr(
+    db: Session,
+    form_id: UUID,
+    payload: FormQRCodeCreate,
+    user: User,
+    public_base_url: str | None = None,
+) -> FormQRCode:
     form = get_form_or_404(db, form_id)
     _ensure_can_manage_qr(db, form, user)
     qr_type = _validate_qr_type(payload.qr_type)
     language = _validate_language(form, qr_type, payload.language)
-    target_url = _target_url(form, qr_type, language)
+    target_url = _target_url(form, qr_type, language, public_base_url)
     existing = _find_existing(db, form.id, qr_type, language)
     if existing and not payload.force:
-        if _sync_qr_target(existing):
+        if _sync_qr_target(existing, public_base_url):
             db.commit()
             db.refresh(existing)
         return existing
@@ -65,7 +71,7 @@ def create_form_qr(db: Session, form_id: UUID, payload: FormQRCodeCreate, user: 
     return qr
 
 
-def list_form_qr_codes(db: Session, form_id: UUID, user: User) -> list[FormQRCode]:
+def list_form_qr_codes(db: Session, form_id: UUID, user: User, public_base_url: str | None = None) -> list[FormQRCode]:
     form = get_form_or_404(db, form_id)
     _ensure_can_view_qr(db, form, user)
     qr_codes = list(
@@ -77,7 +83,7 @@ def list_form_qr_codes(db: Session, form_id: UUID, user: User) -> list[FormQRCod
     )
     changed = False
     for qr in qr_codes:
-        changed = _sync_qr_target(qr) or changed
+        changed = _sync_qr_target(qr, public_base_url) or changed
     if changed:
         db.commit()
         for qr in qr_codes:
@@ -118,7 +124,13 @@ def delete_qr(db: Session, qr_id: UUID, user: User) -> None:
     db.commit()
 
 
-def create_bike_zone_qr(db: Session, code: str, user: User, force: bool = False) -> FormQRCode:
+def create_bike_zone_qr(
+    db: Session,
+    code: str,
+    user: User,
+    force: bool = False,
+    public_base_url: str | None = None,
+) -> FormQRCode:
     record = db.scalar(select(BikeZoneRecord).where(BikeZoneRecord.code == code.strip().upper()))
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bike Zone code not found")
@@ -128,7 +140,7 @@ def create_bike_zone_qr(db: Session, code: str, user: User, force: bool = False)
     form = record.response.form
     if form.form_type != EventFormType.BIKE_ZONE_REGISTRATION:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Form is not Bike Zone")
-    target_url = f"{_public_app_url()}/bike-zone/{record.code}"
+    target_url = f"{_public_app_url(public_base_url)}/bike-zone/{record.code}"
     existing = db.scalar(
         select(FormQRCode).where(
             FormQRCode.form_id == form.id,
@@ -189,27 +201,27 @@ def _validate_language(form: EventForm, qr_type: str, language: str | None) -> s
     return language
 
 
-def _target_url(form: EventForm, qr_type: str, language: str | None) -> str:
-    base = f"{_public_app_url()}/f/{form.public_slug}"
+def _target_url(form: EventForm, qr_type: str, language: str | None, public_base_url: str | None = None) -> str:
+    base = f"{_public_app_url(public_base_url)}/f/{form.public_slug}"
     if qr_type == "FORM_LANGUAGE" and language:
         return f"{base}?{urlencode({'lang': language})}"
     return base
 
 
-def _public_app_url() -> str:
-    return (settings.public_app_url or "http://localhost:3000").rstrip("/")
+def _public_app_url(public_base_url: str | None = None) -> str:
+    return (settings.public_app_url or public_base_url or "http://localhost:3000").rstrip("/")
 
 
-def _sync_qr_target(qr: FormQRCode) -> bool:
-    if not settings.public_app_url:
+def _sync_qr_target(qr: FormQRCode, public_base_url: str | None = None) -> bool:
+    if not settings.public_app_url and not public_base_url:
         return False
     if qr.qr_type == "BIKE_ZONE_PERSONAL":
         if not qr.language:
             return False
-        target_url = f"{_public_app_url()}/bike-zone/{qr.language}"
+        target_url = f"{_public_app_url(public_base_url)}/bike-zone/{qr.language}"
         asset_slug = qr.language.lower()
     else:
-        target_url = _target_url(qr.form, qr.qr_type, qr.language)
+        target_url = _target_url(qr.form, qr.qr_type, qr.language, public_base_url)
         asset_slug = qr.form.public_slug
     if qr.target_url == target_url:
         return False

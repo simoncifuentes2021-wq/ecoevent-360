@@ -1,6 +1,7 @@
 from uuid import UUID
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -152,13 +153,24 @@ def export_csv(form_id: UUID, db: Session = Depends(get_db), current_user: User 
 
 
 @router.post("/forms/{form_id}/qr", response_model=FormQRCodeRead, status_code=status.HTTP_201_CREATED)
-def create_form_qr(form_id: UUID, payload: FormQRCodeCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
-    return form_qr_service.create_form_qr(db, form_id, payload, current_user)
+def create_form_qr(
+    form_id: UUID,
+    payload: FormQRCodeCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return form_qr_service.create_form_qr(db, form_id, payload, current_user, public_base_url=_request_public_base_url(request))
 
 
 @router.get("/forms/{form_id}/qr", response_model=list[FormQRCodeRead])
-def list_form_qr_codes(form_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
-    return form_qr_service.list_form_qr_codes(db, form_id, current_user)
+def list_form_qr_codes(
+    form_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return form_qr_service.list_form_qr_codes(db, form_id, current_user, public_base_url=_request_public_base_url(request))
 
 
 @router.get("/form-qr/{qr_id}/download")
@@ -203,5 +215,35 @@ def check_out_bike(code: str, db: Session = Depends(get_db), current_user: User 
 
 
 @bike_router.post("/{code}/qr", response_model=FormQRCodeRead, status_code=status.HTTP_201_CREATED)
-def create_bike_zone_qr(code: str, force: bool = False, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
-    return form_qr_service.create_bike_zone_qr(db, code, current_user, force=force)
+def create_bike_zone_qr(
+    code: str,
+    request: Request,
+    force: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return form_qr_service.create_bike_zone_qr(
+        db,
+        code,
+        current_user,
+        force=force,
+        public_base_url=_request_public_base_url(request),
+    )
+
+
+def _request_public_base_url(request: Request) -> str | None:
+    origin = request.headers.get("origin")
+    if origin and _is_public_http_origin(origin):
+        return origin
+    referer = request.headers.get("referer")
+    if not referer:
+        return None
+    parsed = urlparse(referer)
+    if parsed.scheme in {"http", "https"} and parsed.netloc and parsed.hostname not in {"localhost", "127.0.0.1"}:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return None
+
+
+def _is_public_http_origin(origin: str) -> bool:
+    parsed = urlparse(origin)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc) and parsed.hostname not in {"localhost", "127.0.0.1"}
