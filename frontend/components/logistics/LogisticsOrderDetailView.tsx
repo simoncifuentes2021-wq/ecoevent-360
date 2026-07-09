@@ -850,7 +850,7 @@ export function LogisticsOrderDetailView({
                   ) : null}
                   {order.status === "CLOSED" ? (
                     <div className="mt-4 grid gap-3 md:grid-cols-3">
-                      <ClosureMetric label="Cerrado por" value={order.closed_by || "-"} />
+                      <ClosureMetric label="Cerrado por" value={order.closer?.full_name || order.closer?.email || order.closed_by || "-"} />
                       <ClosureMetric label="Fecha de cierre" value={order.closed_at ? new Date(order.closed_at).toLocaleString("es-CL") : "-"} />
                       <ClosureMetric label="Observacion de cierre" value={order.closure_notes || "-"} />
                     </div>

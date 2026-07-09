@@ -97,6 +97,7 @@ export type LogisticsOrder = {
   warehouse: LogisticsOrderWarehouse | null;
   requester: LogisticsOrderUser | null;
   assigned_operator: LogisticsOrderUser | null;
+  closer: LogisticsOrderUser | null;
   items: LogisticsOrderItem[];
 };
 

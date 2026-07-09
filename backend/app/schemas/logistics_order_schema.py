@@ -289,6 +289,7 @@ class LogisticsOrderRead(BaseModel):
     warehouse: LogisticsOrderWarehouseRead | None = None
     requester: LogisticsOrderUserRead | None = None
     assigned_operator: LogisticsOrderUserRead | None = None
+    closer: LogisticsOrderUserRead | None = None
     items: list[LogisticsOrderItemRead] = []
 
 

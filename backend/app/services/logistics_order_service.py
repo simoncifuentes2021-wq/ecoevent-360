@@ -59,6 +59,7 @@ def _load_order_query():
         selectinload(LogisticsOrder.warehouse),
         selectinload(LogisticsOrder.requester),
         selectinload(LogisticsOrder.assigned_operator),
+        selectinload(LogisticsOrder.closer),
     )
 
 
