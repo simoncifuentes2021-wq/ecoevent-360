@@ -37,6 +37,7 @@ WIDGET_DEFINITIONS = [
     ("forms_total_responses", "forms", "Respuestas de formularios", 100),
     ("forms_transport_modes", "forms", "Modos de transporte", 110),
     ("forms_average_rating", "forms", "Rating promedio", 120),
+    ("forms_session_comparison", "forms", "Comparativo por show", 125),
     ("bike_zone_total_registrations", "bike_zone", "Registros Bike Zone", 130),
     ("reports_download", "reports", "Descarga de reportes", 140),
 ]
@@ -163,6 +164,7 @@ def _widget_values(db: Session, event: Event, dashboard: dict) -> dict:
         "forms_total_responses": dashboard.get("forms", {}).get("total_form_responses", 0),
         "forms_transport_modes": None,
         "forms_average_rating": dashboard["survey"]["average_rating"],
+        "forms_session_comparison": len(dashboard.get("forms_by_session", [])),
         "bike_zone_total_registrations": bike_total,
         "reports_download": None,
     }
@@ -173,6 +175,8 @@ def _widget_data(widget_key: str, dashboard: dict) -> dict | list | None:
         return dashboard["evidences"]["recent"]
     if widget_key == "forms_transport_modes":
         return []
+    if widget_key == "forms_session_comparison":
+        return dashboard.get("forms_by_session", [])
     if widget_key == "reports_download":
         return {}
     return None
@@ -185,6 +189,8 @@ def _ensure_config(db: Session, event: Event, created_by: UUID | None) -> Client
         .where(ClientPortalConfig.event_id == event.id, ClientPortalConfig.client_id == event.client_id)
     )
     if config:
+        if _ensure_config_definitions(db, config):
+            return _load_config(db, config.id)
         return config
     config = ClientPortalConfig(client_id=event.client_id, event_id=event.id, created_by=created_by)
     db.add(config)
@@ -195,6 +201,24 @@ def _ensure_config(db: Session, event: Event, created_by: UUID | None) -> Client
         db.add(ClientPortalWidget(config_id=config.id, widget_key=key, section_key=section, label=label, sort_order=order, visibility_config={}))
     db.commit()
     return _load_config(db, config.id)
+
+
+def _ensure_config_definitions(db: Session, config: ClientPortalConfig) -> bool:
+    existing_sections = {section.section_key for section in config.sections}
+    existing_widgets = {widget.widget_key for widget in config.widgets}
+    changed = False
+    for key, label, order in SECTION_DEFINITIONS:
+        if key not in existing_sections:
+            db.add(ClientPortalSection(config_id=config.id, section_key=key, label=label, is_enabled=False, sort_order=order))
+            changed = True
+    for key, section, label, order in WIDGET_DEFINITIONS:
+        if key not in existing_widgets:
+            db.add(ClientPortalWidget(config_id=config.id, widget_key=key, section_key=section, label=label, is_enabled=False, sort_order=order, visibility_config={}))
+            changed = True
+    if changed:
+        db.commit()
+        db.expire_all()
+    return changed
 
 
 def _load_config(db: Session, config_id: UUID) -> ClientPortalConfig:

@@ -7,7 +7,7 @@ export default function AlertsPage() {
   return (
     <RoleGuard roles={["SUPERVISOR"]}>
       <ModulePlaceholder
-        description="Revisa alertas operativas generadas por incidencias, residuos o encuestas."
+        description="Revisa alertas operativas generadas por incidencias, residuos o hallazgos de operacion."
         eyebrow="Supervisión"
         icon={ShieldCheck}
         title="Alertas"

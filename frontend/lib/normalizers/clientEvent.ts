@@ -27,7 +27,6 @@ export function buildClientEventTabs(data: ClientEventDetail): ClientEventTab[] 
     { key: "evidencias", label: "Evidencias", visible: true },
     { key: "residuos", label: "Residuos", visible: true },
     { key: "huella", label: "Huella", visible: true },
-    { key: "encuestas", label: "Encuestas", visible: true },
     { key: "reportes", label: "Reportes", visible: true, count: data.reports.length }
   ];
 }

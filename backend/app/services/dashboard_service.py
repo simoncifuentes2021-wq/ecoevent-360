@@ -544,6 +544,17 @@ def get_event_dashboard(db: Session, event_id: UUID, user: User, session_id: UUI
         active_forms = 0
         total_form_responses = 0
         forms_summary = []
+    forms_by_session = []
+    if _table_exists(db, "event_sessions") and _table_exists(db, "event_forms") and _table_exists(db, "form_responses"):
+        try:
+            from app.services import event_form_service
+
+            comparison = event_form_service.session_comparison(db, event_id, user)
+            forms_by_session = comparison["sessions"]
+            if session_id:
+                forms_by_session = [item for item in forms_by_session if item["session_id"] == session_id]
+        except HTTPException:
+            forms_by_session = []
     recent_evidences = list(
         db.scalars(select(Evidence).where(Evidence.event_id == event_id).order_by(Evidence.created_at.desc()).limit(5)).all()
     )
@@ -604,6 +615,7 @@ def get_event_dashboard(db: Session, event_id: UUID, user: User, session_id: UUI
             "total_form_responses": total_form_responses,
             "forms_summary": forms_summary,
         },
+        "forms_by_session": forms_by_session,
         "evidences": {
             "total": _count(db, Evidence, Evidence.event_id == event_id),
             "recent": [

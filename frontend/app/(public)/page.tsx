@@ -21,7 +21,7 @@ const benefits = [
   { title: "Evidencias fotográficas", icon: Camera },
   { title: "Gestión de residuos", icon: Recycle },
   { title: "Huella de carbono", icon: Leaf },
-  { title: "Encuestas a asistentes", icon: BarChart3 },
+  { title: "Formularios publicos", icon: BarChart3 },
   { title: "Reportes profesionales", icon: FileText }
 ];
 

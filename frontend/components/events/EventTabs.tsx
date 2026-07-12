@@ -18,7 +18,6 @@ import { LogisticsOrdersTab } from "@/components/logistics/LogisticsOrdersTab";
 import { IncidentsTab } from "@/components/incidents/IncidentsTab";
 import { ReportsTab } from "@/components/reports/ReportsTab";
 import { StaffTab } from "@/components/staff/StaffTab";
-import { SurveysTab } from "@/components/surveys/SurveysTab";
 import { TasksTab } from "@/components/tasks/TasksTab";
 import { Card, CardContent } from "@/components/ui/card";
 import { WasteTab } from "@/components/waste/WasteTab";
@@ -40,7 +39,6 @@ const adminTabs = [
   { key: "evidencias", label: "Evidencias", icon: Camera, description: "Fotografias, documentos y respaldos del servicio." },
   { key: "residuos", label: "Residuos", icon: Recycle, description: "Registro, destino y recuperacion de residuos." },
   { key: "huella", label: "Huella", icon: Leaf, description: "Emisiones, consumos y factores ambientales." },
-  { key: "encuestas", label: "Encuestas", icon: ClipboardList, description: "Respuestas importadas desde Google Forms o Sheets." },
   { key: "auditoria", label: "Auditoria", icon: ShieldCheck, description: "Trazabilidad interna del evento y acciones relevantes." },
   { key: "alertas", label: "Alertas", icon: ShieldAlert, description: "Avisos y riesgos operativos." },
   { key: "reportes", label: "Reportes", icon: FileText, description: "Informe final y entregables profesionales para cliente." }
@@ -58,7 +56,6 @@ const supervisorTabs = [
   { key: "evidencias", label: "Evidencias", icon: Camera, description: "Respaldo visual y documental." },
   { key: "residuos", label: "Residuos", icon: Recycle, description: "Registro ambiental del evento." },
   { key: "huella", label: "Huella", icon: Leaf, description: "Emisiones y consumos operativos." },
-  { key: "encuestas", label: "Encuestas", icon: ClipboardList, description: "Google Forms, CSV y satisfaccion." },
   { key: "alertas", label: "Alertas", icon: ShieldAlert, description: "Avisos y riesgos operativos." },
   { key: "reportes", label: "Reportes", icon: FileText, description: "Informes y entregables del evento." }
 ];
@@ -131,7 +128,6 @@ function TabContent({ active, eventId, event, role, title, description, icon }: 
   if (active === "evidencias") return <EvidencesTab eventId={eventId} role={role} />;
   if (active === "residuos") return <WasteTab eventId={eventId} role={role} />;
   if (active === "huella") return <CarbonTab eventId={eventId} role={role} />;
-  if (active === "encuestas") return <SurveysTab eventId={eventId} role={role} />;
   if (active === "auditoria") return <EventAuditTab eventId={eventId} />;
   if (active === "alertas") return <AlertsTab eventId={eventId} role={role} />;
   if (active === "reportes") return <ReportsTab eventId={eventId} role={role} />;

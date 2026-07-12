@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.permissions import can_access_event, can_manage_event
 from app.models.core import (
     BikeZoneRecord,
+    ClientPortalConfig,
+    ClientPortalSection,
+    ClientPortalWidget,
     Event,
     EventForm,
     EventSession,
@@ -402,6 +405,121 @@ def summary(db: Session, form_id: UUID, user: User) -> dict:
         "bike_zone_checked_out": bike_out or 0,
         "comments_sample": [] if user.role == UserRole.CLIENT else [str(value) for value in grouped.get("comments", []) if value][:5],
     }
+
+
+def session_comparison(db: Session, event_id: UUID, user: User, form_type: EventFormType | None = None) -> dict:
+    _ensure_can_view_session_comparison(db, event_id, user)
+    sessions = list(
+        db.scalars(
+            select(EventSession)
+            .where(EventSession.event_id == event_id)
+            .order_by(EventSession.session_date.asc().nulls_last(), EventSession.start_time.asc().nulls_last(), EventSession.created_at.asc())
+        ).all()
+    )
+    return {
+        "event_id": event_id,
+        "sessions": [_session_comparison_item(db, event_id, session, form_type) for session in sessions],
+    }
+
+
+def _session_comparison_item(db: Session, event_id: UUID, session: EventSession, form_type: EventFormType | None) -> dict:
+    form_filters = [
+        EventForm.event_id == event_id,
+        EventForm.session_id == session.id,
+        EventForm.status != EventFormStatus.ARCHIVED,
+    ]
+    response_filters = [
+        FormResponse.event_id == event_id,
+        FormResponse.session_id == session.id,
+    ]
+    if form_type:
+        form_filters.append(EventForm.form_type == form_type)
+        response_filters.append(EventForm.form_type == form_type)
+    total_forms = db.scalar(select(func.count(EventForm.id)).where(*form_filters)) or 0
+    active_forms = db.scalar(select(func.count(EventForm.id)).where(*form_filters, EventForm.status == EventFormStatus.ACTIVE)) or 0
+    responses = list(
+        db.scalars(
+            select(FormResponse)
+            .join(EventForm, EventForm.id == FormResponse.form_id)
+            .where(*response_filters)
+        ).all()
+    )
+    response_ids = [response.id for response in responses]
+    grouped = _analytics_for_responses(db, response_ids)
+    ratings = [float(value) for value in grouped.get("general_rating", []) if _is_number(value)]
+    recommends = grouped.get("would_recommend", [])
+    bike_total = db.scalar(select(func.count()).select_from(BikeZoneRecord).where(BikeZoneRecord.response_id.in_(response_ids))) if response_ids else 0
+    bike_in = db.scalar(
+        select(func.count()).select_from(BikeZoneRecord).where(
+            BikeZoneRecord.response_id.in_(response_ids),
+            BikeZoneRecord.status.in_({BikeZoneStatus.CHECKED_IN, BikeZoneStatus.CHECKED_OUT}),
+        )
+    ) if response_ids else 0
+    bike_out = db.scalar(
+        select(func.count()).select_from(BikeZoneRecord).where(
+            BikeZoneRecord.response_id.in_(response_ids),
+            BikeZoneRecord.status == BikeZoneStatus.CHECKED_OUT,
+        )
+    ) if response_ids else 0
+    return {
+        "session_id": session.id,
+        "session_name": session.name,
+        "session_date": session.session_date,
+        "start_time": session.start_time,
+        "total_forms": total_forms,
+        "active_forms": active_forms,
+        "total_responses": len(responses),
+        "transport_modes": _bucket(_flatten(grouped.get("transport_mode", []))),
+        "average_rating": round(sum(ratings) / len(ratings), 2) if ratings else None,
+        "recommendation_rate": _rate([bool(value) for value in recommends if value is not None]),
+        "main_problems": _bucket(_flatten(grouped.get("main_problem", []))),
+        "bike_zone_total": bike_total or 0,
+        "bike_zone_checked_in": bike_in or 0,
+        "bike_zone_checked_out": bike_out or 0,
+    }
+
+
+def _analytics_for_responses(db: Session, response_ids: list[UUID]) -> dict[str, list]:
+    grouped = defaultdict(list)
+    if not response_ids:
+        return grouped
+    answers = list(
+        db.execute(
+            select(FormField.analytics_key, FormField.field_key, FormAnswer.value_text, FormAnswer.value_number, FormAnswer.value_boolean, FormAnswer.value_json)
+            .join(FormField, FormField.id == FormAnswer.field_id)
+            .where(FormAnswer.response_id.in_(response_ids))
+        ).all()
+    )
+    for analytics_key, field_key, text, number, boolean, json_value in answers:
+        key = analytics_key or field_key
+        value = json_value if json_value is not None else number if number is not None else boolean if boolean is not None else text
+        grouped[key].append(value)
+    return grouped
+
+
+def _ensure_can_view_session_comparison(db: Session, event_id: UUID, user: User) -> None:
+    event = _event_or_404(db, event_id)
+    if not can_access_event(user, event_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+    if user.role != UserRole.CLIENT:
+        return
+    config = db.scalar(select(ClientPortalConfig).where(ClientPortalConfig.event_id == event_id, ClientPortalConfig.client_id == event.client_id, ClientPortalConfig.is_active.is_(True)))
+    if not config:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client portal forms comparison is not enabled")
+    enabled = db.scalar(
+        select(ClientPortalWidget.id)
+        .join(ClientPortalSection, ClientPortalSection.config_id == ClientPortalWidget.config_id)
+        .where(
+            ClientPortalWidget.config_id == config.id,
+            ClientPortalWidget.section_key == "forms",
+            ClientPortalWidget.widget_key == "forms_session_comparison",
+            ClientPortalWidget.is_enabled.is_(True),
+            ClientPortalSection.section_key == "forms",
+            ClientPortalSection.is_enabled.is_(True),
+        )
+    )
+    if not enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client portal forms comparison is not enabled")
 
 
 def export_csv(db: Session, form_id: UUID, user: User) -> str:

@@ -14,7 +14,6 @@ import { getEvent } from "@/lib/api/events";
 import { getEventServices } from "@/lib/api/eventServices";
 import { getEventEvidences } from "@/lib/api/evidences";
 import { getEventIncidents } from "@/lib/api/incidents";
-import { getEventSurveys } from "@/lib/api/surveys";
 import { getEventTasks } from "@/lib/api/tasks";
 import { getWasteSummary } from "@/lib/api/waste";
 import { buildEventDashboardFromFallbackData, normalizeEventDashboard } from "@/lib/normalizers/dashboard";
@@ -33,15 +32,14 @@ export function ReportPreviewPanel({ eventId }: { eventId: string }) {
       const dashboard = normalizeEventDashboard(await getEventDashboard(eventId));
       setPreview(previewFromDashboard(dashboard));
     } catch {
-      const [eventData, services, tasks, incidents, evidences, wasteSummary, carbonSummary, surveys] = await Promise.allSettled([
+      const [eventData, services, tasks, incidents, evidences, wasteSummary, carbonSummary] = await Promise.allSettled([
         getEvent(eventId),
         getEventServices(eventId),
         getEventTasks(eventId),
         getEventIncidents(eventId),
         getEventEvidences(eventId),
         getWasteSummary(eventId),
-        getCarbonSummary(eventId),
-        getEventSurveys(eventId)
+        getCarbonSummary(eventId)
       ]);
       const dashboard = buildEventDashboardFromFallbackData({
         event: eventData.status === "fulfilled" ? eventData.value : undefined,
@@ -49,13 +47,13 @@ export function ReportPreviewPanel({ eventId }: { eventId: string }) {
         incidents: incidents.status === "fulfilled" ? incidents.value.items : [],
         wasteSummary: wasteSummary.status === "fulfilled" ? wasteSummary.value : null,
         carbonSummary: carbonSummary.status === "fulfilled" ? carbonSummary.value : null,
-        surveys: surveys.status === "fulfilled" ? surveys.value.items : []
+        surveys: []
       });
       const next = previewFromDashboard(dashboard);
       next.services_count = services.status === "fulfilled" ? services.value.length : 0;
       next.evidences_count = evidences.status === "fulfilled" ? evidences.value.items.length : 0;
       setPreview(next);
-      if (![eventData, services, tasks, incidents, evidences, wasteSummary, carbonSummary, surveys].some((item) => item.status === "fulfilled")) {
+      if (![eventData, services, tasks, incidents, evidences, wasteSummary, carbonSummary].some((item) => item.status === "fulfilled")) {
         setError("No se pudo construir la vista previa del reporte.");
       }
     } finally {
@@ -81,7 +79,7 @@ export function ReportPreviewPanel({ eventId }: { eventId: string }) {
           <KpiCard description={`${preview.incidents_resolved} resueltas`} icon={ShieldAlert} title="Incidencias" tone="slate" value={preview.incidents_total} />
           <KpiCard description={`${preview.waste_recovery_rate.toFixed(0)}% recuperacion`} icon={Recycle} title="Residuos kg" value={preview.waste_total_kg.toFixed(1)} />
           <KpiCard description={`${preview.carbon_kgco2e_per_attendee.toFixed(1)} kg/asistente`} icon={Cloud} title="Huella tCO2e" tone="blue" value={preview.carbon_total_tco2e.toFixed(2)} />
-          <KpiCard description={`Nota ${preview.survey_average_rating.toFixed(1)}`} icon={FileText} title="Encuestas" tone="lime" value={preview.survey_total_responses} />
+          <KpiCard description={`Nota ${preview.survey_average_rating.toFixed(1)}`} icon={FileText} title="Formularios" tone="lime" value={preview.survey_total_responses} />
         </div>
         <ReportSectionChecklist sections={buildReportSectionChecklist(preview)} />
       </CardContent>

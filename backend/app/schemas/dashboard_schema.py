@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.enums import EventStatus, IncidentStatus, PriorityLevel, TaskStatus
 
@@ -174,8 +174,9 @@ class EventDashboardResponse(BaseModel):
     waste: dict
     carbon: dict
     survey: dict
-    forms: dict = {}
+    forms: dict = Field(default_factory=dict)
+    forms_by_session: list[dict] = Field(default_factory=list)
     evidences: dict
     alerts: dict
-    critical_zones: list[DashboardBucket] = []
-    recommendations: list[str] = []
+    critical_zones: list[DashboardBucket] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)

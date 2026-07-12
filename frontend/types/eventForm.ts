@@ -138,6 +138,28 @@ export type EventFormSummary = {
   bike_zone_checked_out: number;
 };
 
+export type FormsSessionComparisonItem = {
+  session_id: string;
+  session_name: string;
+  session_date?: string | null;
+  start_time?: string | null;
+  total_forms: number;
+  active_forms: number;
+  total_responses: number;
+  transport_modes: Array<{ name: string; value: number }>;
+  average_rating?: number | null;
+  recommendation_rate?: number | null;
+  main_problems: Array<{ name: string; value: number }>;
+  bike_zone_total: number;
+  bike_zone_checked_in: number;
+  bike_zone_checked_out: number;
+};
+
+export type FormsSessionComparison = {
+  event_id: string;
+  sessions: FormsSessionComparisonItem[];
+};
+
 export type FormResponse = {
   id: string;
   form_id: string;

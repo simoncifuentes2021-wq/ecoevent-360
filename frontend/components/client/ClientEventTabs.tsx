@@ -12,9 +12,9 @@ import { ClientOrdersTab } from "@/components/client/ClientOrdersTab";
 import { ClientReportsTab } from "@/components/client/ClientReportsTab";
 import { ClientServicesTab } from "@/components/client/ClientServicesTab";
 import { ClientFormsTab } from "@/components/client/ClientFormsTab";
-import { ClientSurveysTab } from "@/components/client/ClientSurveysTab";
 import { ClientWasteTab } from "@/components/client/ClientWasteTab";
 import { ErrorState } from "@/components/common/ErrorState";
+import { FormsSessionComparison } from "@/components/event-forms/FormsSessionComparison";
 import { LoadingState } from "@/components/common/LoadingState";
 import { getClientEventPortal } from "@/lib/api/clientPortal";
 import type { ClientPortal, ClientPortalSectionKey } from "@/types/clientPortal";
@@ -37,7 +37,6 @@ const allTabs: ClientTab[] = [
   { key: "huella", sectionKey: "carbon", label: "Huella", icon: Cloud },
   { key: "formularios", sectionKey: "forms", label: "Formularios", icon: MessageSquare },
   { key: "bike_zone", sectionKey: "bike_zone", label: "Bike Zone", icon: MessageSquare },
-  { key: "encuestas", sectionKey: "forms", label: "Encuestas", icon: MessageSquare },
   { key: "reportes", sectionKey: "reports", label: "Reportes", icon: FileText }
 ];
 
@@ -69,6 +68,8 @@ export function ClientEventTabs({ eventId }: { eventId: string }) {
     const enabled = new Set((portal?.sections ?? []).map((section) => section.section_key));
     return allTabs.filter((tab) => enabled.has(tab.sectionKey));
   }, [portal]);
+  const enabledWidgets = useMemo(() => new Set((portal?.widgets ?? []).map((widget) => widget.widget_key)), [portal]);
+  const showFormsComparison = enabledWidgets.has("forms_session_comparison");
 
   useEffect(() => {
     if (tabs.length && !tabs.some((tab) => tab.key === active)) setActive(tabs[0].key);
@@ -97,9 +98,13 @@ export function ClientEventTabs({ eventId }: { eventId: string }) {
       {active === "evidencias" ? <ClientEvidencesTab eventId={eventId} /> : null}
       {active === "residuos" ? <ClientWasteTab eventId={eventId} /> : null}
       {active === "huella" ? <ClientCarbonTab eventId={eventId} /> : null}
-      {active === "formularios" ? <ClientFormsTab eventId={eventId} /> : null}
-      {active === "bike_zone" ? <ClientFormsTab eventId={eventId} /> : null}
-      {active === "encuestas" ? <ClientSurveysTab eventId={eventId} /> : null}
+      {active === "formularios" ? (
+        <div className="space-y-4">
+          <ClientFormsTab eventId={eventId} />
+          {showFormsComparison ? <FormsSessionComparison compact eventId={eventId} /> : null}
+        </div>
+      ) : null}
+      {active === "bike_zone" ? <ClientFormsTab eventId={eventId} mode="bike_zone" /> : null}
       {active === "reportes" ? <ClientReportsTab eventId={eventId} /> : null}
     </div>
   );

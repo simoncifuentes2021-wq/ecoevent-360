@@ -6,6 +6,7 @@ import { Copy, ExternalLink, Eye, Plus, QrCode } from "lucide-react";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
 import { BikeZoneVerifier } from "@/components/bike-zone/BikeZoneVerifier";
+import { FormsSessionComparison } from "@/components/event-forms/FormsSessionComparison";
 import { FormQrDialog } from "@/components/event-forms/FormQrDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,6 +114,7 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
         {canManage ? <Button onClick={() => setOpen(true)} type="button"><Plus className="h-4 w-4" />Crear formulario</Button> : null}
       </div>
       {canManage ? <BikeZoneVerifier /> : null}
+      <FormsSessionComparison eventId={eventId} />
       {loading ? <LoadingState label="Cargando formularios..." /> : null}
       {error ? <ErrorState message={error} onRetry={load} /> : null}
       {!loading && !error ? (
@@ -160,11 +162,15 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
           {detailError ? <ErrorState message={detailError} /> : null}
           {!detailLoading && !detailError ? (
             <div className="mt-4 space-y-4">
-              <div className="grid gap-3 md:grid-cols-4">
+              <div className={`grid gap-3 ${selected.form_type === "BIKE_ZONE_REGISTRATION" ? "md:grid-cols-4" : "md:grid-cols-1"}`}>
                 <Metric label="Total respuestas" value={summary?.total_responses ?? responses.length} />
-                <Metric label="Bike Zone" value={summary?.bike_zone_total ?? 0} />
-                <Metric label="Check-in" value={summary?.bike_zone_checked_in ?? 0} />
-                <Metric label="Check-out" value={summary?.bike_zone_checked_out ?? 0} />
+                {selected.form_type === "BIKE_ZONE_REGISTRATION" ? (
+                  <>
+                    <Metric label="Bike Zone" value={summary?.bike_zone_total ?? 0} />
+                    <Metric label="Check-in" value={summary?.bike_zone_checked_in ?? 0} />
+                    <Metric label="Check-out" value={summary?.bike_zone_checked_out ?? 0} />
+                  </>
+                ) : null}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-left text-sm">

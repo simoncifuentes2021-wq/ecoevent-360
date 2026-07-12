@@ -355,6 +355,28 @@ class EventFormSummaryRead(BaseModel):
     comments_sample: list[str]
 
 
+class FormsSessionComparisonItem(BaseModel):
+    session_id: UUID
+    session_name: str
+    session_date: date | None = None
+    start_time: time | None = None
+    total_forms: int = 0
+    active_forms: int = 0
+    total_responses: int = 0
+    transport_modes: list[dict] = Field(default_factory=list)
+    average_rating: float | None = None
+    recommendation_rate: float | None = None
+    main_problems: list[dict] = Field(default_factory=list)
+    bike_zone_total: int = 0
+    bike_zone_checked_in: int = 0
+    bike_zone_checked_out: int = 0
+
+
+class FormsSessionComparisonResponse(BaseModel):
+    event_id: UUID
+    sessions: list[FormsSessionComparisonItem]
+
+
 class BikeZoneRecordRead(ORMModel):
     id: UUID
     response_id: UUID

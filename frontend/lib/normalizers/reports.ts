@@ -70,7 +70,7 @@ export function buildReportSectionChecklist(preview: ReportPreview): ReportSecti
     { key: "evidences", label: "Evidencias", status: preview.evidences_count > 0 ? "complete" : "empty", count: preview.evidences_count, description: preview.evidences_count ? "Hay respaldos disponibles." : "Sin evidencias registradas." },
     { key: "waste", label: "Gestion de residuos", status: preview.waste_total_kg > 0 ? "complete" : "empty", description: `${preview.waste_total_kg.toFixed(1)} kg registrados.` },
     { key: "carbon", label: "Huella de carbono", status: preview.carbon_total_tco2e > 0 ? "complete" : "empty", description: `${preview.carbon_total_tco2e.toFixed(2)} tCO2e estimadas.` },
-    { key: "surveys", label: "Encuestas", status: preview.survey_total_responses > 0 ? "complete" : "empty", count: preview.survey_total_responses, description: preview.survey_total_responses ? "Respuestas importadas para analisis." : "Sin respuestas importadas." }
+    { key: "forms", label: "Formularios", status: preview.survey_total_responses > 0 ? "complete" : "empty", count: preview.survey_total_responses, description: preview.survey_total_responses ? "Respuestas disponibles para analisis." : "Sin respuestas registradas." }
   ];
 }
 

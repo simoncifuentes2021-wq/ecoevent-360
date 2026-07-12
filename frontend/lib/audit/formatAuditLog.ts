@@ -61,7 +61,7 @@ const moduleLabels: Record<string, string> = {
   waste: "Residuos",
   carbon: "Huella",
   operations: "Consumos",
-  surveys: "Encuestas",
+  surveys: "Formularios legacy",
   reports: "Reportes"
 };
 

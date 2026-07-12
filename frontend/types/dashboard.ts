@@ -1,4 +1,5 @@
 import type { Event } from "@/types/event";
+import type { FormsSessionComparisonItem } from "@/types/eventForm";
 
 export type DashboardBucket = {
   name: string;
@@ -73,6 +74,8 @@ export type EventDashboard = {
     responses_by_zone: DashboardBucket[];
     main_problem?: string;
   };
+  forms?: Record<string, unknown>;
+  forms_by_session?: FormsSessionComparisonItem[];
   evidences: {
     total: number;
     recent: Array<{ id: string; description?: string | null; file_url?: string | null; created_at?: string }>;

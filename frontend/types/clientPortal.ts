@@ -24,6 +24,7 @@ export type ClientPortalWidgetKey =
   | "forms_total_responses"
   | "forms_transport_modes"
   | "forms_average_rating"
+  | "forms_session_comparison"
   | "bike_zone_total_registrations"
   | "reports_download";
 

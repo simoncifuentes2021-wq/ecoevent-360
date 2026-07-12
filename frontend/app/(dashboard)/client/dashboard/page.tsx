@@ -37,7 +37,7 @@ export default function ClientDashboardPage() {
         <div>
           <p className="text-sm font-semibold uppercase text-primary">Portal cliente</p>
           <h1 className="mt-1 text-3xl font-bold">Hola, {user?.full_name || "cliente"}</h1>
-          <p className="mt-2 text-muted-foreground">Vista ejecutiva de tus eventos, indicadores ambientales, encuestas y reportes.</p>
+          <p className="mt-2 text-muted-foreground">Vista ejecutiva de tus eventos, indicadores ambientales, formularios y reportes.</p>
         </div>
         {loading ? <LoadingState label="Cargando dashboard cliente..." /> : null}
         {!loading && error ? <ErrorState message={error} title="No se pudo cargar el dashboard" /> : null}

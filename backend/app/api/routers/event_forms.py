@@ -19,6 +19,7 @@ from app.schemas.event_form_schema import (
     EventSessionCreate,
     EventSessionRead,
     EventSessionUpdate,
+    FormsSessionComparisonResponse,
     FormFieldCreate,
     FormFieldRead,
     FormFieldUpdate,
@@ -29,6 +30,7 @@ from app.schemas.event_form_schema import (
     FormResponseRead,
 )
 from app.services import bike_zone_service, event_form_service, event_session_service, form_qr_service
+from app.models.enums import EventFormType
 
 router = APIRouter(tags=["event forms"])
 public_router = APIRouter(prefix="/public/forms", tags=["public forms"])
@@ -77,6 +79,16 @@ def list_forms(
 ):
     items, total = event_form_service.list_event_forms(db, event_id, current_user, session_id, page, limit)
     return EventFormListResponse(items=items, total=total, page=page, limit=limit)
+
+
+@router.get("/events/{event_id}/forms/session-comparison", response_model=FormsSessionComparisonResponse)
+def compare_forms_by_session(
+    event_id: UUID,
+    form_type: EventFormType | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return event_form_service.session_comparison(db, event_id, current_user, form_type=form_type)
 
 
 @router.get("/forms/{form_id}", response_model=EventFormRead)

@@ -253,7 +253,6 @@ const auditModuleOptions = [
   { label: "Residuos", value: "waste" },
   { label: "Huella", value: "carbon" },
   { label: "Consumos", value: "operations" },
-  { label: "Encuestas", value: "surveys" },
   { label: "Reportes", value: "reports" }
 ];
 

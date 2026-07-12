@@ -12,7 +12,7 @@ export function ClientDashboardCards({ dashboard }: { dashboard: ClientDashboard
       <KpiCard description="Disponibles" icon={FileText} title="Reportes" tone="blue" value={dashboard.reports_available} />
       <KpiCard description={`${formatClientPercentage(dashboard.recovery_rate)} recuperacion`} icon={Recycle} title="Residuos kg" value={formatClientMetric(dashboard.total_waste_kg)} />
       <KpiCard description="Huella acumulada" icon={Cloud} title="tCO2e" tone="slate" value={formatClientMetric(dashboard.total_carbon_tco2e)} />
-      <KpiCard description="Promedio encuestas" icon={Star} title="Satisfaccion" tone="lime" value={dashboard.average_satisfaction ? dashboard.average_satisfaction.toFixed(1) : "0.0"} />
+      <KpiCard description="Promedio de experiencia" icon={Star} title="Satisfaccion" tone="lime" value={dashboard.average_satisfaction ? dashboard.average_satisfaction.toFixed(1) : "0.0"} />
     </div>
   );
 }
