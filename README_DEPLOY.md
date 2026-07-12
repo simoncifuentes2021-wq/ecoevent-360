@@ -100,6 +100,7 @@ privadas no se exponen al frontend.
 Rutas de almacenamiento usadas:
 
 - `evidences/`: fotos y PDF subidos como evidencias operativas.
+- `qrcodes/`: PNG generados para formularios publicos.
 - `surveys/`: CSV importados desde Google Forms/Sheets.
 
 Tipos permitidos:

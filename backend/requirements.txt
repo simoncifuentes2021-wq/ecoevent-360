@@ -9,6 +9,7 @@ psycopg[binary]>=3.2.1
 pydantic-settings>=2.3.4
 python-jose[cryptography]>=3.3.0
 python-multipart>=0.0.9
+qrcode[pil]>=7.4.2
 reportlab>=4.2.2
 sqlalchemy>=2.0.31
 uvicorn[standard]>=0.30.1
