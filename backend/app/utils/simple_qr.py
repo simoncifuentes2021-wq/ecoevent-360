@@ -25,20 +25,17 @@ def _init_gf() -> None:
 _init_gf()
 
 
-def make_qr_png(data: str, *, scale: int = 14, border: int = 4) -> bytes:
-    try:
-        return _make_standard_qr_png(data, scale=scale, border=border)
-    except ImportError:
-        return _make_builtin_qr_png(data, scale=scale, border=border)
+def make_qr_png(data: str, *, scale: int = 14, border: int = 6) -> bytes:
+    return _make_standard_qr_png(data, scale=scale, border=border)
 
 
 def _make_standard_qr_png(data: str, *, scale: int, border: int) -> bytes:
     import qrcode
-    from qrcode.constants import ERROR_CORRECT_M
+    from qrcode.constants import ERROR_CORRECT_H
 
     qr = qrcode.QRCode(
         version=None,
-        error_correction=ERROR_CORRECT_M,
+        error_correction=ERROR_CORRECT_H,
         box_size=scale,
         border=border,
     )

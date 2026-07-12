@@ -16,12 +16,7 @@ export function deleteFormQrCode(qrId: string) {
 }
 
 export async function downloadFormQrCode(qr: FormQrCode) {
-  const token = getStoredToken();
-  const response = await fetch(`${API_URL}/form-qr/${qr.id}/download`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  });
-  if (!response.ok) throw new Error("No se pudo descargar el QR.");
-  const blob = await response.blob();
+  const blob = await getFormQrBlob(qr);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -30,4 +25,13 @@ export async function downloadFormQrCode(qr: FormQrCode) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+export async function getFormQrBlob(qr: FormQrCode) {
+  const token = getStoredToken();
+  const response = await fetch(`${API_URL}/form-qr/${qr.id}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  });
+  if (!response.ok) throw new Error("No se pudo descargar el QR.");
+  return response.blob();
 }

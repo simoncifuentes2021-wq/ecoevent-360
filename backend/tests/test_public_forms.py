@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from PIL import Image
 from sqlalchemy import delete
 
 from app.db.session import SessionLocal
@@ -265,6 +266,26 @@ def test_admin_generates_form_qr(db, ctx):
     )
     assert qr.target_url.endswith(f"/f/{form.public_slug}")
     assert qr.file_path
+
+
+def test_generated_qr_png_is_decodable(db, ctx):
+    cv2 = pytest.importorskip("cv2")
+    form = make_form(db, ctx["event"], ctx["suffix"])
+    qr = form_qr_service.create_form_qr(
+        db,
+        form.id,
+        FormQRCodeCreate(label="QR Decodable", qr_type="FORM", force=True),
+        ctx["admin"],
+        public_base_url="https://ecoevent-360.vercel.app",
+    )
+    path = Path(qr.file_path or "")
+    with Image.open(path) as image:
+        assert image.format == "PNG"
+        assert image.mode == "RGB"
+        assert image.width == image.height
+        assert image.width >= 400
+    decoded, _, _ = cv2.QRCodeDetector().detectAndDecode(cv2.imread(str(path)))
+    assert decoded == qr.target_url
 
 
 def test_admin_generates_language_qr(db, ctx):
