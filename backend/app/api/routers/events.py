@@ -20,9 +20,15 @@ from app.schemas.event_schema import (
     EventUpdate,
 )
 from app.schemas.dashboard_schema import EventDashboardResponse
+from app.schemas.client_portal_schema import (
+    ClientPortalConfigRead,
+    ClientPortalConfigUpdate,
+    ClientPortalResponse,
+    ClientPortalTemplateApply,
+)
 from app.schemas.report_schema import ReportListResponse, ReportRead
 from app.schemas.zone_schema import EventZoneCreate, EventZoneRead
-from app.services import dashboard_service, event_service, report_service, zone_service
+from app.services import client_portal_service, dashboard_service, event_service, report_service, zone_service
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -101,6 +107,44 @@ def get_event_dashboard(
     current_user: User = Depends(get_current_active_user),
 ):
     return dashboard_service.get_event_dashboard(db, event_id, current_user, session_id=session_id)
+
+
+@router.get("/{event_id}/client-portal-config", response_model=ClientPortalConfigRead)
+def get_client_portal_config(
+    event_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return client_portal_service.get_config(db, event_id, current_user)
+
+
+@router.put("/{event_id}/client-portal-config", response_model=ClientPortalConfigRead)
+def update_client_portal_config(
+    event_id: UUID,
+    payload: ClientPortalConfigUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return client_portal_service.update_config(db, event_id, payload, current_user)
+
+
+@router.post("/{event_id}/client-portal-config/apply-template", response_model=ClientPortalConfigRead)
+def apply_client_portal_template(
+    event_id: UUID,
+    payload: ClientPortalTemplateApply,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return client_portal_service.apply_template(db, event_id, payload, current_user)
+
+
+@router.get("/{event_id}/client-portal-preview", response_model=ClientPortalResponse)
+def preview_client_portal(
+    event_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return client_portal_service.preview_portal(db, event_id, current_user)
 
 
 @router.get("/{event_id}/reports", response_model=ReportListResponse)

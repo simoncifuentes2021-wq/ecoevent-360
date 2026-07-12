@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { BarChart3, CalendarDays, Camera, ClipboardList, FileText, FileInput, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, Users } from "lucide-react";
+import { BarChart3, CalendarDays, Camera, ClipboardList, FileText, FileInput, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, UserCog, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertsTab } from "@/components/alerts/AlertsTab";
 import { EventAuditTab } from "@/components/audit/EventAuditTab";
 import { CarbonTab } from "@/components/carbon/CarbonTab";
+import { ClientPortalConfigTab } from "@/components/client-portal/ClientPortalConfigTab";
 import { EventDashboardTab } from "@/components/dashboard/EventDashboardTab";
 import { EvidencesTab } from "@/components/evidences/EvidencesTab";
 import { EventServicesTab } from "@/components/event-services/EventServicesTab";
@@ -31,6 +32,7 @@ const adminTabs = [
   { key: "logistica", label: "Logistica", icon: PackageCheck, description: "Pedidos logisticos asignados a operadores." },
   { key: "programacion", label: "Programacion", icon: CalendarDays, description: "Shows, jornadas y funciones del evento." },
   { key: "formularios", label: "Formularios", icon: FileInput, description: "Formularios publicos propios, QR y respuestas." },
+  { key: "portal_cliente", label: "Portal cliente", icon: UserCog, description: "Configura que ve el cliente en su portal del evento." },
   { key: "zonas", label: "Zonas", icon: Map, description: "Sectores, puntos criticos y cobertura del recinto." },
   { key: "personal", label: "Personal", icon: Users, description: "Equipo asignado, turnos y responsabilidades." },
   { key: "tareas", label: "Tareas", icon: ClipboardList, description: "Trabajo operativo planificado y avances en terreno." },
@@ -121,6 +123,7 @@ function TabContent({ active, eventId, event, role, title, description, icon }: 
   if (active === "logistica") return <LogisticsOrdersTab eventId={eventId} eventName={event?.name} role={role} />;
   if (active === "programacion") return <EventSessionsTab eventId={eventId} role={role} />;
   if (active === "formularios") return <EventFormsTab eventId={eventId} role={role} />;
+  if (active === "portal_cliente") return <ClientPortalConfigTab eventId={eventId} />;
   if (active === "zonas") return <ZonesTab eventId={eventId} role={role} />;
   if (active === "personal") return <StaffTab eventId={eventId} role={role} />;
   if (active === "tareas") return <TasksTab eventId={eventId} role={role} />;

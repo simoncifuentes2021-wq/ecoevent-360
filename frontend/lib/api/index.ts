@@ -75,6 +75,12 @@ export const api = {
       method: "PATCH",
       body: body instanceof FormData ? body : JSON.stringify(body ?? {})
     }),
+  put: <T>(path: string, body?: unknown, options?: ApiOptions) =>
+    request<T>(path, {
+      ...options,
+      method: "PUT",
+      body: body instanceof FormData ? body : JSON.stringify(body ?? {})
+    }),
   delete: <T>(path: string, options?: ApiOptions) =>
     request<T>(path, { ...options, method: "DELETE" })
 };

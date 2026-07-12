@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, BriefcaseBusiness, Camera, ClipboardList, Cloud, FileText, MessageSquare, PackageCheck, Recycle, ShieldAlert } from "lucide-react";
 
 import { ClientCarbonTab } from "@/components/client/ClientCarbonTab";
@@ -14,23 +14,70 @@ import { ClientServicesTab } from "@/components/client/ClientServicesTab";
 import { ClientFormsTab } from "@/components/client/ClientFormsTab";
 import { ClientSurveysTab } from "@/components/client/ClientSurveysTab";
 import { ClientWasteTab } from "@/components/client/ClientWasteTab";
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
+import { getClientEventPortal } from "@/lib/api/clientPortal";
+import type { ClientPortal, ClientPortalSectionKey } from "@/types/clientPortal";
 
-const tabs = [
-  { key: "resumen", label: "Resumen", icon: BarChart3 },
-  { key: "servicios", label: "Servicios", icon: BriefcaseBusiness },
-  { key: "pedidos", label: "Pedidos", icon: PackageCheck },
-  { key: "avance", label: "Avance operativo", icon: ClipboardList },
-  { key: "incidencias", label: "Incidencias", icon: ShieldAlert },
-  { key: "evidencias", label: "Evidencias", icon: Camera },
-  { key: "residuos", label: "Residuos", icon: Recycle },
-  { key: "huella", label: "Huella", icon: Cloud },
-  { key: "formularios", label: "Formularios", icon: MessageSquare },
-  { key: "encuestas", label: "Encuestas", icon: MessageSquare },
-  { key: "reportes", label: "Reportes", icon: FileText }
+type ClientTab = {
+  key: string;
+  sectionKey: ClientPortalSectionKey;
+  label: string;
+  icon: typeof BarChart3;
+};
+
+const allTabs: ClientTab[] = [
+  { key: "resumen", sectionKey: "summary", label: "Resumen", icon: BarChart3 },
+  { key: "servicios", sectionKey: "services", label: "Servicios", icon: BriefcaseBusiness },
+  { key: "pedidos", sectionKey: "services", label: "Pedidos", icon: PackageCheck },
+  { key: "avance", sectionKey: "operation", label: "Avance operativo", icon: ClipboardList },
+  { key: "incidencias", sectionKey: "incidents", label: "Incidencias", icon: ShieldAlert },
+  { key: "evidencias", sectionKey: "evidences", label: "Evidencias", icon: Camera },
+  { key: "residuos", sectionKey: "waste", label: "Residuos", icon: Recycle },
+  { key: "huella", sectionKey: "carbon", label: "Huella", icon: Cloud },
+  { key: "formularios", sectionKey: "forms", label: "Formularios", icon: MessageSquare },
+  { key: "bike_zone", sectionKey: "bike_zone", label: "Bike Zone", icon: MessageSquare },
+  { key: "encuestas", sectionKey: "forms", label: "Encuestas", icon: MessageSquare },
+  { key: "reportes", sectionKey: "reports", label: "Reportes", icon: FileText }
 ];
 
 export function ClientEventTabs({ eventId }: { eventId: string }) {
   const [active, setActive] = useState("resumen");
+  const [portal, setPortal] = useState<ClientPortal | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let activeRequest = true;
+    setLoading(true);
+    setError(null);
+    void getClientEventPortal(eventId)
+      .then((data) => {
+        if (!activeRequest) return;
+        setPortal(data);
+      })
+      .catch((err) => {
+        if (activeRequest) setError(err instanceof Error ? err.message : "No se pudo cargar el portal cliente.");
+      })
+      .finally(() => {
+        if (activeRequest) setLoading(false);
+      });
+    return () => { activeRequest = false; };
+  }, [eventId]);
+
+  const tabs = useMemo(() => {
+    const enabled = new Set((portal?.sections ?? []).map((section) => section.section_key));
+    return allTabs.filter((tab) => enabled.has(tab.sectionKey));
+  }, [portal]);
+
+  useEffect(() => {
+    if (tabs.length && !tabs.some((tab) => tab.key === active)) setActive(tabs[0].key);
+  }, [active, tabs]);
+
+  if (loading) return <LoadingState label="Cargando portal cliente..." />;
+  if (error) return <ErrorState title="No se pudo cargar el portal" message={error} />;
+  if (!tabs.length) return <ErrorState title="Portal sin secciones visibles" message="El administrador aun no habilito secciones para este evento." />;
+
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
@@ -51,6 +98,7 @@ export function ClientEventTabs({ eventId }: { eventId: string }) {
       {active === "residuos" ? <ClientWasteTab eventId={eventId} /> : null}
       {active === "huella" ? <ClientCarbonTab eventId={eventId} /> : null}
       {active === "formularios" ? <ClientFormsTab eventId={eventId} /> : null}
+      {active === "bike_zone" ? <ClientFormsTab eventId={eventId} /> : null}
       {active === "encuestas" ? <ClientSurveysTab eventId={eventId} /> : null}
       {active === "reportes" ? <ClientReportsTab eventId={eventId} /> : null}
     </div>

@@ -118,6 +118,7 @@ class Client(Base):
 
     users: Mapped[list["User"]] = relationship(back_populates="client")
     events: Mapped[list["Event"]] = relationship(back_populates="client")
+    portal_configs: Mapped[list["ClientPortalConfig"]] = relationship(back_populates="client")
 
 
 class User(Base):
@@ -210,6 +211,68 @@ class Event(Base):
     orders: Mapped[list["EventOrder"]] = relationship(back_populates="event")
     logistics_orders: Mapped[list["LogisticsOrder"]] = relationship(back_populates="event")
     purchase_requests: Mapped[list["PurchaseRequest"]] = relationship(back_populates="event")
+    client_portal_config: Mapped["ClientPortalConfig | None"] = relationship(back_populates="event")
+
+
+class ClientPortalConfig(Base):
+    __tablename__ = "client_portal_configs"
+    __table_args__ = (
+        Index("idx_client_portal_configs_client_id", "client_id"),
+        Index("idx_client_portal_configs_event_id", "event_id"),
+        UniqueConstraint("client_id", "event_id", name="uq_client_portal_configs_client_event"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    client_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    scope: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'EVENT'"))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    client: Mapped[Client] = relationship(back_populates="portal_configs")
+    event: Mapped[Event] = relationship(back_populates="client_portal_config")
+    creator: Mapped[User | None] = relationship()
+    sections: Mapped[list["ClientPortalSection"]] = relationship(back_populates="config", cascade="all, delete-orphan")
+    widgets: Mapped[list["ClientPortalWidget"]] = relationship(back_populates="config", cascade="all, delete-orphan")
+
+
+class ClientPortalSection(Base):
+    __tablename__ = "client_portal_sections"
+    __table_args__ = (
+        Index("idx_client_portal_sections_config_id", "config_id"),
+        UniqueConstraint("config_id", "section_key", name="uq_client_portal_sections_config_key"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    config_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("client_portal_configs.id", ondelete="CASCADE"), nullable=False)
+    section_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    label: Mapped[str] = mapped_column(String(160), nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+    config: Mapped[ClientPortalConfig] = relationship(back_populates="sections")
+
+
+class ClientPortalWidget(Base):
+    __tablename__ = "client_portal_widgets"
+    __table_args__ = (
+        Index("idx_client_portal_widgets_config_id", "config_id"),
+        Index("idx_client_portal_widgets_section_key", "section_key"),
+        UniqueConstraint("config_id", "widget_key", name="uq_client_portal_widgets_config_key"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    config_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("client_portal_configs.id", ondelete="CASCADE"), nullable=False)
+    widget_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    section_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    label: Mapped[str] = mapped_column(String(180), nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    visibility_config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+    config: Mapped[ClientPortalConfig] = relationship(back_populates="widgets")
 
 
 class EventZone(Base):
