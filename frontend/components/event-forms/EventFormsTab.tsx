@@ -11,7 +11,9 @@ import { FormQrDialog } from "@/components/event-forms/FormQrDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { closeEventForm, createEventForm, getEventFormResponses, getEventForms, getEventFormSummary, publishEventForm } from "@/lib/api/eventForms";
+import { getEvent } from "@/lib/api/events";
 import { getEventSessions } from "@/lib/api/eventSessions";
+import type { Event } from "@/types/event";
 import type { EventForm, EventFormSummary, EventFormType, FormResponse } from "@/types/eventForm";
 import type { EventSession } from "@/types/eventSession";
 import type { UserRole } from "@/types/roles";
@@ -26,6 +28,7 @@ const typeLabels: Record<EventFormType, string> = {
 
 export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserRole | null }) {
   const [forms, setForms] = useState<EventForm[]>([]);
+  const [event, setEvent] = useState<Event | null>(null);
   const [sessions, setSessions] = useState<EventSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -54,7 +57,8 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
     setLoading(true);
     setError(null);
     try {
-      const [formData, sessionData] = await Promise.all([getEventForms(eventId), getEventSessions(eventId).catch(() => [])]);
+      const [eventData, formData, sessionData] = await Promise.all([getEvent(eventId), getEventForms(eventId), getEventSessions(eventId).catch(() => [])]);
+      setEvent(eventData);
       setForms(formData.items);
       setSessions(sessionData);
     } catch (err) {
@@ -67,6 +71,7 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
   useEffect(() => { void load(); }, [load]);
 
   const baseUrl = useMemo(() => typeof window === "undefined" ? "" : window.location.origin, []);
+  const selectedSession = useMemo(() => sessions.find((session) => session.id === form.session_id) ?? null, [form.session_id, sessions]);
 
   async function submit() {
     await createEventForm(eventId, {
@@ -208,8 +213,9 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
       ) : null}
       {open ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-          <div className="w-full max-w-2xl rounded-lg bg-white p-5 shadow-2xl">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-lg bg-white p-5 shadow-2xl">
             <h3 className="text-lg font-bold">Crear formulario propio</h3>
+            <p className="text-sm text-slate-600">Configura el formulario y revisa la vista previa antes de crearlo.</p>
             <div className="mt-4 grid gap-3">
               <Input placeholder="Título del formulario" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
               <div className="grid gap-3 md:grid-cols-2">
@@ -234,6 +240,7 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
                 Mostrar selección de idioma antes de responder
               </label>
             </div>
+            <FormCreationPreview event={event} form={form} session={selectedSession} />
             <div className="mt-5 flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button disabled={!form.title} type="button" onClick={submit}>Crear con plantilla</Button>
@@ -253,4 +260,114 @@ function Metric({ label, value }: { label: string; value: number }) {
       <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
     </div>
   );
+}
+
+type DraftFormState = {
+  title: string;
+  form_type: EventFormType;
+  session_id: string;
+  banner_url: string;
+  primary_logo_url: string;
+  secondary_logo_url: string;
+  primary_color: string;
+  requires_language_selection: boolean;
+  available_languages: string[];
+};
+
+type PreviewField = {
+  key: string;
+  label: string;
+  placeholder: string;
+  type?: "select";
+  readonly?: boolean;
+};
+
+function FormCreationPreview({ event, session, form }: { event: Event | null; session: EventSession | null; form: DraftFormState }) {
+  const title = form.title.trim() || typeLabels[form.form_type];
+  const eventName = event?.name || "Nombre del evento";
+  const venueName = session?.venue_name || event?.location_name || "Nombre del venue / recinto";
+  const banner = form.banner_url || "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?auto=format&fit=crop&w=1600&q=80";
+  const fields = previewFields(form.form_type, eventName, venueName);
+
+  return (
+    <section className="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+      <div className="relative min-h-48 bg-slate-900 text-white">
+        <img alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" src={banner} />
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/25 to-slate-950/75" />
+        <div className="relative flex min-h-48 flex-col justify-between p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            {form.primary_logo_url ? <img alt="Logo principal" className="h-12 max-w-[160px] rounded-md bg-white object-contain p-2 shadow" src={form.primary_logo_url} /> : null}
+            {form.secondary_logo_url ? <img alt="Logo secundario" className="h-12 max-w-[160px] rounded-md bg-white object-contain p-2 shadow" src={form.secondary_logo_url} /> : null}
+          </div>
+          <div>
+            <span className="inline-flex rounded-md bg-white/95 px-3 py-1 text-sm font-bold text-slate-900">{title}</span>
+            <h4 className="mt-3 max-w-3xl text-2xl font-black md:text-4xl">{eventName}</h4>
+            <p className="mt-1 text-sm font-semibold text-white/90">{[session?.name, venueName].filter(Boolean).join(" - ")}</p>
+          </div>
+        </div>
+      </div>
+      {form.requires_language_selection ? (
+        <div className="border-b border-slate-200 bg-white p-4">
+          <p className="text-sm font-bold text-slate-900">Elige tu idioma para continuar</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-4">
+            {["ES Espanol", "GB English", "BR Portugues", "KR Korean"].map((label) => (
+              <button className="rounded-md border bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700" key={label} type="button">{label}</button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div className="bg-white p-4 md:p-6">
+        <div className="mx-auto max-w-2xl rounded-lg border border-emerald-100 p-4 shadow-sm">
+          <p className="mb-4 rounded-md border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-950">{previewDescription(form.form_type, eventName, venueName)}</p>
+          <div className="space-y-3">
+            {fields.map((field) => <PreviewControl field={field} key={field.key} />)}
+          </div>
+          <button className="mt-5 h-11 w-full rounded-md text-sm font-black text-white" style={{ backgroundColor: form.primary_color }} type="button">Enviar encuesta</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PreviewControl({ field }: { field: PreviewField }) {
+  return (
+    <label className="block text-sm font-bold text-slate-800">
+      {field.label}
+      {field.type === "select" ? (
+        <select className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-600" value="" onChange={() => undefined}>
+          <option>{field.placeholder}</option>
+        </select>
+      ) : (
+        <input className={`mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm ${field.readonly ? "bg-slate-50 text-slate-600" : "bg-white text-slate-900"}`} placeholder={field.placeholder} readOnly={field.readonly} value={field.readonly ? field.placeholder : ""} onChange={() => undefined} />
+      )}
+    </label>
+  );
+}
+
+function previewFields(type: EventFormType, eventName: string, venueName: string): PreviewField[] {
+  const readonlyBase: PreviewField[] = [
+    { key: "event_name", label: "Nombre del evento", placeholder: eventName, readonly: true },
+    { key: "venue_name", label: "Nombre del venue / recinto", placeholder: venueName, readonly: true }
+  ];
+  if (type === "TRANSPORT_SURVEY") {
+    return [...readonlyBase, { key: "full_name", label: "Nombre completo", placeholder: "Ej. Juan Perez" }, { key: "email", label: "Correo electronico", placeholder: "tucorreo@dominio.com" }, { key: "transport_mode", label: "Tipo de transporte utilizado para llegar", placeholder: "Selecciona una opcion", type: "select" }, { key: "country_residence", label: "Pais de residencia", placeholder: "Selecciona tu pais", type: "select" }];
+  }
+  if (type === "STAFF_TRANSPORT_SURVEY") {
+    return [...readonlyBase, { key: "full_name", label: "Nombre completo", placeholder: "Ej. Juan Perez" }, { key: "company", label: "Empresa", placeholder: "Ej. ACME Touring" }, { key: "country_origin", label: "Pais de origen", placeholder: "Selecciona tu pais de origen", type: "select" }, { key: "transport_mode", label: "Tipo de transporte utilizado para llegar", placeholder: "Selecciona una opcion", type: "select" }];
+  }
+  if (type === "BIKE_ZONE_REGISTRATION") {
+    return [...readonlyBase, { key: "full_name", label: "Nombre completo", placeholder: "Ej. Juan Perez" }, { key: "email", label: "Correo electronico", placeholder: "tucorreo@dominio.com" }, { key: "phone", label: "Numero de telefono", placeholder: "Ej. +56912345678" }, { key: "bike_brand", label: "Marca de bicicleta", placeholder: "Ej. Oxford, Giant, Trek..." }, { key: "bike_model", label: "Modelo de bicicleta", placeholder: "Ej. Sport, Urban..." }, { key: "bike_color", label: "Color de bicicleta", placeholder: "Ej. Rojo, Azul..." }, { key: "residence_region", label: "Region", placeholder: "Selecciona tu region", type: "select" }, { key: "event_ticket_number", label: "Numero de ticket del evento", placeholder: "Ej. 123456" }];
+  }
+  if (type === "EXPERIENCE_SURVEY") {
+    return [{ key: "general_rating", label: "Evaluacion general", placeholder: "1 a 7" }, { key: "cleanliness_rating", label: "Limpieza", placeholder: "1 a 7" }, { key: "bathroom_rating", label: "Banos", placeholder: "1 a 7" }, { key: "would_recommend", label: "Recomendarias el evento", placeholder: "Selecciona", type: "select" }, { key: "main_problem", label: "Problema principal", placeholder: "Selecciona", type: "select" }, { key: "comments", label: "Comentarios", placeholder: "Escribe tus comentarios" }];
+  }
+  return [{ key: "custom", label: "Campo personalizado", placeholder: "Configurable despues de crear" }];
+}
+
+function previewDescription(type: EventFormType, eventName: string, venueName: string) {
+  if (type === "BIKE_ZONE_REGISTRATION") return `Completa tus datos para registrar tu bicicleta en ${eventName}, en ${venueName}. Te enviaremos un PDF con tu QR personal.`;
+  if (type === "STAFF_TRANSPORT_SURVEY") return "Esta encuesta de transporte para personal registra empresa, pais de origen y medio de llegada.";
+  if (type === "TRANSPORT_SURVEY") return "Esta encuesta busca conocer los medios de transporte utilizados por quienes asisten al evento. Gracias por responder, toma menos de 1 minuto.";
+  if (type === "EXPERIENCE_SURVEY") return "Ayudanos a evaluar la experiencia del evento y detectar oportunidades de mejora.";
+  return "Formulario personalizado.";
 }
