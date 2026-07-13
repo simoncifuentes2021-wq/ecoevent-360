@@ -449,7 +449,8 @@ CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 -- 15. VISTAS PARA DASHBOARD
 -- =========================================================
 
-CREATE OR REPLACE VIEW event_task_summary AS
+CREATE OR REPLACE VIEW event_task_summary
+WITH (security_invoker = true) AS
 SELECT
     e.id AS event_id,
     COUNT(t.id) AS total_tasks,
@@ -462,7 +463,8 @@ FROM events e
 LEFT JOIN tasks t ON t.event_id = e.id
 GROUP BY e.id;
 
-CREATE OR REPLACE VIEW event_incident_summary AS
+CREATE OR REPLACE VIEW event_incident_summary
+WITH (security_invoker = true) AS
 SELECT
     e.id AS event_id,
     COUNT(i.id) AS total_incidents,
@@ -473,7 +475,8 @@ FROM events e
 LEFT JOIN incidents i ON i.event_id = e.id
 GROUP BY e.id;
 
-CREATE OR REPLACE VIEW event_waste_summary AS
+CREATE OR REPLACE VIEW event_waste_summary
+WITH (security_invoker = true) AS
 SELECT
     e.id AS event_id,
     COALESCE(SUM(w.weight_kg), 0) AS total_waste_kg,
@@ -487,7 +490,8 @@ FROM events e
 LEFT JOIN waste_records w ON w.event_id = e.id
 GROUP BY e.id;
 
-CREATE OR REPLACE VIEW event_carbon_summary AS
+CREATE OR REPLACE VIEW event_carbon_summary
+WITH (security_invoker = true) AS
 SELECT
     e.id AS event_id,
     COALESCE(SUM(c.emissions_kgco2e), 0) AS total_kgco2e,
@@ -500,7 +504,8 @@ FROM events e
 LEFT JOIN carbon_records c ON c.event_id = e.id
 GROUP BY e.id, e.real_attendees, e.estimated_attendees;
 
-CREATE OR REPLACE VIEW event_survey_summary AS
+CREATE OR REPLACE VIEW event_survey_summary
+WITH (security_invoker = true) AS
 SELECT
     e.id AS event_id,
     COUNT(sr.id) AS total_responses,
@@ -674,6 +679,7 @@ AS $$
 $$;
 
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_zones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_services ENABLE ROW LEVEL SECURITY;
@@ -700,6 +706,29 @@ CREATE POLICY clients_rls ON clients
     FOR ALL
     USING (app_is_admin() OR (app_current_role() = 'CLIENT' AND id = app_current_client_id()))
     WITH CHECK (app_is_admin() OR (app_current_role() = 'CLIENT' AND id = app_current_client_id()));
+
+CREATE POLICY users_read_rls ON users
+    FOR SELECT
+    USING (
+        app_current_user_id() IS NULL
+        OR app_is_admin()
+        OR id = app_current_user_id()
+        OR (
+            app_current_role() = 'SUPERVISOR'
+            AND role IN ('SUPERVISOR', 'WORKER', 'LOGISTICS_OPERATOR')
+            AND is_active = TRUE
+        )
+    );
+
+CREATE POLICY users_write_rls ON users
+    FOR ALL
+    USING (app_is_admin())
+    WITH CHECK (app_is_admin());
+
+CREATE POLICY users_self_update_rls ON users
+    FOR UPDATE
+    USING (id = app_current_user_id())
+    WITH CHECK (id = app_current_user_id());
 
 CREATE POLICY events_rls ON events
     FOR ALL
