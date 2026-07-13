@@ -1,4 +1,4 @@
-export type EventFormType = "TRANSPORT_SURVEY" | "BIKE_ZONE_REGISTRATION" | "EXPERIENCE_SURVEY" | "CUSTOM";
+export type EventFormType = "TRANSPORT_SURVEY" | "STAFF_TRANSPORT_SURVEY" | "BIKE_ZONE_REGISTRATION" | "EXPERIENCE_SURVEY" | "CUSTOM";
 export type EventFormStatus = "DRAFT" | "ACTIVE" | "CLOSED" | "ARCHIVED";
 export type FormFieldType = "TEXT" | "EMAIL" | "PHONE" | "NUMBER" | "TEXTAREA" | "SELECT" | "MULTI_SELECT" | "RADIO" | "CHECKBOX" | "DATE" | "RATING_1_5" | "RATING_1_7" | "YES_NO" | "FILE";
 
@@ -19,6 +19,7 @@ export type FormField = {
   help_text?: string | null;
   placeholder?: string | null;
   is_required: boolean;
+  is_readonly?: boolean;
   sort_order: number;
   min_value?: number | string | null;
   max_value?: number | string | null;
@@ -84,6 +85,7 @@ export type PublicFormField = {
   help_text?: string | null;
   placeholder?: string | null;
   is_required: boolean;
+  is_readonly?: boolean;
   sort_order: number;
   min_value?: number | string | null;
   max_value?: number | string | null;

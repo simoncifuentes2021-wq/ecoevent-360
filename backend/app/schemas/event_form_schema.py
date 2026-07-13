@@ -138,6 +138,7 @@ class FormFieldRead(ORMModel):
     help_text: str | None = None
     placeholder: str | None = None
     is_required: bool
+    is_readonly: bool = False
     sort_order: int
     min_value: Decimal | None = None
     max_value: Decimal | None = None
@@ -247,6 +248,7 @@ class PublicFormFieldRead(BaseModel):
     help_text: str | None = None
     placeholder: str | None = None
     is_required: bool
+    is_readonly: bool = False
     sort_order: int
     min_value: Decimal | None = None
     max_value: Decimal | None = None

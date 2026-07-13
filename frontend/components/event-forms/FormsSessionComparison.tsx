@@ -14,7 +14,8 @@ type FormTypeFilter = "" | EventFormType;
 const filterLabels: Array<{ value: FormTypeFilter; label: string }> = [
   { value: "", label: "Todos los formularios" },
   { value: "EXPERIENCE_SURVEY", label: "Experiencia" },
-  { value: "TRANSPORT_SURVEY", label: "Transporte" },
+  { value: "TRANSPORT_SURVEY", label: "Transporte publico" },
+  { value: "STAFF_TRANSPORT_SURVEY", label: "Transporte personal" },
   { value: "BIKE_ZONE_REGISTRATION", label: "Bike Zone" }
 ];
 

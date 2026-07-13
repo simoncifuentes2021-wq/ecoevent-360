@@ -101,12 +101,13 @@ function FieldControl({ field, value, error, onChange }: { field: PublicFormFiel
 
 function Control({ field, value, error, onChange }: { field: PublicFormField; value: unknown; error?: string; onChange: (value: unknown) => void }) {
   const common = `mt-2 ${error ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200" : ""}`;
+  const readonlyClass = field.is_readonly ? "cursor-not-allowed bg-slate-50 text-slate-600" : "";
   if (field.field_type === "TEXTAREA") {
-    return <textarea className={`${common} min-h-28 w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20`} maxLength={field.max_length ?? undefined} placeholder={field.placeholder ?? ""} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} />;
+    return <textarea className={`${common} ${readonlyClass} min-h-28 w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20`} maxLength={field.max_length ?? undefined} placeholder={field.placeholder ?? ""} readOnly={field.is_readonly} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} />;
   }
   if (field.field_type === "SELECT" || field.field_type === "RADIO") {
     return (
-      <select className={`${common} h-11 w-full rounded-md border bg-white px-3 text-sm`} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
+      <select className={`${common} h-11 w-full rounded-md border bg-white px-3 text-sm`} disabled={field.is_readonly} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
         <option value="">Selecciona</option>
         {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
@@ -135,7 +136,7 @@ function Control({ field, value, error, onChange }: { field: PublicFormField; va
     );
   }
   const type = field.field_type === "EMAIL" ? "email" : field.field_type === "PHONE" ? "tel" : field.field_type === "NUMBER" || field.field_type.startsWith("RATING") ? "number" : field.field_type === "DATE" ? "date" : "text";
-  return <Input className={common} max={field.max_value ? Number(field.max_value) : undefined} maxLength={field.max_length ?? undefined} min={field.min_value ? Number(field.min_value) : field.field_type === "RATING_1_5" || field.field_type === "RATING_1_7" ? 1 : undefined} placeholder={field.placeholder ?? ""} type={type} value={String(value ?? "")} onChange={(event) => onChange(type === "number" ? event.target.value : event.target.value)} />;
+  return <Input className={`${common} ${readonlyClass}`} max={field.max_value ? Number(field.max_value) : undefined} maxLength={field.max_length ?? undefined} min={field.min_value ? Number(field.min_value) : field.field_type === "RATING_1_5" || field.field_type === "RATING_1_7" ? 1 : undefined} placeholder={field.placeholder ?? ""} readOnly={field.is_readonly} type={type} value={String(value ?? "")} onChange={(event) => onChange(type === "number" ? event.target.value : event.target.value)} />;
 }
 
 function fieldErrorsFromDetail(detail: unknown[]) {

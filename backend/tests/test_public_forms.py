@@ -167,6 +167,33 @@ def test_public_active_form_opens(db, ctx):
     assert len(payload["fields"]) == 3
 
 
+def test_transport_public_and_staff_templates_are_different(db, ctx):
+    public_form = event_form_service.create_form(
+        db,
+        ctx["event"].id,
+        EventFormCreate(title="Transporte publico", form_type=EventFormType.TRANSPORT_SURVEY, generate_template=True),
+        ctx["admin"],
+    )
+    staff_form = event_form_service.create_form(
+        db,
+        ctx["event"].id,
+        EventFormCreate(title="Transporte personal", form_type=EventFormType.STAFF_TRANSPORT_SURVEY, generate_template=True),
+        ctx["admin"],
+    )
+
+    public_keys = {field.field_key: field for field in public_form.fields}
+    staff_keys = {field.field_key: field for field in staff_form.fields}
+
+    assert public_keys["event_name"].field_type == FormFieldType.TEXT
+    assert public_keys["venue_name"].field_type == FormFieldType.TEXT
+    assert "email" in public_keys
+    assert "company" not in public_keys
+    assert public_keys["country_residence"].field_type == FormFieldType.SELECT
+    assert "company" in staff_keys
+    assert "email" not in staff_keys
+    assert staff_keys["country_origin"].field_type == FormFieldType.SELECT
+
+
 def test_public_draft_and_closed_forms_do_not_open(db, ctx):
     draft = make_form(db, ctx["event"], f"{ctx['suffix']}-draft", status=EventFormStatus.DRAFT)
     closed = make_form(db, ctx["event"], f"{ctx['suffix']}-closed", status=EventFormStatus.CLOSED)

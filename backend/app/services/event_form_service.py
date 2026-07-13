@@ -43,6 +43,54 @@ SUBMIT_LABELS = {
     "ko": "설문 제출",
 }
 
+COUNTRY_OPTIONS = [
+    "Argentina",
+    "Bolivia",
+    "Brasil",
+    "Canadá",
+    "Chile",
+    "Colombia",
+    "Costa Rica",
+    "Cuba",
+    "Ecuador",
+    "El Salvador",
+    "España",
+    "Estados Unidos",
+    "Francia",
+    "Guatemala",
+    "Honduras",
+    "Italia",
+    "México",
+    "Nicaragua",
+    "Panamá",
+    "Paraguay",
+    "Perú",
+    "Portugal",
+    "Reino Unido",
+    "República Dominicana",
+    "Uruguay",
+    "Venezuela",
+    "Otro",
+]
+CHILE_REGION_OPTIONS = [
+    "Arica y Parinacota",
+    "Tarapacá",
+    "Antofagasta",
+    "Atacama",
+    "Coquimbo",
+    "Valparaíso",
+    "Metropolitana de Santiago",
+    "O'Higgins",
+    "Maule",
+    "Ñuble",
+    "Biobío",
+    "La Araucanía",
+    "Los Ríos",
+    "Los Lagos",
+    "Aysén",
+    "Magallanes",
+]
+
 
 def _event_or_404(db: Session, event_id: UUID) -> Event:
     event = db.get(Event, event_id)
@@ -284,7 +332,12 @@ def submit_public_form(db: Session, slug: str, payload: FormResponseCreate) -> t
     form = get_public_form_or_404(db, slug)
     _ensure_form_open(form)
     language = payload.language if payload.language in (form.available_languages or []) else form.default_language
-    answers = payload.answers or {}
+    answers = dict(payload.answers or {})
+    for field in form.fields:
+        if field.field_key == "event_name":
+            answers[field.field_key] = form.event.name if form.event else ""
+        elif field.field_key == "venue_name":
+            answers[field.field_key] = _venue_name(form) or ""
     fields = [field for field in form.fields if field.is_active]
     field_by_key = {field.field_key: field for field in fields}
     unknown = set(answers) - set(field_by_key)
@@ -397,7 +450,7 @@ def summary(db: Session, form_id: UUID, user: User) -> dict:
         "average_rating": round(sum(ratings) / len(ratings), 2) if ratings else None,
         "recommendation_rate": _rate([bool(value) for value in recommends if value is not None]),
         "transport_modes": _bucket(_flatten(grouped.get("transport_mode", []))),
-        "countries": _bucket(_flatten(grouped.get("country", []) + grouped.get("country_origin", []))),
+        "countries": _bucket(_flatten(grouped.get("country", []) + grouped.get("country_origin", []) + grouped.get("country_residence", []))),
         "regions": _bucket(_flatten(grouped.get("residence_region", []))),
         "main_problems": _bucket(_flatten(grouped.get("main_problem", []))),
         "bike_zone_total": bike_total or 0,
@@ -589,6 +642,7 @@ def _public_field(field: FormField, language: str, default_language: str, form_t
         "help_text": translation.help_text if translation else (default_translation.help_text if default_translation else None) or field.help_text,
         "placeholder": translation.placeholder if translation else (default_translation.placeholder if default_translation else None) or field.placeholder,
         "is_required": field.is_required,
+        "is_readonly": field.field_key in {"event_name", "venue_name"},
         "sort_order": field.sort_order,
         "min_value": field.min_value,
         "max_value": field.max_value,
@@ -716,8 +770,11 @@ def _create_template_fields(db: Session, form: EventForm) -> None:
 
 def _template(form: EventForm) -> list[dict]:
     if form.form_type == EventFormType.TRANSPORT_SURVEY:
-        return _transport_template(form)
+        return _public_transport_template(form)
+    if form.form_type == EventFormType.STAFF_TRANSPORT_SURVEY:
+        return _staff_transport_template(form)
     if form.form_type == EventFormType.BIKE_ZONE_REGISTRATION:
+        return _bike_zone_template(form)
         return [
             _field("Nombre completo", "full_name", FormFieldType.TEXT, True, 0),
             _field("Email", "email", FormFieldType.EMAIL, True, 1),
@@ -739,6 +796,24 @@ def _template(form: EventForm) -> list[dict]:
             _field("Comentarios", "comments", FormFieldType.TEXTAREA, False, 5, analytics_key="comments"),
         ]
     return []
+
+
+def _bike_zone_template(form: EventForm) -> list[dict]:
+    event_name = form.event.name if form.event else ""
+    venue = _venue_name(form)
+    return [
+        _field("Nombre del evento", "event_name", FormFieldType.TEXT, False, 0, placeholder=event_name),
+        _field("Nombre del venue / recinto", "venue_name", FormFieldType.TEXT, False, 1, placeholder=venue),
+        _field("Nombre completo", "full_name", FormFieldType.TEXT, True, 2),
+        _field("Email", "email", FormFieldType.EMAIL, True, 3),
+        _field("Teléfono", "phone", FormFieldType.PHONE, True, 4),
+        _field("Marca de bicicleta", "bike_brand", FormFieldType.TEXT, True, 5),
+        _field("Modelo de bicicleta", "bike_model", FormFieldType.TEXT, True, 6),
+        _field("Color de bicicleta", "bike_color", FormFieldType.TEXT, True, 7),
+        _field("Región de residencia", "residence_region", FormFieldType.SELECT, True, 8, analytics_key="residence_region", options=CHILE_REGION_OPTIONS),
+        _field("Número de ticket", "event_ticket_number", FormFieldType.TEXT, True, 9),
+        _field("Comentarios", "comments", FormFieldType.TEXTAREA, False, 10, analytics_key="comments"),
+    ]
 
 
 DEFAULT_FIELD_TRANSLATIONS = {
@@ -796,6 +871,48 @@ def _default_option_label(form_type: EventFormType, field_key: str, value: str, 
     return DEFAULT_OPTION_TRANSLATIONS.get(value, {}).get(language)
 
 
+def _public_transport_template(form: EventForm) -> list[dict]:
+    event_name = form.event.name if form.event else ""
+    venue = _venue_name(form)
+    return [
+        _field("Nombre del evento", "event_name", FormFieldType.TEXT, False, 0, placeholder=event_name),
+        _field("Nombre del venue / recinto", "venue_name", FormFieldType.TEXT, False, 1, placeholder=venue),
+        _field("Nombre completo", "full_name", FormFieldType.TEXT, False, 2),
+        _field("Correo electrónico", "email", FormFieldType.EMAIL, False, 3),
+        _field(
+            "Tipo de transporte utilizado para llegar",
+            "transport_mode",
+            FormFieldType.SELECT,
+            True,
+            4,
+            analytics_key="transport_mode",
+            options=["auto", "metro", "bus", "bicicleta", "caminando", "app_transporte", "otro"],
+        ),
+        _field("País de residencia", "country_residence", FormFieldType.SELECT, True, 5, analytics_key="country", options=COUNTRY_OPTIONS),
+    ]
+
+
+def _staff_transport_template(form: EventForm) -> list[dict]:
+    event_name = form.event.name if form.event else ""
+    venue = _venue_name(form)
+    return [
+        _field("Nombre del evento", "event_name", FormFieldType.TEXT, False, 0, placeholder=event_name),
+        _field("Nombre del venue / recinto", "venue_name", FormFieldType.TEXT, False, 1, placeholder=venue),
+        _field("Nombre completo", "full_name", FormFieldType.TEXT, False, 2),
+        _field("Empresa", "company", FormFieldType.TEXT, False, 3),
+        _field("País de origen", "country_origin", FormFieldType.SELECT, True, 4, analytics_key="country_origin", options=COUNTRY_OPTIONS),
+        _field(
+            "Tipo de transporte utilizado para llegar",
+            "transport_mode",
+            FormFieldType.SELECT,
+            True,
+            5,
+            analytics_key="transport_mode",
+            options=["auto", "metro", "bus", "bicicleta", "caminando", "app_transporte", "otro"],
+        ),
+    ]
+
+
 def _transport_template(form: EventForm) -> list[dict]:
     event_name = form.event.name if form.event else ""
     venue = _venue_name(form)
@@ -827,6 +944,12 @@ def _transport_template(form: EventForm) -> list[dict]:
 
 
 def _field(label, key, field_type, required, order, *, analytics_key=None, options=None, placeholder=None, translations=None):
+    if key in {"country_origin", "country_residence"}:
+        field_type = FormFieldType.SELECT
+        options = options or COUNTRY_OPTIONS
+    if key == "residence_region":
+        field_type = FormFieldType.SELECT
+        options = options or CHILE_REGION_OPTIONS
     data = {
         "label": label,
         "field_key": key,

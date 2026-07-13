@@ -17,7 +17,8 @@ import type { EventSession } from "@/types/eventSession";
 import type { UserRole } from "@/types/roles";
 
 const typeLabels: Record<EventFormType, string> = {
-  TRANSPORT_SURVEY: "Transporte",
+  TRANSPORT_SURVEY: "Transporte publico",
+  STAFF_TRANSPORT_SURVEY: "Transporte personal",
   BIKE_ZONE_REGISTRATION: "Bike Zone",
   EXPERIENCE_SURVEY: "Experiencia",
   CUSTOM: "Personalizado"
