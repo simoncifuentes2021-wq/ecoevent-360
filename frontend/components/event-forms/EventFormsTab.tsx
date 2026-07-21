@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, ExternalLink, Eye, Plus, QrCode } from "lucide-react";
 
 import { ErrorState } from "@/components/common/ErrorState";
@@ -39,6 +39,9 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
   const [summary, setSummary] = useState<EventFormSummary | null>(null);
   const [responses, setResponses] = useState<FormResponse[]>([]);
   const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const creatingRef = useRef(false);
   const [form, setForm] = useState({
     title: "",
     form_type: "TRANSPORT_SURVEY" as EventFormType,
@@ -74,18 +77,31 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
   const selectedSession = useMemo(() => sessions.find((session) => session.id === form.session_id) ?? null, [form.session_id, sessions]);
 
   async function submit() {
-    await createEventForm(eventId, {
-      ...form,
-      session_id: form.session_id || null,
-      banner_url: form.banner_url || null,
-      primary_logo_url: form.primary_logo_url || null,
-      secondary_logo_url: form.secondary_logo_url || null,
-      default_language: "es",
-      generate_template: true
-    });
-    setOpen(false);
-    setForm({ title: "", form_type: "TRANSPORT_SURVEY", session_id: "", banner_url: "", primary_logo_url: "", secondary_logo_url: "", primary_color: "#16b86a", requires_language_selection: true, available_languages: ["es", "en", "pt", "ko"] });
-    await load();
+    if (creatingRef.current || !form.title.trim()) return;
+
+    creatingRef.current = true;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await createEventForm(eventId, {
+        ...form,
+        title: form.title.trim(),
+        session_id: form.session_id || null,
+        banner_url: form.banner_url || null,
+        primary_logo_url: form.primary_logo_url || null,
+        secondary_logo_url: form.secondary_logo_url || null,
+        default_language: "es",
+        generate_template: true
+      });
+      setOpen(false);
+      setForm({ title: "", form_type: "TRANSPORT_SURVEY", session_id: "", banner_url: "", primary_logo_url: "", secondary_logo_url: "", primary_color: "#16b86a", requires_language_selection: true, available_languages: ["es", "en", "pt", "ko"] });
+      await load();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "No se pudo crear el formulario.");
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
+    }
   }
 
   async function copyLink(item: EventForm) {
@@ -117,7 +133,7 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
           <h2 className="text-xl font-bold text-slate-950">Formularios propios</h2>
           <p className="text-sm text-slate-600">Crea formularios públicos sin Google Forms ni importación CSV.</p>
         </div>
-        {canManage ? <Button onClick={() => setOpen(true)} type="button"><Plus className="h-4 w-4" />Crear formulario</Button> : null}
+        {canManage ? <Button disabled={creating} onClick={() => { setCreateError(null); setOpen(true); }} type="button"><Plus className="h-4 w-4" />Crear formulario</Button> : null}
       </div>
       {canManage ? <BikeZoneVerifier /> : null}
       <FormsSessionComparison eventId={eventId} />
@@ -241,9 +257,10 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
               </label>
             </div>
             <FormCreationPreview event={event} form={form} session={selectedSession} />
+            {createError ? <p className="mt-4 text-sm font-semibold text-red-600" role="alert">{createError}</p> : null}
             <div className="mt-5 flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button disabled={!form.title} type="button" onClick={submit}>Crear con plantilla</Button>
+              <Button disabled={creating} type="button" variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button disabled={creating || !form.title.trim()} type="button" onClick={submit}>{creating ? "Creando..." : "Crear con plantilla"}</Button>
             </div>
           </div>
         </div>

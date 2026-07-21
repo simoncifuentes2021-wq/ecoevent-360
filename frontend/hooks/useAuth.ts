@@ -36,9 +36,13 @@ export function useAuth() {
       setUser(current);
       return current;
     } catch {
-      clearSession();
-      setUser(null);
-      setToken(null);
+      // Do not erase a session created while this validation was in flight.
+      const currentToken = getStoredToken();
+      if (!currentToken || currentToken === storedToken) {
+        clearSession();
+        setUser(null);
+        setToken(null);
+      }
       return null;
     } finally {
       setLoading(false);
@@ -55,7 +59,7 @@ export function useAuth() {
       storeSession(session);
       setToken(session.access_token);
       setUser(session.user);
-      router.push(defaultRouteForRole(session.user.role));
+      router.replace(defaultRouteForRole(session.user.role));
     },
     [router]
   );

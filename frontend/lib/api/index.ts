@@ -30,9 +30,13 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
 
   const response = await fetch(`${API_URL}${path}`, { ...options, headers });
 
-  if (response.status === 401) {
+  // A request made with an expired token can finish after a successful login.
+  // Only clear the session when the rejected token is still the active one.
+  if (response.status === 401 && token && getStoredToken() === token) {
     clearSession();
-    if (typeof window !== "undefined") window.location.href = "/login";
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
   }
 
   if (!response.ok) {
