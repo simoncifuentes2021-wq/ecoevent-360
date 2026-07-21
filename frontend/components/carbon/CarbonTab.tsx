@@ -41,7 +41,7 @@ export function CarbonTab({ eventId, role }: { eventId: string; role?: UserRole 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [rawSummary, recordData, factorData, evidenceData] = await Promise.all([getCarbonSummary(eventId), getCarbonRecords(eventId), getCarbonFactors({ is_active: "true", page: 1, limit: 200 }).catch(() => ({ items: [] })), getEventEvidences(eventId)]);
+      const [rawSummary, recordData, factorData, evidenceData] = await Promise.all([getCarbonSummary(eventId), getCarbonRecords(eventId), getCarbonFactors({ page: 1, limit: 100 }).catch(() => ({ items: [] })), getEventEvidences(eventId)]);
       setSummary(normalizeCarbonSummary(rawSummary));
       setRecords(recordData.items);
       setFactors(factorData.items);

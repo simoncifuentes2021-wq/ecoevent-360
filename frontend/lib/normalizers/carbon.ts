@@ -17,12 +17,12 @@ export function normalizeCarbonSummary(raw: unknown): CarbonSummary {
   const totalKg = num(data.total_kg_co2e ?? data.total_emissions_kg ?? data.total_kgco2e);
   return {
     total_kg_co2e: totalKg,
-    total_ton_co2e: num(data.total_ton_co2e ?? data.total_emissions_ton ?? totalKg / 1000),
-    kg_co2e_per_attendee: num(data.kg_co2e_per_attendee ?? data.per_attendee_kg),
+    total_ton_co2e: num(data.total_ton_co2e ?? data.total_tco2e ?? data.total_emissions_ton ?? totalKg / 1000),
+    kg_co2e_per_attendee: num(data.kg_co2e_per_attendee ?? data.kgco2e_per_attendee ?? data.per_attendee_kg),
     records_count: num(data.records_count ?? data.count),
     by_category: items(data.by_category ?? data.emissions_by_category),
     by_scope: items(data.by_scope ?? data.emissions_by_scope),
-    by_source: items(data.by_source ?? data.emissions_by_source),
+    by_source: items(data.by_source ?? data.by_factor ?? data.emissions_by_source),
     by_date: items(data.by_date ?? data.emissions_by_date)
   };
 }

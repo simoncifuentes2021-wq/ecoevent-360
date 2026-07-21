@@ -1,15 +1,7 @@
 import { Badge } from "@/components/ui/badge";
+import { getCarbonCategoryLabel, normalizeCarbonCategory } from "@/components/carbon/CarbonFilters";
 
-const labels: Record<string, string> = {
-  TRANSPORT: "Transporte",
-  ENERGY: "Energia",
-  WASTE: "Residuos",
-  WATER: "Agua",
-  MATERIALS: "Materiales",
-  FOOD: "Alimentacion",
-  ACCOMMODATION: "Alojamiento",
-  OTHER: "Otro"
-};
 export function CarbonCategoryBadge({ category }: { category?: string | null }) {
-  return <Badge tone={category === "ENERGY" ? "success" : category === "TRANSPORT" ? "warning" : "neutral"}>{labels[category || "OTHER"] || category}</Badge>;
+  const normalized = normalizeCarbonCategory(category);
+  return <Badge tone={normalized === "ENERGY" ? "success" : normalized === "TRANSPORT" ? "warning" : "neutral"}>{getCarbonCategoryLabel(category)}</Badge>;
 }
