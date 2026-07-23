@@ -1,4 +1,5 @@
 from app.models.audit_log import AuditLog
+from app.models.logbook import *  # noqa: F403
 from app.models.core import (
     Alert,
     CarbonFactor,

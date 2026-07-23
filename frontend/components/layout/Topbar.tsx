@@ -31,6 +31,8 @@ const routeTitles: Record<string, string> = {
 };
 
 const detailTitles: Record<string, string> = {
+  bitacoras: "Detalle de bitácora",
+  ejecuciones: "Ejecución de bitácora",
   clientes: "Detalle cliente",
   eventos: "Detalle evento",
   incidencias: "Detalle incidencia",

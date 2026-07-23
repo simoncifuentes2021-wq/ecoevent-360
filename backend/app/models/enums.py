@@ -10,6 +10,81 @@ class UserRole(StrEnum):
     WORKER = "WORKER"
 
 
+class LogbookOperationalStage(StrEnum):
+    SETUP = "SETUP"
+    OPENING = "OPENING"
+    OPERATION = "OPERATION"
+    CLOSING = "CLOSING"
+    DISMANTLING = "DISMANTLING"
+    OTHER = "OTHER"
+
+
+class LogbookTemplateStatus(StrEnum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+class LogbookVersionStatus(StrEnum):
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
+    RETIRED = "RETIRED"
+
+
+class LogbookAssignmentMode(StrEnum):
+    INDIVIDUAL = "INDIVIDUAL"
+    SHARED = "SHARED"
+
+
+class LogbookItemType(StrEnum):
+    CHECKBOX = "CHECKBOX"
+    YES_NO = "YES_NO"
+    STATUS_SELECT = "STATUS_SELECT"
+    NUMBER = "NUMBER"
+    SHORT_TEXT = "SHORT_TEXT"
+    LONG_TEXT = "LONG_TEXT"
+    PHOTO = "PHOTO"
+    CONFIRMATION = "CONFIRMATION"
+
+
+class LogbookEvidencePolicy(StrEnum):
+    NONE = "NONE"
+    OPTIONAL = "OPTIONAL"
+    REQUIRED = "REQUIRED"
+    REQUIRED_ON_FAILURE = "REQUIRED_ON_FAILURE"
+
+
+class LogbookInstanceStatus(StrEnum):
+    DRAFT = "DRAFT"
+    SCHEDULED = "SCHEDULED"
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    UNDER_REVIEW = "UNDER_REVIEW"
+    CHANGES_REQUESTED = "CHANGES_REQUESTED"
+    COMPLETED = "COMPLETED"
+    OVERDUE = "OVERDUE"
+    CANCELLED = "CANCELLED"
+
+
+class LogbookAssignmentStatus(StrEnum):
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    SUBMITTED = "SUBMITTED"
+    CHANGES_REQUESTED = "CHANGES_REQUESTED"
+    RESUBMITTED = "RESUBMITTED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    OVERDUE = "OVERDUE"
+    CANCELLED = "CANCELLED"
+
+
+class LogbookResultStatus(StrEnum):
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
 class EventStatus(StrEnum):
     QUOTE = "QUOTE"
     PLANNING = "PLANNING"

@@ -56,6 +56,7 @@ app = FastAPI(
         {"name": "warehouses", "description": "Bodegas y operadores logisticos asignados."},
         {"name": "inventory", "description": "Catalogo de productos de inventario logistico."},
         {"name": "stock", "description": "Balances de stock por bodega y producto."},
+        {"name": "logbooks", "description": "Plantillas y ejecuciones de bitacoras operativas."},
     ],
 )
 

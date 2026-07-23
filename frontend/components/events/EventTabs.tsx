@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { BarChart3, CalendarDays, Camera, ClipboardList, FileText, FileInput, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, UserCog, Users } from "lucide-react";
+import { BarChart3, CalendarDays, Camera, ClipboardCheck, ClipboardList, FileText, FileInput, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, UserCog, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertsTab } from "@/components/alerts/AlertsTab";
@@ -15,6 +15,7 @@ import { EventServicesTab } from "@/components/event-services/EventServicesTab";
 import { EventFormsTab } from "@/components/event-forms/EventFormsTab";
 import { EventSessionsTab } from "@/components/event-sessions/EventSessionsTab";
 import { LogisticsOrdersTab } from "@/components/logistics/LogisticsOrdersTab";
+import { EventLogbooksTab } from "@/components/logbooks/EventLogbooksTab";
 import { IncidentsTab } from "@/components/incidents/IncidentsTab";
 import { ReportsTab } from "@/components/reports/ReportsTab";
 import { StaffTab } from "@/components/staff/StaffTab";
@@ -35,6 +36,7 @@ const adminTabs = [
   { key: "zonas", label: "Zonas", icon: Map, description: "Sectores, puntos criticos y cobertura del recinto." },
   { key: "personal", label: "Personal", icon: Users, description: "Equipo asignado, turnos y responsabilidades." },
   { key: "tareas", label: "Tareas", icon: ClipboardList, description: "Trabajo operativo planificado y avances en terreno." },
+  { key: "bitacoras", label: "Bitácoras", icon: ClipboardCheck, description: "Procedimientos operativos, asignaciones y cumplimiento." },
   { key: "incidencias", label: "Incidencias", icon: ShieldAlert, description: "Reportes, seguimiento y cierres de hallazgos." },
   { key: "evidencias", label: "Evidencias", icon: Camera, description: "Fotografias, documentos y respaldos del servicio." },
   { key: "residuos", label: "Residuos", icon: Recycle, description: "Registro, destino y recuperacion de residuos." },
@@ -52,6 +54,7 @@ const supervisorTabs = [
   { key: "zonas", label: "Zonas", icon: Map, description: "Sectores y puntos de trabajo del recinto." },
   { key: "personal", label: "Personal", icon: Users, description: "Equipo disponible para la operacion." },
   { key: "tareas", label: "Tareas", icon: ClipboardList, description: "Trabajo operativo y seguimiento." },
+  { key: "bitacoras", label: "Bitácoras", icon: ClipboardCheck, description: "Procedimientos, entregas y revisión del equipo." },
   { key: "incidencias", label: "Incidencias", icon: ShieldAlert, description: "Reportes y hallazgos operativos." },
   { key: "evidencias", label: "Evidencias", icon: Camera, description: "Respaldo visual y documental." },
   { key: "residuos", label: "Residuos", icon: Recycle, description: "Registro ambiental del evento." },
@@ -124,6 +127,7 @@ function TabContent({ active, eventId, event, role, title, description, icon }: 
   if (active === "zonas") return <ZonesTab eventId={eventId} role={role} />;
   if (active === "personal") return <StaffTab eventId={eventId} role={role} />;
   if (active === "tareas") return <TasksTab eventId={eventId} role={role} />;
+  if (active === "bitacoras") return <EventLogbooksTab eventId={eventId} role={role} />;
   if (active === "incidencias") return <IncidentsTab eventId={eventId} role={role} />;
   if (active === "evidencias") return <EvidencesTab eventId={eventId} role={role} />;
   if (active === "residuos") return <WasteTab eventId={eventId} role={role} />;

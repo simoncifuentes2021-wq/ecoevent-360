@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, BriefcaseBusiness, Camera, ClipboardList, Cloud, FileText, MessageSquare, PackageCheck, Recycle, ShieldAlert } from "lucide-react";
+import { BarChart3, BriefcaseBusiness, Camera, ClipboardCheck, ClipboardList, Cloud, FileText, MessageSquare, PackageCheck, Recycle, ShieldAlert } from "lucide-react";
+import { ClientLogbooksTab } from "@/components/logbooks/ClientLogbooksTab";
 
 import { ClientCarbonTab } from "@/components/client/ClientCarbonTab";
 import { ClientEvidencesTab } from "@/components/client/ClientEvidencesTab";
@@ -31,6 +32,7 @@ const allTabs: ClientTab[] = [
   { key: "servicios", sectionKey: "services", label: "Servicios", icon: BriefcaseBusiness },
   { key: "pedidos", sectionKey: "services", label: "Pedidos", icon: PackageCheck },
   { key: "avance", sectionKey: "operation", label: "Avance operativo", icon: ClipboardList },
+  { key: "bitacoras", sectionKey: "operation", label: "Bitácoras", icon: ClipboardCheck },
   { key: "incidencias", sectionKey: "incidents", label: "Incidencias", icon: ShieldAlert },
   { key: "evidencias", sectionKey: "evidences", label: "Evidencias", icon: Camera },
   { key: "residuos", sectionKey: "waste", label: "Residuos", icon: Recycle },
@@ -94,6 +96,7 @@ export function ClientEventTabs({ eventId }: { eventId: string }) {
       {active === "servicios" ? <ClientServicesTab eventId={eventId} /> : null}
       {active === "pedidos" ? <ClientOrdersTab eventId={eventId} /> : null}
       {active === "avance" ? <ClientOperationalProgressTab eventId={eventId} /> : null}
+      {active === "bitacoras" ? <ClientLogbooksTab eventId={eventId} /> : null}
       {active === "incidencias" ? <ClientIncidentsTab eventId={eventId} /> : null}
       {active === "evidencias" ? <ClientEvidencesTab eventId={eventId} /> : null}
       {active === "residuos" ? <ClientWasteTab eventId={eventId} /> : null}
