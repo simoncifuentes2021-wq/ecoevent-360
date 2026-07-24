@@ -95,6 +95,20 @@ def save_response(
     return service.save_response(db, assignment_id, payload, current)
 
 
+@router.delete(
+    "/logbook-assignments/{assignment_id}/responses/{item_id}",
+    response_model=ResponseRead,
+)
+def clear_response(
+    assignment_id: UUID,
+    item_id: UUID,
+    version: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    return service.clear_response(db, assignment_id, item_id, version, current)
+
+
 @router.post("/logbook-assignments/{assignment_id}/submit", response_model=AssignmentRead)
 def submit(
     assignment_id: UUID,

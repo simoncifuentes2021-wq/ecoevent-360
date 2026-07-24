@@ -484,6 +484,58 @@ def save_response(db, assignment_id, p, current):
     return r
 
 
+def clear_response(db, assignment_id, item_id, version, current):
+    assignment = _assignment(db, assignment_id, current)
+    if assignment.user_id != current.id and current.role not in ADMIN:
+        fail(403, "Solo el participante asignado puede editar las respuestas")
+    if assignment.status not in {
+        LogbookAssignmentStatus.PENDING,
+        LogbookAssignmentStatus.IN_PROGRESS,
+        LogbookAssignmentStatus.CHANGES_REQUESTED,
+    }:
+        fail(409, "Submitted assignments are locked")
+    response_query = select(LogbookResponse).where(LogbookResponse.logbook_item_id == item_id)
+    if assignment.instance.assignment_mode == LogbookAssignmentMode.SHARED:
+        response_query = response_query.join(LogbookAssignment).where(
+            LogbookAssignment.logbook_instance_id == assignment.instance.id
+        )
+    else:
+        response_query = response_query.where(LogbookResponse.assignment_id == assignment.id)
+    response = db.scalar(response_query)
+    if not response:
+        fail(404, "Response not found")
+    if response.version != version:
+        fail(409, "Response was modified by another user")
+    old = {"result_status": response.result_status, "version": response.version}
+    _clear_response_values(response, current.id)
+    db.commit()
+    db.refresh(response)
+    audit(
+        db,
+        current,
+        "LOGBOOK_RESPONSE_CLEARED",
+        "LogbookResponse",
+        response.id,
+        event_id=assignment.instance.event_id,
+        old=old,
+        new={"result_status": response.result_status, "version": response.version},
+    )
+    return response
+
+
+def _clear_response_values(response, actor_id):
+    response.selected_option_id = None
+    response.boolean_value = None
+    response.numeric_value = None
+    response.text_value = None
+    response.is_not_applicable = False
+    response.result_status = LogbookResultStatus.PENDING
+    response.comment = None
+    response.completed_by = actor_id
+    response.completed_at = datetime.utcnow()
+    response.version += 1
+
+
 def submit(db, id, current):
     a = _assignment(db, id, current)
     if a.user_id != current.id:

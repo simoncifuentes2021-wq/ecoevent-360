@@ -10,7 +10,7 @@ from app.models.audit_log import AuditLog
 from app.models.core import Client, Event, EventStaff, User
 from app.models.enums import EventStatus, UserRole
 from app.models.logbook import LogbookInstance, LogbookTemplate, LogbookTemplateVersion
-from app.schemas.logbook_schema import InstanceCreate, ItemIn, SectionIn, TemplateCreate
+from app.schemas.logbook_schema import InstanceCreate, ItemIn, ResponseSave, SectionIn, TemplateCreate
 from app.services import logbook_service
 
 
@@ -198,6 +198,38 @@ def test_real_postgresql_permissions_archiving_and_client_isolation(logbook_cont
     ctx["instance_id"] = instance.id
     worker_detail = logbook_service.get_instance_detail(db, instance.id, worker)
     assert len(worker_detail["assignments"]) == 1
+    worker_assignment = worker_detail["assignments"][0]
+    item_id = worker_detail["version"]["sections"][0]["items"][0]["id"]
+    saved = logbook_service.save_response(
+        db,
+        worker_assignment["id"],
+        ResponseSave(
+            item_id=item_id,
+            boolean_value=False,
+            result_status="FAILED",
+        ),
+        worker,
+    )
+    saved_version = saved.version
+    cleared = logbook_service.clear_response(
+        db,
+        worker_assignment["id"],
+        item_id,
+        saved_version,
+        worker,
+    )
+    assert cleared.boolean_value is None
+    assert cleared.result_status.value == "PENDING"
+    assert cleared.version == saved_version + 1
+    with pytest.raises(HTTPException) as stale_clear:
+        logbook_service.clear_response(
+            db,
+            worker_assignment["id"],
+            item_id,
+            saved_version,
+            worker,
+        )
+    assert stale_clear.value.status_code == 409
     logistics_detail = logbook_service.get_instance_detail(db, instance.id, logistics)
     assert len(logistics_detail["assignments"]) == 1
 

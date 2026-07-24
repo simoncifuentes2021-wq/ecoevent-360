@@ -18,7 +18,11 @@ from app.schemas.logbook_schema import (
     SectionIn,
     TemplateCreate,
 )
-from app.services.logbook_service import calculate_metrics, validate_image_content
+from app.services.logbook_service import (
+    _clear_response_values,
+    calculate_metrics,
+    validate_image_content,
+)
 
 
 def image_bytes(fmt: str) -> bytes:
@@ -137,3 +141,32 @@ def test_individual_metrics_keep_completion_participation_and_approval_separate(
     assert metrics["completion_percentage"] == 50
     assert metrics["participation_percentage"] == 50
     assert metrics["approval_percentage"] == 50
+
+
+def test_clear_response_keeps_record_and_version_but_removes_values():
+    from uuid import uuid4
+
+    actor_id = uuid4()
+    response = SimpleNamespace(
+        selected_option_id=uuid4(),
+        boolean_value=False,
+        numeric_value=0,
+        text_value="respuesta",
+        is_not_applicable=True,
+        result_status=LogbookResultStatus.COMPLETED,
+        comment="observación",
+        completed_by=None,
+        completed_at=None,
+        version=3,
+    )
+    _clear_response_values(response, actor_id)
+    assert response.selected_option_id is None
+    assert response.boolean_value is None
+    assert response.numeric_value is None
+    assert response.text_value is None
+    assert response.is_not_applicable is False
+    assert response.result_status == LogbookResultStatus.PENDING
+    assert response.comment is None
+    assert response.completed_by == actor_id
+    assert response.completed_at is not None
+    assert response.version == 4

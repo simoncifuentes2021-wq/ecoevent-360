@@ -19,6 +19,7 @@ import {
 } from "@/lib/api/logbooks";
 import { getEventStaff } from "@/lib/api/staff";
 import { logbookError } from "@/lib/logbook-errors";
+import { validateLogbook } from "@/lib/logbook-validation";
 import { logbookLabel, logbookModeLabels, logbookStageLabels, logbookStatusLabels } from "@/lib/logbook-labels";
 import type { EventStaff } from "@/types/staff";
 import type { LogbookEvidence, LogbookInstanceDetail, LogbookItem, LogbookResponse } from "@/types/logbook";
@@ -61,6 +62,18 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
   if (pageError) return <ErrorState message={pageError} onRetry={load} />;
   if (!data) return <LoadingState />;
   const assignment = data.assignments.find((item) => item.id === selected) || assignments[0];
+  const reviewResponses = new Map(
+    (data.assignment_mode === "SHARED"
+      ? data.assignments.flatMap((item) => item.responses)
+      : assignment?.responses || []
+    ).map((response) => [response.logbook_item_id, response]),
+  );
+  const reviewSummary = validateLogbook(data.version.sections, reviewResponses);
+  const canApprove = Boolean(
+    assignment
+    && ["SUBMITTED", "RESUBMITTED"].includes(assignment.status)
+    && reviewSummary.complete,
+  );
   const available = staff.filter((member) =>
     !data.assignments.some((item) => item.user_id === member.user_id)
     && !["CLIENT", "ADMIN", "SUPER_ADMIN"].includes(member.user?.role || ""),
@@ -193,15 +206,25 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
 
       <LogbookDialog
         busy={busy}
+        confirmDisabled={!canApprove}
         confirmLabel="Aprobar bitácora"
-        description={`Aprobarás “${data.name}” para “${data.event_name}”, modalidad ${logbookLabel(logbookModeLabels, data.assignment_mode)}, intento ${assignment?.attempt_number || 0}.`}
+        description={data.assignment_mode === "SHARED"
+          ? `Aprobarás la ejecución compartida “${data.name}”. La acción afectará a todos sus participantes, intento ${assignment?.attempt_number || 0}.`
+          : `Aprobarás únicamente la entrega de ${assignment?.user_name || "este participante"} para “${data.event_name}”, intento ${assignment?.attempt_number || 0}.`}
         error={dialogError}
         onClose={() => setDialog(null)}
         onConfirm={() => assignment && void run(() => approveLogbook(assignment.id), "Bitácora aprobada")}
         open={dialog === "approve"}
         title="Aprobar bitácora"
       >
-        <div className="grid grid-cols-3 gap-2 text-center text-sm"><Metric label="Cumplimiento" value={data.metrics.completion_percentage}/><Metric label="Participación" value={data.metrics.participation_percentage}/><Metric label="Aprobación" value={data.metrics.approval_percentage}/></div>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <Count label="Total de ítems" value={reviewSummary.totalItems}/>
+          <Count label="Respondidos" value={reviewSummary.answeredItems}/>
+          <Count label="Incumplimientos" value={reviewSummary.failedItems}/>
+          <Count label="Evidencias" value={reviewSummary.evidenceCount}/>
+        </div>
+        <p className="mt-3 text-sm"><strong>Estado:</strong> {logbookLabel(logbookStatusLabels, assignment?.status || "PENDING")}</p>
+        {!reviewSummary.complete ? <ApprovalRequirements summary={reviewSummary}/> : <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">La entrega cumple los requisitos conocidos para aprobación.</p>}
       </LogbookDialog>
 
       <LogbookDialog
@@ -271,4 +294,14 @@ function ResponseCard({ assignment, item, response, busy, staff, onDone }: { ass
 }
 
 function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded-lg bg-slate-50 p-2 text-center"><strong>{value}%</strong><p className="text-xs text-slate-500">{label}</p></div>; }
+function Count({ label, value }: { label: string; value: number }) { return <div className="rounded-lg bg-slate-50 p-2 text-center"><strong>{value}</strong><p className="text-xs text-slate-500">{label}</p></div>; }
+function ApprovalRequirements({ summary }: { summary: ReturnType<typeof validateLogbook> }) {
+  const groups = [
+    ["Respuestas obligatorias", summary.pendingRequiredResponses],
+    ["Comentarios requeridos", summary.pendingComments],
+    ["Evidencias obligatorias", summary.pendingEvidences],
+    ["Evidencias por incumplimiento", summary.pendingFailureEvidences],
+  ] as const;
+  return <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>No se puede aprobar todavía:</strong>{groups.filter(([, items]) => items.length).map(([label, items]) => <div className="mt-2" key={label}><p className="font-medium">{label}</p><ul className="list-disc pl-5">{items.map((item) => <li key={`${label}-${item.itemId}`}>{item.sectionTitle}: {item.itemTitle}</li>)}</ul></div>)}</div>;
+}
 function History({ assignment }: { assignment: Assignment }) { return <section className="rounded-2xl border bg-white p-4"><h3 className="font-semibold">Historial</h3>{assignment.history.map((entry) => <div className="mt-2 border-t pt-2 text-sm" key={entry.id}><strong>{entry.action}</strong> · intento {entry.attempt_number}<p className="text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("es-CL")} · {logbookLabel(logbookStatusLabels, entry.previous_status)} → {logbookLabel(logbookStatusLabels, entry.new_status)}</p>{entry.comment ? <p>{entry.comment}</p> : null}</div>)}</section>; }

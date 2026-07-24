@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api";
 import {
+  clearLogbookResponse,
   deleteLogbookEvidence,
   getLogbookInstance,
   saveLogbookResponse,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/api/logbooks";
 import { logbookLabel, logbookStatusLabels } from "@/lib/logbook-labels";
 import { logbookError } from "@/lib/logbook-errors";
+import { validateLogbook } from "@/lib/logbook-validation";
 import type { LogbookEvidence, LogbookInstanceDetail, LogbookItem, LogbookResponse } from "@/types/logbook";
 
 export function WorkerLogbookDetail({ id }: { id: string }) {
@@ -77,15 +79,7 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
   if (!data || !assignment) return <LoadingState />;
 
   const locked = !["PENDING", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(assignment.status);
-  const allItems = data.version.sections.flatMap((section) => section.items);
-  const missingItems = allItems.filter((item) => {
-    if (!item.is_required) return false;
-    const response = responses.get(item.id);
-    if (!response || response.result_status === "PENDING") return true;
-    const evidenceCount = response.evidences.filter((evidence) => !evidence.deleted_at).length;
-    return item.evidence_policy === "REQUIRED" && evidenceCount < Math.max(1, item.min_evidences);
-  });
-  const completedItems = allItems.length - missingItems.length;
+  const validation = validateLogbook(data.version.sections, responses);
 
   async function save(item: LogbookItem, patch: Partial<LogbookResponse>) {
     if (!assignment) return;
@@ -118,6 +112,26 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
         setDialogError("");
         setDialog("conflict");
       }
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function clear(item: LogbookItem) {
+    if (!assignment) return;
+    const current = responses.get(item.id);
+    if (!current || saving) return;
+    setSaving(item.id);
+    setItemErrors((errors) => ({ ...errors, [item.id]: "" }));
+    try {
+      await clearLogbookResponse(assignment.id, item.id, current.version);
+      await load();
+      toast({ title: "Respuesta eliminada", tone: "success" });
+    } catch (reason) {
+      const conflict = reason instanceof ApiError && reason.status === 409;
+      setItemErrors((errors) => ({ ...errors, [item.id]: logbookError(reason) }));
+      await load();
+      if (conflict) setDialog("conflict");
     } finally {
       setSaving(null);
     }
@@ -189,6 +203,7 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
                   setDialog("delete");
                 }}
                 onPreviewEvidence={setPreviewEvidence}
+                clear={clear}
                 save={save}
                 upload={(file) => upload(item, file)}
               />
@@ -221,7 +236,7 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
       ) : null}
       <LogbookDialog
         busy={processing}
-        confirmDisabled={missingItems.length > 0}
+        confirmDisabled={!validation.complete}
         confirmLabel={assignment.status === "CHANGES_REQUESTED" ? "Reenviar bitácora" : "Enviar bitácora"}
         description={assignment.status === "CHANGES_REQUESTED"
           ? "Esta es una corrección de la entrega anterior. Después de reenviarla quedará nuevamente bloqueada mientras el supervisor la revisa."
@@ -243,10 +258,14 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
         <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-50 p-4 text-sm">
           <p>Tipo<br/><strong>{assignment.status === "CHANGES_REQUESTED" ? "Reenvío" : "Envío inicial"}</strong></p>
           <p>Intento<br/><strong>{assignment.attempt_number + 1}</strong></p>
-          <p>Completadas<br/><strong>{completedItems} de {allItems.length}</strong></p>
-          <p>Pendientes<br/><strong>{missingItems.length}</strong></p>
+          <p>Total de ítems<br/><strong>{validation.totalItems}</strong></p>
+          <p>Respondidos<br/><strong>{validation.answeredItems}</strong></p>
+          <p>Sin responder<br/><strong>{validation.unansweredItems}</strong></p>
+          <p>Obligatorios pendientes<br/><strong>{validation.pendingRequiredResponses.length}</strong></p>
+          <p>Comentarios pendientes<br/><strong>{validation.pendingComments.length}</strong></p>
+          <p>Evidencias pendientes<br/><strong>{validation.pendingEvidences.length + validation.pendingFailureEvidences.length}</strong></p>
         </div>
-        {missingItems.length ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>Completa antes de enviar:</strong><ul className="list-disc pl-5">{missingItems.map((item) => <li key={item.id}>{item.title}</li>)}</ul></div> : null}
+        {!validation.complete ? <Requirements summary={validation} /> : <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">Todos los requisitos de envío están cumplidos.</p>}
       </LogbookDialog>
       <LogbookDialog
         busy={processing}
@@ -283,7 +302,7 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
 }
 
 function ItemField({
-  item, response, disabled, error, uploading, save, upload, onDeleteEvidence, onPreviewEvidence,
+  item, response, disabled, error, uploading, save, clear, upload, onDeleteEvidence, onPreviewEvidence,
 }: {
   item: LogbookItem;
   response?: LogbookResponse;
@@ -291,6 +310,7 @@ function ItemField({
   error?: string;
   uploading: boolean;
   save: (item: LogbookItem, patch: Partial<LogbookResponse>) => Promise<void>;
+  clear: (item: LogbookItem) => Promise<void>;
   upload: (file: File) => Promise<void>;
   onDeleteEvidence: (evidence: LogbookEvidence) => void;
   onPreviewEvidence: (evidence: LogbookEvidence) => void;
@@ -307,19 +327,42 @@ function ItemField({
         </label>
       ) : null}
       {item.item_type === "YES_NO" ? (
-        <select className={common} disabled={disabled} onChange={(event) => void save(item, event.target.value === "NA" ? { is_not_applicable: true } : { boolean_value: event.target.value === "YES", is_not_applicable: false })} value={response?.is_not_applicable ? "NA" : response?.boolean_value === true ? "YES" : response?.boolean_value === false ? "NO" : ""}>
+        <select className={common} disabled={disabled} onChange={(event) => {
+          const value = event.target.value;
+          if (value === "") {
+            if (response) void clear(item);
+            return;
+          }
+          if (value === "NA") void save(item, { is_not_applicable: true });
+          else void save(item, { boolean_value: value === "YES", is_not_applicable: false });
+        }} value={response?.is_not_applicable ? "NA" : response?.boolean_value === true ? "YES" : response?.boolean_value === false ? "NO" : ""}>
           <option value="">Selecciona</option><option value="YES">Sí</option><option value="NO">No</option>
           {item.allow_not_applicable ? <option value="NA">No aplica</option> : null}
         </select>
       ) : null}
       {item.item_type === "STATUS_SELECT" ? (
-        <select className={common} disabled={disabled} onChange={(event) => void save(item, { selected_option_id: event.target.value, is_not_applicable: false })} value={response?.selected_option_id || ""}>
+        <select className={common} disabled={disabled} onChange={(event) => event.target.value ? void save(item, { selected_option_id: event.target.value, is_not_applicable: false }) : response ? void clear(item) : undefined} value={response?.selected_option_id || ""}>
           <option value="">Selecciona</option>
           {item.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
       ) : null}
-      {item.item_type === "NUMBER" ? <input className={common} defaultValue={response?.numeric_value} disabled={disabled} onBlur={(event) => event.target.value && void save(item, { numeric_value: Number(event.target.value) })} type="number" /> : null}
-      {["SHORT_TEXT", "LONG_TEXT"].includes(item.item_type) ? <textarea className={common} defaultValue={response?.text_value} disabled={disabled} onBlur={(event) => event.target.value && void save(item, { text_value: event.target.value })} rows={item.item_type === "LONG_TEXT" ? 5 : 2} /> : null}
+      {item.item_type === "NUMBER" ? <input className={common} defaultValue={response?.numeric_value} disabled={disabled} onBlur={(event) => {
+        const value = event.target.value.trim();
+        if (value === "") {
+          if (response) void clear(item);
+          return;
+        }
+        const parsed = Number(value);
+        if (!Number.isNaN(parsed)) void save(item, { numeric_value: parsed });
+      }} type="number" /> : null}
+      {["SHORT_TEXT", "LONG_TEXT"].includes(item.item_type) ? <textarea className={common} defaultValue={response?.text_value} disabled={disabled} onBlur={(event) => {
+        const value = event.target.value.trim();
+        if (value === "") {
+          if (response) void clear(item);
+          return;
+        }
+        void save(item, { text_value: value });
+      }} rows={item.item_type === "LONG_TEXT" ? 5 : 2} /> : null}
       {item.item_type === "PHOTO" || item.evidence_policy !== "NONE" ? (
         <div className="mt-3 rounded-xl border border-dashed border-emerald-300 bg-emerald-50/50 p-3">
           <label className="text-sm font-medium text-emerald-900">
@@ -365,4 +408,19 @@ function ItemField({
 
 function dataModeAuthor(response?: LogbookResponse) {
   return response?.completed_by_name ? <p className="mt-1 text-xs text-slate-500">Registrado por {response.completed_by_name}</p> : null;
+}
+
+function Requirements({ summary }: { summary: ReturnType<typeof validateLogbook> }) {
+  const groups = [
+    ["Respuestas obligatorias", summary.pendingRequiredResponses],
+    ["Comentarios ante incumplimiento", summary.pendingComments],
+    ["Evidencias obligatorias", summary.pendingEvidences],
+    ["Evidencias por incumplimiento", summary.pendingFailureEvidences],
+  ] as const;
+  return <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+    <strong>Completa estos requisitos antes de enviar:</strong>
+    {groups.filter(([, items]) => items.length).map(([label, items]) => (
+      <div className="mt-2" key={label}><p className="font-medium">{label}</p><ul className="list-disc pl-5">{items.map((item) => <li key={`${label}-${item.itemId}`}>{item.sectionTitle}: {item.itemTitle}</li>)}</ul></div>
+    ))}
+  </div>;
 }

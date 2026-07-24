@@ -22,6 +22,7 @@ export const openLogbookInstance=(id:string)=>api.post<LogbookInstance>(`/logboo
 export const cancelLogbookInstance=(id:string,reason:string)=>api.post<LogbookInstance>(`/logbook-instances/${id}/cancel`,{reason});
 export const getClientLogbook=(id:string)=>api.get<ClientLogbookSummary>(`/client/logbooks/${id}`);
 export const saveLogbookResponse=(assignmentId:string,data:Record<string,unknown>)=>api.put<LogbookResponse>(`/logbook-assignments/${assignmentId}/responses`,data);
+export const clearLogbookResponse=(assignmentId:string,itemId:string,version:number)=>api.delete<LogbookResponse>(`/logbook-assignments/${assignmentId}/responses/${itemId}?version=${version}`);
 export const uploadLogbookEvidence=(assignmentId:string,responseId:string,file:File,comment?:string)=>{const body=new FormData();body.append("file",file);if(comment)body.append("comment",comment);return api.post<LogbookEvidence>(`/logbook-assignments/${assignmentId}/responses/${responseId}/evidences`,body)};
 export const getLogbookEvidenceAccess=(id:string)=>api.get<{url:string;expires_in:number}>(`/logbook-evidences/${id}/access`);
 export const deleteLogbookEvidence=(id:string)=>api.delete<void>(`/logbook-evidences/${id}`);
