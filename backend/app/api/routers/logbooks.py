@@ -3,15 +3,37 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from app.api.deps import get_current_active_user
+from app.api.deps import get_current_active_user, require_roles
 from app.db.session import get_db
 from app.models.core import User
+from app.models.enums import UserRole
 from app.schemas.logbook_schema import *  # noqa: F403
 from app.schemas.incident_schema import IncidentRead
 from app.schemas.task_schema import TaskRead
 from app.services import logbook_service as service
 
 router = APIRouter(tags=["logbooks"])
+
+
+@router.post(
+    "/admin/logbooks/lifecycle/process",
+    response_model=LifecycleProcessRead,
+    summary="Procesar apertura y vencimiento de bitácoras",
+)
+def process_lifecycle(
+    payload: LifecycleProcessIn,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)),
+):
+    from app.services.logbook_lifecycle_service import process_logbook_lifecycle
+
+    return process_logbook_lifecycle(
+        db,
+        batch_size=payload.batch_size,
+        dry_run=payload.dry_run,
+        actor=current,
+        origin="MANUAL_ADMIN",
+    )
 
 
 @router.post("/logbook-templates", response_model=TemplateRead, status_code=201)

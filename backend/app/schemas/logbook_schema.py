@@ -138,11 +138,32 @@ class InstanceCreate(BaseModel):
 
     @model_validator(mode="after")
     def dates(self):
+        for field_name in ("opens_at", "due_at"):
+            value = getattr(self, field_name)
+            if value is not None and value.tzinfo is None:
+                raise ValueError(f"{field_name} must include a timezone")
         if self.opens_at and self.due_at and self.due_at <= self.opens_at:
             raise ValueError("due_at must be after opens_at")
         if len(set(self.participant_ids)) != len(self.participant_ids):
             raise ValueError("Duplicate participants")
         return self
+
+
+class LifecycleProcessIn(BaseModel):
+    batch_size: int = Field(100, ge=1, le=500)
+    dry_run: bool = False
+
+
+class LifecycleProcessRead(BaseModel):
+    run_id: UUID
+    started_at: datetime
+    finished_at: datetime
+    inspected_count: int
+    opened_count: int
+    overdue_count: int
+    skipped_count: int
+    failed_count: int
+    batch_count: int
 
 
 class InstanceRead(BaseModel):

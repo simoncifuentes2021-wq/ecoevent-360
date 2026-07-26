@@ -209,8 +209,8 @@ class LogbookInstance(Base):
     assignment_mode: Mapped[LogbookAssignmentMode] = mapped_column(
         enum(LogbookAssignmentMode, "logbook_assignment_mode"), nullable=False
     )
-    opens_at: Mapped[datetime | None] = mapped_column(DateTime)
-    due_at: Mapped[datetime | None] = mapped_column(DateTime)
+    opens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     supervisor_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )

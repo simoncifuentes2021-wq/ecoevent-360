@@ -5,6 +5,7 @@ export interface LogbookVersion {id:string;template_id:string;version_number:num
 export interface LogbookTemplateDetail extends LogbookTemplate {versions:LogbookVersion[]}
 export interface LogbookVersionDetail extends LogbookVersion {sections:LogbookSection[]}
 export interface LogbookInstance {id:string;event_id:string;template_id:string;template_version_id:string;name:string;operational_stage:string;zone_id?:string;assignment_mode:"INDIVIDUAL"|"SHARED";opens_at?:string;due_at?:string;supervisor_id?:string;status:string;client_visibility:boolean;created_at:string}
+export interface LogbookLifecycleSummary {run_id:string;started_at:string;finished_at:string;inspected_count:number;opened_count:number;overdue_count:number;skipped_count:number;failed_count:number;batch_count:number}
 export interface ClientLogbookSummary {id:string;event_id:string;name:string;operational_stage:string;status:string;completion_percentage:number;participation_percentage:number;approval_percentage:number;total_required_items:number;completed_items:number;failed_items:number;public_evidences:LogbookEvidence[]}
 export interface LogbookAssignment {id:string;logbook_instance_id:string;user_id:string;status:LogbookAssignmentStatus;started_at?:string;submitted_at?:string;approved_at?:string;review_comment?:string;attempt_number:number;}
 export interface LogbookOption {id:string;label:string;value:string;position:number;is_success_value:boolean;is_failure_value:boolean}

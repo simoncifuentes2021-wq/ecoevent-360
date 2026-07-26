@@ -1,5 +1,5 @@
 # ruff: noqa: F405
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from fastapi import HTTPException, UploadFile
@@ -344,7 +344,7 @@ def create_instance(db, event_id, p, current):
         due_at=p.due_at,
         supervisor_id=p.supervisor_id,
         status=LogbookInstanceStatus.SCHEDULED
-        if p.opens_at and p.opens_at > datetime.utcnow()
+        if p.opens_at and p.opens_at > datetime.now(UTC)
         else LogbookInstanceStatus.OPEN,
         client_visibility=p.client_visibility,
         created_by=current.id,

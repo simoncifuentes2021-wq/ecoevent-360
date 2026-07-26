@@ -14,7 +14,7 @@ case "${1:-quick}" in
     "$PYTHON_BIN" -c "from sqlalchemy.orm import configure_mappers; import app.models; configure_mappers(); print('SQLAlchemy mappers: OK')"
     ;;
   unit)
-    "$PYTHON_BIN" -m pytest tests/test_logbook_rules.py -q
+    "$PYTHON_BIN" -m pytest tests/test_logbook_rules.py tests/test_logbook_lifecycle_rules.py -q
     ;;
   integration)
     "$PYTHON_BIN" -m pytest tests/test_logbook_integration.py tests/test_logbook_certification.py -q

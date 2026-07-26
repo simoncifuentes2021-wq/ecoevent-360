@@ -13,7 +13,7 @@ import { LogbookDialog } from "@/components/logbooks/LogbookDialog";
 import { Button } from "@/components/ui/button";
 import {
   cancelLogbookInstance, createEventLogbook, getEventLogbooks, getLogbookInstance,
-  getLogbookTemplate, getLogbookTemplates, openLogbookInstance,
+  getLogbookTemplate, getLogbookTemplates, openLogbookInstance, processLogbookLifecycle,
 } from "@/lib/api/logbooks";
 import { getEventStaff } from "@/lib/api/staff";
 import { getEventZones } from "@/lib/api/zones";
@@ -24,6 +24,7 @@ import type { LogbookInstance, LogbookInstanceDetail, LogbookTemplateDetail } fr
 import type { Zone } from "@/types/zone";
 
 export function EventLogbooksTab({ eventId, role }: { eventId: string; role?: string | null }) {
+  const { toast } = useToast();
   const [items, setItems] = useState<Array<LogbookInstance & { detail?: LogbookInstanceDetail }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -31,6 +32,7 @@ export function EventLogbooksTab({ eventId, role }: { eventId: string; role?: st
   const [filter, setFilter] = useState("ALL");
   const [templateFilter, setTemplateFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
+  const [processing, setProcessing] = useState(false);
 
   async function load() {
     setLoading(true); setError("");
@@ -53,15 +55,25 @@ export function EventLogbooksTab({ eventId, role }: { eventId: string; role?: st
 
   return <div className="space-y-4">
     <div className="flex flex-wrap justify-between gap-3">
-      <select className="rounded-xl border p-2" onChange={(event) => setFilter(event.target.value)} value={filter}><option value="ALL">Todos los estados</option>{["SCHEDULED","OPEN","IN_PROGRESS","UNDER_REVIEW","CHANGES_REQUESTED","COMPLETED","CANCELLED"].map((value) => <option key={value} value={value}>{logbookLabel(logbookStatusLabels,value)}</option>)}</select>
+      <select className="rounded-xl border p-2" onChange={(event) => setFilter(event.target.value)} value={filter}><option value="ALL">Todos los estados</option>{["SCHEDULED","OPEN","OVERDUE","IN_PROGRESS","UNDER_REVIEW","CHANGES_REQUESTED","COMPLETED","CANCELLED"].map((value) => <option key={value} value={value}>{logbookLabel(logbookStatusLabels,value)}</option>)}</select>
       <select className="rounded-xl border p-2" onChange={(event) => setTemplateFilter(event.target.value)} value={templateFilter}><option value="ALL">Todas las plantillas</option>{Array.from(new Map(items.map((item) => [item.template_id,item.name])).entries()).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
       <select className="rounded-xl border p-2" onChange={(event) => setStageFilter(event.target.value)} value={stageFilter}><option value="ALL">Todas las etapas</option>{Object.entries(logbookStageLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
       {role !== "CLIENT" ? <Button onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4"/>Asignar bitácora</Button> : null}
+      {role === "ADMIN" || role === "SUPER_ADMIN" ? <Button disabled={processing} onClick={async () => {
+        if (processing) return;
+        setProcessing(true);
+        try {
+          const result = await processLogbookLifecycle();
+          toast({title:"Ciclo de bitácoras procesado",description:`${result.opened_count} abiertas y ${result.overdue_count} vencidas.`,tone:"success"});
+          await load();
+        } catch (cause) { toast({title:"No se pudo procesar el ciclo",description:logbookError(cause),tone:"error"}); }
+        finally { setProcessing(false); }
+      }}>{processing ? "Procesando…" : "Actualizar estados"}</Button> : null}
     </div>
     {loading ? <LoadingState/> : error ? <ErrorState message={error} onRetry={load}/> : shown.length === 0 ? <EmptyState title="Sin bitácoras" description="Aún no hay ejecuciones para este evento."/> : <div className="grid gap-3">{shown.map((item) => <article className="rounded-xl border bg-white p-4" key={item.id}>
       <div className="flex flex-wrap items-start justify-between gap-2"><div><Link className="font-semibold hover:text-emerald-700" href={role === "ADMIN" || role === "SUPER_ADMIN" ? `/admin/bitacoras/ejecuciones/${item.id}` : `/supervisor/bitacoras/${item.id}`}>{item.name}</Link><p className="text-xs text-slate-500">{logbookLabel(logbookStageLabels,item.operational_stage)} · {logbookLabel(logbookModeLabels,item.assignment_mode)} · {logbookLabel(logbookStatusLabels,item.status)}</p></div><div className="flex flex-wrap gap-2"><Link className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-700 px-3 text-sm font-medium text-white hover:bg-emerald-800" href={role === "ADMIN" || role === "SUPER_ADMIN" ? `/admin/bitacoras/ejecuciones/${item.id}` : `/supervisor/bitacoras/${item.id}`}>{role === "ADMIN" || role === "SUPER_ADMIN" ? "Administrar bitácora" : "Revisar bitácora"}</Link><InstanceActions item={item} done={load}/></div></div>
       {item.detail ? <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm"><Metric label="Cumplimiento" value={item.detail.metrics.completion_percentage}/><Metric label="Participación" value={item.detail.metrics.participation_percentage}/><Metric label="Aprobación" value={item.detail.metrics.approval_percentage}/></div> : null}
-      <p className="mt-3 text-xs text-slate-500">Apertura: {item.opens_at ? new Date(item.opens_at).toLocaleString("es-CL") : "Inmediata"} · Vence: {item.due_at ? new Date(item.due_at).toLocaleString("es-CL") : "Sin vencimiento"}</p>
+      <p className={item.status === "OVERDUE" ? "mt-3 text-xs font-semibold text-red-700" : "mt-3 text-xs text-slate-500"}>Apertura: {formatLifecycleDate(item.opens_at,"Inmediata")} · Vence: {formatLifecycleDate(item.due_at,"Sin vencimiento")} · America/Santiago</p>
     </article>)}</div>}
     {open ? <AssignLogbook eventId={eventId} close={() => setOpen(false)} done={() => { setOpen(false); void load(); }}/> : null}
   </div>;
@@ -167,3 +179,4 @@ function AssignLogbook({ eventId, close, done }: { eventId: string; close: () =>
 
 function Summary({ label, value }: { label: string; value: string }) { return <div className="grid grid-cols-[8rem_1fr] gap-2"><dt className="font-medium">{label}</dt><dd className="break-words">{value}</dd></div>; }
 function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded-lg bg-slate-50 p-2"><strong>{value}%</strong><p className="text-xs text-slate-500">{label}</p></div>; }
+function formatLifecycleDate(value: string | undefined, fallback: string) { return value ? new Intl.DateTimeFormat("es-CL",{dateStyle:"short",timeStyle:"short",timeZone:"America/Santiago"}).format(new Date(value)) : fallback; }
