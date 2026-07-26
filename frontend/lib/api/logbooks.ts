@@ -20,6 +20,7 @@ export const getEventLogbooks=(eventId:string,filters?:{status?:string;template_
 export const createEventLogbook=(eventId:string,data:Record<string,unknown>)=>api.post<LogbookInstance>(`/events/${eventId}/logbooks`,data);
 export const openLogbookInstance=(id:string)=>api.post<LogbookInstance>(`/logbook-instances/${id}/open`);
 export const cancelLogbookInstance=(id:string,reason:string)=>api.post<LogbookInstance>(`/logbook-instances/${id}/cancel`,{reason});
+export const processLogbookLifecycle=(data:{batch_size?:number;dry_run?:boolean}={})=>api.post<import("@/types/logbook").LogbookLifecycleSummary>("/admin/logbooks/lifecycle/process",data);
 export const getClientLogbook=(id:string)=>api.get<ClientLogbookSummary>(`/client/logbooks/${id}`);
 export const saveLogbookResponse=(assignmentId:string,data:Record<string,unknown>)=>api.put<LogbookResponse>(`/logbook-assignments/${assignmentId}/responses`,data);
 export const clearLogbookResponse=(assignmentId:string,itemId:string,version:number)=>api.delete<LogbookResponse>(`/logbook-assignments/${assignmentId}/responses/${itemId}?version=${version}`);

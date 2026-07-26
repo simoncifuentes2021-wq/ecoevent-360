@@ -1,14 +1,24 @@
-from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.db.session import SessionLocal
 from app.models.audit_log import AuditLog
 from app.models.core import Client, Event, EventStaff, User
-from app.models.enums import EventStatus, LogbookAssignmentStatus, UserRole
+from app.models.enums import (
+    EventStatus,
+    LogbookAssignmentMode,
+    LogbookInstanceStatus,
+    LogbookOperationalStage,
+    LogbookTemplateStatus,
+    LogbookVersionStatus,
+    LogbookAssignmentStatus,
+    UserRole,
+)
 from app.models.logbook import (
     LogbookEvidence,
     LogbookInstance,
@@ -17,6 +27,47 @@ from app.models.logbook import (
 )
 from app.schemas.logbook_schema import InstanceCreate, ItemIn, ResponseSave, SectionIn, TemplateCreate
 from app.services import logbook_service
+from app.services.logbook_lifecycle_service import process_logbook_lifecycle
+
+
+def _lifecycle_instance(ctx, *, status, opens_at=None, due_at=None):
+    db = ctx["db"]
+    admin = ctx["users"][0]
+    template = LogbookTemplate(
+        name="Lifecycle test",
+        operational_stage=LogbookOperationalStage.OPERATION,
+        status=LogbookTemplateStatus.ACTIVE,
+        default_assignment_mode=LogbookAssignmentMode.INDIVIDUAL,
+        default_client_visibility=False,
+        created_by=admin.id,
+    )
+    db.add(template)
+    db.flush()
+    version = LogbookTemplateVersion(
+        template_id=template.id,
+        version_number=1,
+        status=LogbookVersionStatus.PUBLISHED,
+        created_by=admin.id,
+    )
+    db.add(version)
+    db.flush()
+    item = LogbookInstance(
+        event_id=ctx["event"].id,
+        template_id=template.id,
+        template_version_id=version.id,
+        name="Lifecycle instance",
+        operational_stage=LogbookOperationalStage.OPERATION,
+        assignment_mode=LogbookAssignmentMode.INDIVIDUAL,
+        opens_at=opens_at,
+        due_at=due_at,
+        status=status,
+        created_by=admin.id,
+    )
+    db.add(item)
+    db.commit()
+    ctx["template_id"] = template.id
+    ctx["instance_ids"].append(item.id)
+    return item
 
 
 @pytest.fixture()
@@ -658,3 +709,59 @@ def test_participant_removal_and_cancellation_preserve_operational_history(logbo
         )
     )
     assert cancel_audit.metadata_["reason"] == "Evento cancelado"
+
+
+def test_lifecycle_is_idempotent_and_audited_once_on_real_postgresql(logbook_context):
+    now = datetime(2026, 7, 25, 15, 0, tzinfo=UTC)
+    item = _lifecycle_instance(
+        logbook_context,
+        status=LogbookInstanceStatus.SCHEDULED,
+        opens_at=now - timedelta(hours=2),
+        due_at=now - timedelta(hours=1),
+    )
+    first = process_logbook_lifecycle(logbook_context["db"], now=now, batch_size=10)
+    second = process_logbook_lifecycle(logbook_context["db"], now=now, batch_size=10)
+    logbook_context["db"].refresh(item)
+    assert item.status == LogbookInstanceStatus.OVERDUE
+    assert (first.opened_count, first.overdue_count) == (1, 1)
+    assert (second.opened_count, second.overdue_count) == (0, 0)
+    actions = list(
+        logbook_context["db"].scalars(
+            select(AuditLog.action).where(
+                AuditLog.entity_id == item.id,
+                AuditLog.action.in_(
+                    ["LOGBOOK_LIFECYCLE_OPENED", "LOGBOOK_LIFECYCLE_OVERDUE"]
+                ),
+            )
+        )
+    )
+    assert sorted(actions) == ["LOGBOOK_LIFECYCLE_OPENED", "LOGBOOK_LIFECYCLE_OVERDUE"]
+
+
+def test_two_workers_do_not_duplicate_lifecycle_transition(logbook_context):
+    now = datetime(2026, 7, 25, 15, 0, tzinfo=UTC)
+    item = _lifecycle_instance(
+        logbook_context,
+        status=LogbookInstanceStatus.OPEN,
+        due_at=now - timedelta(seconds=1),
+    )
+
+    def run_worker():
+        with SessionLocal() as worker_db:
+            return process_logbook_lifecycle(worker_db, now=now, batch_size=1)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: run_worker(), range(2)))
+
+    logbook_context["db"].expire_all()
+    assert logbook_context["db"].get(LogbookInstance, item.id).status == LogbookInstanceStatus.OVERDUE
+    assert sum(result.overdue_count for result in results) == 1
+    assert (
+        logbook_context["db"].scalar(
+            select(func.count(AuditLog.id)).where(
+                AuditLog.entity_id == item.id,
+                AuditLog.action == "LOGBOOK_LIFECYCLE_OVERDUE",
+            )
+        )
+        == 1
+    )
