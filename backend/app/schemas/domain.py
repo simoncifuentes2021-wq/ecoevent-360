@@ -9,8 +9,6 @@ from app.models.enums import (
     EventStatus,
     IncidentStatus,
     PriorityLevel,
-    ReportStatus,
-    SurveyStatus,
     TaskStatus,
     UserRole,
     WasteDestination,

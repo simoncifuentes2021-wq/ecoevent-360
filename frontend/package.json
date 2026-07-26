@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:logbooks": "node tests/logbook-clear.test.cjs && node tests/logbook-validation.test.cjs && node tests/logbook-ui-contract.test.cjs",
+    "verify:quick": "npm run typecheck && npm run lint -- --no-cache && npm run test:logbooks"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException, UploadFile
 from PIL import Image
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from starlette.datastructures import Headers
 
 from app.core.config import settings
@@ -18,9 +18,11 @@ from app.models.core import Client, Event, EventStaff, Incident, Task, User
 from app.models.enums import EventStatus, UserRole
 from app.models.logbook import (
     LogbookCorrectiveEvidenceLink,
+    LogbookAssignment,
     LogbookEvidence,
     LogbookIncidentLink,
     LogbookInstance,
+    LogbookReviewHistory,
     LogbookTaskLink,
     LogbookTemplate,
     LogbookTemplateVersion,
@@ -426,8 +428,33 @@ def test_certification_individual_all_types_evidence_review_and_client(pg):
     option = items["Estado"].options[0]
     save(db, assignment, items["Casilla"], users["worker1"], boolean_value=True)
     save(db, assignment, items["Sí o no"], users["worker1"], boolean_value=True)
+    expect_http(
+        422,
+        lambda: save(
+            db,
+            assignment,
+            items["Estado"],
+            users["worker1"],
+            selected_option_id=uuid4(),
+        ),
+    )
     save(db, assignment, items["Estado"], users["worker1"], selected_option_id=option.id)
-    save(db, assignment, items["Número"], users["worker1"], numeric_value=12)
+    number = save(
+        db,
+        assignment,
+        items["Número"],
+        users["worker1"],
+        numeric_value=0,
+        text_value="no debe persistir",
+    )
+    assert number.numeric_value == 0
+    assert number.text_value is None
+    expect_http(
+        422,
+        lambda: save(
+            db, assignment, items["Texto corto"], users["worker1"], text_value="   "
+        ),
+    )
     save(db, assignment, items["Texto corto"], users["worker1"], text_value="corto")
     save(db, assignment, items["Texto largo"], users["worker1"], text_value="texto largo")
     photo_response = save(db, assignment, items["Fotografía"], users["worker1"])
@@ -677,10 +704,34 @@ def test_certification_shared_concurrency_collaboration_and_review(pg):
         version=prior_version,
     )
     assert latest.version > prior_version
+    concurrent_submit_db = SessionLocal()
+    concurrent_submit_db.get(LogbookAssignment, assignments[users["worker2"].id].id)
     submitted = logbook_service.submit(
         db, assignments[users["worker1"].id].id, users["worker1"]
     )
     assert submitted.attempt_number == 1
+    try:
+        expect_http(
+            409,
+            lambda: logbook_service.submit(
+                concurrent_submit_db,
+                assignments[users["worker2"].id].id,
+                concurrent_submit_db.get(User, users["worker2"].id),
+            ),
+        )
+        submit_history_count = concurrent_submit_db.scalar(
+            select(func.count(LogbookReviewHistory.id)).where(
+                LogbookReviewHistory.assignment_id.in_(
+                    [assignment.id for assignment in assignments.values()]
+                ),
+                LogbookReviewHistory.action == "SUBMIT",
+            )
+        )
+        assert submit_history_count == 1
+    finally:
+        concurrent_submit_db.close()
+    concurrent_review_db = SessionLocal()
+    concurrent_review_db.get(LogbookAssignment, assignments[users["worker2"].id].id)
     changed = logbook_service.review(
         db,
         assignments[users["worker1"].id].id,
@@ -689,6 +740,28 @@ def test_certification_shared_concurrency_collaboration_and_review(pg):
         "Ajustar observación",
     )
     assert changed.status.value == "CHANGES_REQUESTED"
+    try:
+        expect_http(
+            409,
+            lambda: logbook_service.review(
+                concurrent_review_db,
+                assignments[users["worker2"].id].id,
+                concurrent_review_db.get(User, users["supervisor"].id),
+                False,
+                "No debe duplicarse",
+            ),
+        )
+        review_history_count = concurrent_review_db.scalar(
+            select(func.count(LogbookReviewHistory.id)).where(
+                LogbookReviewHistory.assignment_id.in_(
+                    [assignment.id for assignment in assignments.values()]
+                ),
+                LogbookReviewHistory.action == "REQUEST_CHANGES",
+            )
+        )
+        assert review_history_count == 1
+    finally:
+        concurrent_review_db.close()
     for assignment in instance.assignments:
         db.refresh(assignment)
         assert assignment.status.value == "CHANGES_REQUESTED"
