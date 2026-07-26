@@ -398,18 +398,39 @@ def _assignment(db, id, current, manage=False):
     return a
 
 
-def save_response(db, assignment_id, p, current):
-    a = _assignment(db, assignment_id, current)
-    if a.user_id != current.id and current.role not in ADMIN:
-        fail(403, "Solo el participante asignado puede editar las respuestas")
-    if a.status not in {
-        LogbookAssignmentStatus.PENDING,
-        LogbookAssignmentStatus.IN_PROGRESS,
-        LogbookAssignmentStatus.CHANGES_REQUESTED,
-    }:
+EDITABLE_ASSIGNMENT_STATUSES = {
+    LogbookAssignmentStatus.PENDING,
+    LogbookAssignmentStatus.IN_PROGRESS,
+    LogbookAssignmentStatus.CHANGES_REQUESTED,
+}
+
+
+def _editable_participant_assignment(db, assignment_id, current):
+    target = db.get(LogbookAssignment, assignment_id)
+    if not target:
+        fail(404, "Logbook assignment not found")
+    if not getattr(current, "is_active", True):
+        fail(403, "Only an active participant can edit responses")
+    if target.instance.assignment_mode == LogbookAssignmentMode.SHARED:
+        participant = db.scalar(
+            select(LogbookAssignment).where(
+                LogbookAssignment.logbook_instance_id == target.logbook_instance_id,
+                LogbookAssignment.user_id == current.id,
+            )
+        )
+    else:
+        participant = target if target.user_id == current.id else None
+    if not participant:
+        fail(403, "Only an assigned participant can edit responses")
+    if participant.status not in EDITABLE_ASSIGNMENT_STATUSES:
         fail(409, "Submitted assignments are locked")
+    return target, participant
+
+
+def save_response(db, assignment_id, p, current):
+    target, a = _editable_participant_assignment(db, assignment_id, current)
     item = db.get(LogbookItem, p.item_id)
-    if not item or item.section.template_version_id != a.instance.template_version_id:
+    if not item or item.section.template_version_id != target.instance.template_version_id:
         fail(422, "Item does not belong to this logbook version")
     if p.is_not_applicable and not item.allow_not_applicable:
         fail(422, "Not applicable is not allowed")
@@ -422,6 +443,13 @@ def save_response(db, assignment_id, p, current):
         fail(422, "Debes marcar una opción de Sí/No o confirmación")
     if item.item_type == LogbookItemType.NUMBER and p.numeric_value is None:
         fail(422, "A numeric value is required")
+    if (
+        item.item_type in {LogbookItemType.SHORT_TEXT, LogbookItemType.LONG_TEXT}
+        and not p.is_not_applicable
+    ):
+        if not p.text_value or not p.text_value.strip():
+            fail(422, "A non-empty text value is required")
+        p.text_value = p.text_value.strip()
     opt = None
     if item.item_type == LogbookItemType.STATUS_SELECT:
         opt = db.get(LogbookItemOption, p.selected_option_id) if p.selected_option_id else None
@@ -447,6 +475,7 @@ def save_response(db, assignment_id, p, current):
         )
     else:
         p.result_status = LogbookResultStatus.COMPLETED
+    _normalize_response_fields(item, p)
     response_query = select(LogbookResponse).where(LogbookResponse.logbook_item_id == item.id)
     if a.instance.assignment_mode == LogbookAssignmentMode.SHARED:
         response_query = response_query.join(LogbookAssignment).where(
@@ -484,30 +513,66 @@ def save_response(db, assignment_id, p, current):
     return r
 
 
-def clear_response(db, assignment_id, item_id, version, current):
-    assignment = _assignment(db, assignment_id, current)
-    if assignment.user_id != current.id and current.role not in ADMIN:
-        fail(403, "Solo el participante asignado puede editar las respuestas")
-    if assignment.status not in {
-        LogbookAssignmentStatus.PENDING,
-        LogbookAssignmentStatus.IN_PROGRESS,
-        LogbookAssignmentStatus.CHANGES_REQUESTED,
+def _normalize_response_fields(item, payload):
+    if payload.is_not_applicable:
+        payload.selected_option_id = None
+        payload.boolean_value = None
+        payload.numeric_value = None
+        payload.text_value = None
+    elif item.item_type in {
+        LogbookItemType.CHECKBOX,
+        LogbookItemType.CONFIRMATION,
+        LogbookItemType.YES_NO,
     }:
-        fail(409, "Submitted assignments are locked")
+        payload.selected_option_id = None
+        payload.numeric_value = None
+        payload.text_value = None
+    elif item.item_type == LogbookItemType.STATUS_SELECT:
+        payload.boolean_value = None
+        payload.numeric_value = None
+        payload.text_value = None
+    elif item.item_type == LogbookItemType.NUMBER:
+        payload.selected_option_id = None
+        payload.boolean_value = None
+        payload.text_value = None
+    elif item.item_type in {LogbookItemType.SHORT_TEXT, LogbookItemType.LONG_TEXT}:
+        payload.selected_option_id = None
+        payload.boolean_value = None
+        payload.numeric_value = None
+    elif item.item_type == LogbookItemType.PHOTO:
+        payload.selected_option_id = None
+        payload.boolean_value = None
+        payload.numeric_value = None
+        payload.text_value = None
+
+
+def clear_response(db, assignment_id, item_id, version, current):
+    target, participant = _editable_participant_assignment(db, assignment_id, current)
     response_query = select(LogbookResponse).where(LogbookResponse.logbook_item_id == item_id)
-    if assignment.instance.assignment_mode == LogbookAssignmentMode.SHARED:
+    if target.instance.assignment_mode == LogbookAssignmentMode.SHARED:
         response_query = response_query.join(LogbookAssignment).where(
-            LogbookAssignment.logbook_instance_id == assignment.instance.id
+            LogbookAssignment.logbook_instance_id == target.instance.id
         )
     else:
-        response_query = response_query.where(LogbookResponse.assignment_id == assignment.id)
+        response_query = response_query.where(LogbookResponse.assignment_id == participant.id)
     response = db.scalar(response_query)
     if not response:
         fail(404, "Response not found")
     if response.version != version:
         fail(409, "Response was modified by another user")
+    evidences = list(
+        db.scalars(
+            select(LogbookEvidence).where(
+                LogbookEvidence.response_id == response.id,
+                LogbookEvidence.deleted_at.is_(None),
+            )
+        ).all()
+    )
     old = {"result_status": response.result_status, "version": response.version}
-    _clear_response_values(response, current.id)
+    cleared_at = datetime.utcnow()
+    _clear_response_values(response)
+    for evidence in evidences:
+        evidence.deleted_at = cleared_at
     db.commit()
     db.refresh(response)
     audit(
@@ -516,14 +581,15 @@ def clear_response(db, assignment_id, item_id, version, current):
         "LOGBOOK_RESPONSE_CLEARED",
         "LogbookResponse",
         response.id,
-        event_id=assignment.instance.event_id,
+        event_id=target.instance.event_id,
         old=old,
         new={"result_status": response.result_status, "version": response.version},
+        metadata={"deleted_evidence_count": len(evidences)},
     )
     return response
 
 
-def _clear_response_values(response, actor_id):
+def _clear_response_values(response):
     response.selected_option_id = None
     response.boolean_value = None
     response.numeric_value = None
@@ -531,8 +597,8 @@ def _clear_response_values(response, actor_id):
     response.is_not_applicable = False
     response.result_status = LogbookResultStatus.PENDING
     response.comment = None
-    response.completed_by = actor_id
-    response.completed_at = datetime.utcnow()
+    response.completed_by = None
+    response.completed_at = None
     response.version += 1
 
 
@@ -540,6 +606,12 @@ def submit(db, id, current):
     a = _assignment(db, id, current)
     if a.user_id != current.id:
         fail(403, "Only the participant can submit")
+    a = db.scalar(
+        select(LogbookAssignment)
+        .where(LogbookAssignment.id == id)
+        .execution_options(populate_existing=True)
+        .with_for_update()
+    )
     if a.status not in {
         LogbookAssignmentStatus.IN_PROGRESS,
         LogbookAssignmentStatus.CHANGES_REQUESTED,
@@ -637,6 +709,12 @@ def submit(db, id, current):
 
 def review(db, id, current, approve, comment):
     a = _assignment(db, id, current, True)
+    a = db.scalar(
+        select(LogbookAssignment)
+        .where(LogbookAssignment.id == id)
+        .execution_options(populate_existing=True)
+        .with_for_update()
+    )
     if a.status not in {LogbookAssignmentStatus.SUBMITTED, LogbookAssignmentStatus.RESUBMITTED}:
         fail(409, "Only submitted assignments can be reviewed")
     if not approve and not comment:
@@ -770,6 +848,7 @@ def _load_instance(db, instance_id):
     instance = db.scalar(
         select(LogbookInstance)
         .where(LogbookInstance.id == instance_id)
+        .execution_options(populate_existing=True)
         .options(
             selectinload(LogbookInstance.version)
             .selectinload(LogbookTemplateVersion.sections)
@@ -1049,22 +1128,14 @@ def validate_image_content(content: bytes, claimed_mime: str) -> None:
 
 
 def upload_evidence(db, assignment_id, response_id, file: UploadFile, comment, current):
-    assignment = _assignment(db, assignment_id, current)
-    if assignment.user_id != current.id:
-        fail(403, "Only the participant can upload evidence")
-    if assignment.status not in {
-        LogbookAssignmentStatus.PENDING,
-        LogbookAssignmentStatus.IN_PROGRESS,
-        LogbookAssignmentStatus.CHANGES_REQUESTED,
-    }:
-        fail(409, "Submitted assignments are locked")
+    target, assignment = _editable_participant_assignment(db, assignment_id, current)
     response = db.get(LogbookResponse, response_id)
     if not response:
         fail(404, "Response not found")
     response_assignment = db.get(LogbookAssignment, response.assignment_id)
     if response.assignment_id != assignment.id and not (
-        response_assignment.logbook_instance_id == assignment.logbook_instance_id
-        and assignment.instance.assignment_mode == LogbookAssignmentMode.SHARED
+        response_assignment.logbook_instance_id == target.logbook_instance_id
+        and target.instance.assignment_mode == LogbookAssignmentMode.SHARED
     ):
         fail(404, "Response not found")
     item = db.get(LogbookItem, response.logbook_item_id)
@@ -1193,7 +1264,9 @@ def delete_evidence(db, evidence_id, current):
 
 
 def create_corrective_incident(db, response_id, payload, current):
-    response = db.get(LogbookResponse, response_id)
+    response = db.scalar(
+        select(LogbookResponse).where(LogbookResponse.id == response_id).with_for_update()
+    )
     if not response:
         fail(404, "Response not found")
     assignment = response.assignment
@@ -1264,7 +1337,9 @@ def create_corrective_incident(db, response_id, payload, current):
 
 
 def create_corrective_task(db, response_id, payload, current):
-    response = db.get(LogbookResponse, response_id)
+    response = db.scalar(
+        select(LogbookResponse).where(LogbookResponse.id == response_id).with_for_update()
+    )
     if not response:
         fail(404, "Response not found")
     assignment = response.assignment

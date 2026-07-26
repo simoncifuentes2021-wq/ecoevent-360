@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ErrorState } from "@/components/common/ErrorState";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/logbooks";
 import { logbookLabel, logbookStatusLabels } from "@/lib/logbook-labels";
 import { logbookError } from "@/lib/logbook-errors";
+import { activeEvidenceCount, participantAssignment, SingleFlight } from "@/lib/logbook-clear";
 import { validateLogbook } from "@/lib/logbook-validation";
 import type { LogbookEvidence, LogbookInstanceDetail, LogbookItem, LogbookResponse } from "@/types/logbook";
 
@@ -33,11 +34,14 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"submit" | "delete" | "conflict" | null>(null);
+  const [dialog, setDialog] = useState<"submit" | "delete" | "clear" | "conflict" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ evidence: LogbookEvidence; item: LogbookItem } | null>(null);
+  const [clearTarget, setClearTarget] = useState<LogbookItem | null>(null);
   const [previewEvidence, setPreviewEvidence] = useState<LogbookEvidence | null>(null);
   const [dialogError, setDialogError] = useState("");
   const [processing, setProcessing] = useState(false);
+  const clearFlight = useRef(new SingleFlight());
+  const submitFlight = useRef(new SingleFlight());
 
   const load = async () => {
     setPageError("");
@@ -69,7 +73,8 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
     };
   }, [id]);
 
-  const assignment = data?.assignments[0];
+  const editableAssignment = participantAssignment(data?.assignments || [], user?.id);
+  const assignment = editableAssignment || data?.assignments[0];
   const responses = useMemo(
     () => new Map(assignment?.responses.map((response) => [response.logbook_item_id, response]) || []),
     [assignment],
@@ -78,7 +83,8 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
   if (pageError) return <ErrorState message={pageError} onRetry={load} />;
   if (!data || !assignment) return <LoadingState />;
 
-  const locked = !["PENDING", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(assignment.status);
+  const canEditAsParticipant = Boolean(editableAssignment);
+  const locked = !canEditAsParticipant || !["PENDING", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(assignment.status);
   const validation = validateLogbook(data.version.sections, responses);
 
   async function save(item: LogbookItem, patch: Partial<LogbookResponse>) {
@@ -117,24 +123,39 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
     }
   }
 
-  async function clear(item: LogbookItem) {
-    if (!assignment) return;
-    const current = responses.get(item.id);
-    if (!current || saving) return;
-    setSaving(item.id);
-    setItemErrors((errors) => ({ ...errors, [item.id]: "" }));
-    try {
-      await clearLogbookResponse(assignment.id, item.id, current.version);
-      await load();
-      toast({ title: "Respuesta eliminada", tone: "success" });
-    } catch (reason) {
-      const conflict = reason instanceof ApiError && reason.status === 409;
-      setItemErrors((errors) => ({ ...errors, [item.id]: logbookError(reason) }));
-      await load();
-      if (conflict) setDialog("conflict");
-    } finally {
-      setSaving(null);
-    }
+  function requestClear(item: LogbookItem) {
+    if (!responses.has(item.id) || processing) return;
+    setClearTarget(item);
+    setDialogError("");
+    setDialog("clear");
+  }
+
+  async function confirmClear() {
+    if (!assignment || !clearTarget || processing) return;
+    const current = responses.get(clearTarget.id);
+    if (!current) return;
+    await clearFlight.current.run(async () => {
+      setProcessing(true);
+      setDialogError("");
+      try {
+        await clearLogbookResponse(assignment.id, clearTarget.id, current.version);
+        await load();
+        setDialog(null);
+        setClearTarget(null);
+        toast({ title: "Respuesta y evidencias eliminadas", tone: "success" });
+      } catch (reason) {
+        const conflict = reason instanceof ApiError && reason.status === 409;
+        if (conflict) {
+          await load();
+          setDialogError("");
+          setDialog("conflict");
+        } else {
+          setDialogError(logbookError(reason, "No se pudo limpiar la respuesta."));
+        }
+      } finally {
+        setProcessing(false);
+      }
+    });
   }
 
   async function upload(item: LogbookItem, file: File) {
@@ -203,7 +224,7 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
                   setDialog("delete");
                 }}
                 onPreviewEvidence={setPreviewEvidence}
-                clear={clear}
+                requestClear={requestClear}
                 save={save}
                 upload={(file) => upload(item, file)}
               />
@@ -236,6 +257,20 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
       ) : null}
       <LogbookDialog
         busy={processing}
+        cancelLabel="Cancelar"
+        confirmLabel="Limpiar respuesta y evidencias"
+        description={`Se limpiará la respuesta “${clearTarget?.title || ""}” y sus ${clearTarget ? activeEvidenceCount(responses.get(clearTarget.id)) : 0} evidencia(s) activa(s). La operación quedará registrada.`}
+        error={dialogError}
+        onClose={() => { if (!processing) { setDialog(null); setClearTarget(null); } }}
+        onConfirm={() => void confirmClear()}
+        open={dialog === "clear"}
+        title="Limpiar respuesta"
+        tone="warning"
+      >
+        <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Será necesario responder nuevamente y adjuntar nuevas evidencias cuando la tarea lo requiera.</p>
+      </LogbookDialog>
+      <LogbookDialog
+        busy={processing}
         confirmDisabled={!validation.complete}
         confirmLabel={assignment.status === "CHANGES_REQUESTED" ? "Reenviar bitácora" : "Enviar bitácora"}
         description={assignment.status === "CHANGES_REQUESTED"
@@ -245,12 +280,14 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
         onClose={() => setDialog(null)}
         onConfirm={async () => {
           if (processing) return;
-          setProcessing(true); setDialogError("");
-          try {
-            await submitLogbook(assignment.id); await load(); setDialog(null);
-            toast({ title: assignment.status === "CHANGES_REQUESTED" ? "Bitácora reenviada" : "Bitácora enviada", tone: "success" });
-          } catch (reason) { setDialogError(logbookError(reason, "No se pudo enviar la bitácora.")); }
-          finally { setProcessing(false); }
+          await submitFlight.current.run(async () => {
+            setProcessing(true); setDialogError("");
+            try {
+              await submitLogbook(assignment.id); await load(); setDialog(null);
+              toast({ title: assignment.status === "CHANGES_REQUESTED" ? "Bitácora reenviada" : "Bitácora enviada", tone: "success" });
+            } catch (reason) { setDialogError(logbookError(reason, "No se pudo enviar la bitácora.")); }
+            finally { setProcessing(false); }
+          });
         }}
         open={dialog === "submit"}
         title="Enviar bitácora para revisión"
@@ -302,7 +339,7 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
 }
 
 function ItemField({
-  item, response, disabled, error, uploading, save, clear, upload, onDeleteEvidence, onPreviewEvidence,
+  item, response, disabled, error, uploading, save, requestClear, upload, onDeleteEvidence, onPreviewEvidence,
 }: {
   item: LogbookItem;
   response?: LogbookResponse;
@@ -310,7 +347,7 @@ function ItemField({
   error?: string;
   uploading: boolean;
   save: (item: LogbookItem, patch: Partial<LogbookResponse>) => Promise<void>;
-  clear: (item: LogbookItem) => Promise<void>;
+  requestClear: (item: LogbookItem) => void;
   upload: (file: File) => Promise<void>;
   onDeleteEvidence: (evidence: LogbookEvidence) => void;
   onPreviewEvidence: (evidence: LogbookEvidence) => void;
@@ -330,7 +367,7 @@ function ItemField({
         <select className={common} disabled={disabled} onChange={(event) => {
           const value = event.target.value;
           if (value === "") {
-            if (response) void clear(item);
+            if (response) requestClear(item);
             return;
           }
           if (value === "NA") void save(item, { is_not_applicable: true });
@@ -341,7 +378,7 @@ function ItemField({
         </select>
       ) : null}
       {item.item_type === "STATUS_SELECT" ? (
-        <select className={common} disabled={disabled} onChange={(event) => event.target.value ? void save(item, { selected_option_id: event.target.value, is_not_applicable: false }) : response ? void clear(item) : undefined} value={response?.selected_option_id || ""}>
+        <select className={common} disabled={disabled} onChange={(event) => event.target.value ? void save(item, { selected_option_id: event.target.value, is_not_applicable: false }) : response ? requestClear(item) : undefined} value={response?.selected_option_id || ""}>
           <option value="">Selecciona</option>
           {item.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
@@ -349,7 +386,10 @@ function ItemField({
       {item.item_type === "NUMBER" ? <input className={common} defaultValue={response?.numeric_value} disabled={disabled} onBlur={(event) => {
         const value = event.target.value.trim();
         if (value === "") {
-          if (response) void clear(item);
+          if (response) {
+            event.target.value = response.numeric_value === undefined ? "" : String(response.numeric_value);
+            requestClear(item);
+          }
           return;
         }
         const parsed = Number(value);
@@ -358,7 +398,10 @@ function ItemField({
       {["SHORT_TEXT", "LONG_TEXT"].includes(item.item_type) ? <textarea className={common} defaultValue={response?.text_value} disabled={disabled} onBlur={(event) => {
         const value = event.target.value.trim();
         if (value === "") {
-          if (response) void clear(item);
+          if (response) {
+            event.target.value = response.text_value || "";
+            requestClear(item);
+          }
           return;
         }
         void save(item, { text_value: value });

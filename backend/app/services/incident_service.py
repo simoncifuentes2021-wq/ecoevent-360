@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.permissions import can_access_event, can_manage_event, can_operate_event
 from app.models.core import Event, EventStaff, EventZone, Incident, User
-from app.models.enums import IncidentStatus, UserRole
+from app.models.enums import IncidentStatus
 from app.schemas.incident_schema import IncidentCreate, IncidentResolve, IncidentUpdate
 
 

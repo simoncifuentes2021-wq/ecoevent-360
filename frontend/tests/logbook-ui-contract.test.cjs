@@ -17,7 +17,7 @@ test("asignación revisa antes de crear y tiene guardia lógica inmediata", () =
 test("selector Sí/No mantiene estado neutro y limpia sin convertirlo en No", () => {
   const source = read("WorkerLogbookDetail.tsx");
   assert.match(source, /if \(value === ""\)/);
-  assert.match(source, /if \(response\) void clear\(item\)/);
+  assert.match(source, /if \(response\) requestClear\(item\)/);
   assert.doesNotMatch(source, /boolean_value: event\.target\.value === "YES"/);
 });
 

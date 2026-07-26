@@ -8,6 +8,7 @@ from PIL import Image
 from app.models.enums import (
     LogbookAssignmentMode,
     LogbookAssignmentStatus,
+    LogbookItemType,
     LogbookResultStatus,
 )
 from app.schemas.logbook_schema import (
@@ -20,6 +21,7 @@ from app.schemas.logbook_schema import (
 )
 from app.services.logbook_service import (
     _clear_response_values,
+    _normalize_response_fields,
     calculate_metrics,
     validate_image_content,
 )
@@ -146,7 +148,6 @@ def test_individual_metrics_keep_completion_participation_and_approval_separate(
 def test_clear_response_keeps_record_and_version_but_removes_values():
     from uuid import uuid4
 
-    actor_id = uuid4()
     response = SimpleNamespace(
         selected_option_id=uuid4(),
         boolean_value=False,
@@ -159,7 +160,7 @@ def test_clear_response_keeps_record_and_version_but_removes_values():
         completed_at=None,
         version=3,
     )
-    _clear_response_values(response, actor_id)
+    _clear_response_values(response)
     assert response.selected_option_id is None
     assert response.boolean_value is None
     assert response.numeric_value is None
@@ -167,6 +168,44 @@ def test_clear_response_keeps_record_and_version_but_removes_values():
     assert response.is_not_applicable is False
     assert response.result_status == LogbookResultStatus.PENDING
     assert response.comment is None
-    assert response.completed_by == actor_id
-    assert response.completed_at is not None
+    assert response.completed_by is None
+    assert response.completed_at is None
     assert response.version == 4
+
+
+@pytest.mark.parametrize(
+    ("item_type", "kept"),
+    [
+        (LogbookItemType.YES_NO, "boolean_value"),
+        (LogbookItemType.NUMBER, "numeric_value"),
+        (LogbookItemType.SHORT_TEXT, "text_value"),
+        (LogbookItemType.STATUS_SELECT, "selected_option_id"),
+    ],
+)
+def test_response_normalization_persists_only_the_field_for_its_type(item_type, kept):
+    payload = SimpleNamespace(
+        selected_option_id="option",
+        boolean_value=False,
+        numeric_value=0,
+        text_value="text",
+        is_not_applicable=False,
+    )
+    _normalize_response_fields(SimpleNamespace(item_type=item_type), payload)
+    fields = ("selected_option_id", "boolean_value", "numeric_value", "text_value")
+    assert getattr(payload, kept) is not None
+    assert all(getattr(payload, field) is None for field in fields if field != kept)
+
+
+def test_not_applicable_normalization_clears_all_answer_values():
+    payload = SimpleNamespace(
+        selected_option_id="option",
+        boolean_value=False,
+        numeric_value=0,
+        text_value="text",
+        is_not_applicable=True,
+    )
+    _normalize_response_fields(SimpleNamespace(item_type=LogbookItemType.YES_NO), payload)
+    assert payload.selected_option_id is None
+    assert payload.boolean_value is None
+    assert payload.numeric_value is None
+    assert payload.text_value is None

@@ -1,7 +1,7 @@
 from io import BytesIO
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_active_user
 from app.db.session import get_db
 from app.models.core import User
-from app.schemas.report_schema import ReportListResponse, ReportRead
+from app.schemas.report_schema import ReportRead
 from app.services import report_service
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 

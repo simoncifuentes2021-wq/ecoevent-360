@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
@@ -19,6 +19,7 @@ import {
 } from "@/lib/api/logbooks";
 import { getEventStaff } from "@/lib/api/staff";
 import { logbookError } from "@/lib/logbook-errors";
+import { SingleFlight } from "@/lib/logbook-clear";
 import { validateLogbook } from "@/lib/logbook-validation";
 import { logbookLabel, logbookModeLabels, logbookStageLabels, logbookStatusLabels } from "@/lib/logbook-labels";
 import type { EventStaff } from "@/types/staff";
@@ -40,6 +41,7 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
   const [pageError, setPageError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [busy, setBusy] = useState(false);
+  const actionFlight = useRef(new SingleFlight());
 
   async function load() {
     setPageError("");
@@ -88,19 +90,22 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
 
   async function run(action: () => Promise<unknown>, success: string) {
     if (busy) return false;
-    setBusy(true); setDialogError("");
-    try {
-      await action();
-      await load();
-      setDialog(null);
-      toast({ title: success, tone: "success" });
-      return true;
-    } catch (reason) {
-      setDialogError(logbookError(reason));
-      return false;
-    } finally {
-      setBusy(false);
-    }
+    const result = await actionFlight.current.run(async () => {
+      setBusy(true); setDialogError("");
+      try {
+        await action();
+        await load();
+        setDialog(null);
+        toast({ title: success, tone: "success" });
+        return true;
+      } catch (reason) {
+        setDialogError(logbookError(reason));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    });
+    return result.value ?? false;
   }
 
   return (
@@ -256,6 +261,7 @@ function ResponseCard({ assignment, item, response, busy, staff, onDone }: { ass
   const [previewEvidence, setPreviewEvidence] = useState<LogbookEvidence | null>(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
+  const createFlight = useRef(new SingleFlight());
   const value = response?.is_not_applicable ? "No aplica" : response?.text_value ?? response?.numeric_value ?? response?.boolean_value ?? response?.selected_option_id ?? "Sin respuesta";
   const evidences = response?.evidences.filter((evidence) => !evidence.deleted_at) || [];
 
@@ -266,14 +272,16 @@ function ResponseCard({ assignment, item, response, busy, staff, onDone }: { ass
 
   async function create() {
     if (!response || processing) return;
-    setProcessing(true); setError("");
-    try {
-      if (kind === "incident") await createLogbookIncident(response.id, { title, description: response.comment || item.description, incident_type: "OTHER", priority, evidence_ids: evidenceIds });
-      if (kind === "task") await createCorrectiveTask(response.id, { title, description: response.comment || item.description, assigned_to: assignee, scheduled_at: scheduled ? new Date(scheduled).toISOString() : null, priority, evidence_ids: evidenceIds });
-      await onDone(); setKind(null);
-      toast({ title: kind === "incident" ? "Incidencia creada" : "Tarea correctiva creada", tone: "success" });
-    } catch (reason) { setError(logbookError(reason)); }
-    finally { setProcessing(false); }
+    await createFlight.current.run(async () => {
+      setProcessing(true); setError("");
+      try {
+        if (kind === "incident") await createLogbookIncident(response.id, { title, description: response.comment || item.description, incident_type: "OTHER", priority, evidence_ids: evidenceIds });
+        if (kind === "task") await createCorrectiveTask(response.id, { title, description: response.comment || item.description, assigned_to: assignee, scheduled_at: scheduled ? new Date(scheduled).toISOString() : null, priority, evidence_ids: evidenceIds });
+        await onDone(); setKind(null);
+        toast({ title: kind === "incident" ? "Incidencia creada" : "Tarea correctiva creada", tone: "success" });
+      } catch (reason) { setError(logbookError(reason)); }
+      finally { setProcessing(false); }
+    });
   }
 
   return <article className="mt-3 border-t pt-3">
