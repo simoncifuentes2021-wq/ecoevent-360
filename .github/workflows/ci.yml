@@ -17,6 +17,9 @@ env:
   ENVIRONMENT: test
   SECRET_KEY: ci-only-jwt-key-not-for-production-2026
   DATABASE_URL: postgresql+psycopg://ecoevent_ci:ci_password@127.0.0.1:5432/ecoevent_ci
+  MIGRATION_DATABASE_URL: postgresql+psycopg://ecoevent_ci:ci_password@127.0.0.1:5432/ecoevent_ci
+  RUNTIME_DATABASE_URL: postgresql+psycopg://ecoevent_runtime_ci:runtime_ci_password@127.0.0.1:5432/ecoevent_ci
+  REDIS_URL: redis://127.0.0.1:6379/0
   NEXT_PUBLIC_API_URL: http://127.0.0.1:8000/api/v1
   CI_DATABASE_CONFIRM: ecoevent-test-only
 
@@ -64,6 +67,15 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,9 +89,20 @@ jobs:
         working-directory: backend
         run: python -m pip install -e ".[dev]"
       - name: Initialize isolated PostgreSQL and migrate to head
-        run: bash scripts/ci/bootstrap-test-database.sh
+        run: |
+          cd backend && python -m alembic upgrade head
+          python scripts/ci/verify_alembic_head.py
+          python scripts/ci/verify_security_schema.py
+      - name: Create limited runtime role and verify RLS isolation
+        run: |
+          psql "postgresql://ecoevent_ci:ci_password@127.0.0.1:5432/ecoevent_ci" \
+            -v ON_ERROR_STOP=1 -v runtime_role=ecoevent_runtime_ci \
+            -v runtime_password=runtime_ci_password \
+            -f backend/scripts/configure_runtime_role.sql
+          cd backend
+          DATABASE_URL="$RUNTIME_DATABASE_URL" python ../scripts/ci/verify_runtime_rls.py
       - name: Logbook PostgreSQL integration tests
-        run: bash scripts/ci/backend.sh integration
+        run: python -m pytest -q
 
   frontend-quality:
     name: Frontend quality and logbook tests

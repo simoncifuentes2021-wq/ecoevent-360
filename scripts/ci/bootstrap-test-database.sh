@@ -24,7 +24,7 @@ esac
 cd "$BACKEND_DIR"
 "$PYTHON_BIN" -c 'import os; from psycopg.conninfo import conninfo_to_dict; name = conninfo_to_dict(os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")).get("dbname", ""); assert "test" in name.lower() or "_ci" in name.lower(), f"Refusing non-test database: {name}"'
 "$PYTHON_BIN" "$ROOT_DIR/scripts/ci/wait_for_postgres.py"
-"$PYTHON_BIN" "$ROOT_DIR/scripts/ci/load_baseline.py"
-"$PYTHON_BIN" -m alembic stamp 20260528_0001
-"$PYTHON_BIN" "$ROOT_DIR/scripts/ci/upgrade_each_revision.py"
+"$PYTHON_BIN" -c 'from app.core.database_safety import require_disposable_database; print(require_disposable_database())'
+"$PYTHON_BIN" -m alembic upgrade head
 "$PYTHON_BIN" "$ROOT_DIR/scripts/ci/verify_alembic_head.py"
+"$PYTHON_BIN" "$ROOT_DIR/scripts/ci/verify_security_schema.py"

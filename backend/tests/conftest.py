@@ -1,12 +1,20 @@
 """Global safety guard: integration tests may only use an explicitly disposable DB."""
-import os
-
 import pytest
+
+from app.core.database_safety import require_disposable_database
 
 
 def pytest_sessionstart(session):
-    if os.getenv("CI_DATABASE_CONFIRM") not in {"ecoevent-test-only", "local-disposable-test"}:
+    try:
+        identity = require_disposable_database()
+    except RuntimeError as exc:
         pytest.exit(
-            "Refusing DB tests: set CI_DATABASE_CONFIRM only for an isolated disposable database",
+            f"Refusing DB tests: {exc}",
             returncode=5,
         )
+    print(
+        "Disposable PostgreSQL confirmed: "
+        f"host={identity['host']} database={identity['database']} "
+        f"runtime_user={identity['runtime_user']} migration_user={identity['migration_user']} "
+        "CI_DATABASE_CONFIRM=active supabase=absent"
+    )

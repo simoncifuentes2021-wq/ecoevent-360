@@ -1,0 +1,22 @@
+services:
+  postgres-certification:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ecoevent_security_disposable
+      POSTGRES_USER: ecoevent_migrator_test
+      POSTGRES_PASSWORD: disposable-only-password
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecoevent_migrator_test -d ecoevent_security_disposable"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis-certification:
+    image: redis:7-alpine
+    ports:
+      - "56379:6379"
+    tmpfs:
+      - /data

@@ -243,6 +243,18 @@ def test_submit_rating_out_of_range_fails(db, ctx):
     assert field_errors(exc.value)["rating"] == "La calificación debe estar entre 1 y 5"
 
 
+def test_submit_idempotency_key_does_not_duplicate(db, ctx):
+    form = make_form(db, ctx["event"], ctx["suffix"])
+    payload = FormResponseCreate(
+        language="es",
+        answers={"email": "idempotent@example.com", "transport": "bus"},
+        idempotency_key=f"idempotency-{uuid4().hex}",
+    )
+    first, _ = event_form_service.submit_public_form(db, form.public_slug, payload)
+    second, _ = event_form_service.submit_public_form(db, form.public_slug, payload)
+    assert second.id == first.id
+
+
 def test_client_cannot_list_full_responses_but_can_see_anonymous_summary(db, ctx):
     form = make_form(db, ctx["event"], ctx["suffix"])
     event_form_service.submit_public_form(
