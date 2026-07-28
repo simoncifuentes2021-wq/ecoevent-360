@@ -11,6 +11,7 @@ from sqlalchemy import inspect as sqlalchemy_inspect
 from sqlalchemy import func, insert, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.db.session import set_rls_context
 from app.models.audit_log import AuditLog
 from app.models.core import (
     Client,
@@ -354,6 +355,17 @@ def create_audit_log(
     request: Request | None = None,
 ) -> AuditLog | None:
     try:
+        # Domain services commit before writing their audit entry. Because the
+        # request identity is installed with SET LOCAL, that commit clears the
+        # RLS context. Restore it for the audit transaction instead of
+        # weakening the audit_logs policy.
+        if user is not None:
+            set_rls_context(
+                db,
+                user_id=user.id,
+                role=user.role,
+                client_id=user.client_id,
+            )
         event, client, task, incident, zone, evidence, waste_record = _resolve_context(
             db,
             module=module,
