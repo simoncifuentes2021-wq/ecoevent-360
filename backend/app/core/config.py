@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_env: str = Field(default="local", validation_alias=AliasChoices("ENVIRONMENT", "APP_ENV"))
     api_v1_prefix: str = "/api/v1"
     database_url: str
+    migration_database_url: str | None = None
     secret_key: str = Field(validation_alias=AliasChoices("SECRET_KEY", "JWT_SECRET_KEY"))
     algorithm: str = Field(default="HS256", validation_alias=AliasChoices("ALGORITHM", "JWT_ALGORITHM"))
     access_token_expire_minutes: int = 1440
@@ -34,7 +35,23 @@ class Settings(BaseSettings):
     cloudflare_r2_access_key_id: str | None = None
     cloudflare_r2_secret_access_key: str | None = None
     cloudflare_r2_public_base_url: str | None = None
+    cloudflare_r2_endpoint: str | None = None
+    cloudflare_r2_region: str = "auto"
+    r2_private_prefix: str = "private"
+    r2_public_prefix: str = "public"
+    r2_signed_url_expires_seconds: int = 300
+    local_private_storage_root: str = "uploads/private"
+    local_public_storage_root: str = "uploads/public"
     max_upload_size_mb: int = 10
+    max_image_pixels: int = 40_000_000
+    redis_url: str | None = None
+    trusted_proxy_count: int = 0
+    rate_limit_login_ip: str = "10/60"
+    rate_limit_login_identity: str = "5/300"
+    rate_limit_public_read: str = "60/60"
+    rate_limit_public_submit: str = "10/300"
+    rate_limit_bike_code: str = "30/60"
+    rate_limit_sensitive_user: str = "60/60"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -62,6 +79,8 @@ class Settings(BaseSettings):
                 raise ValueError("SECRET_KEY must be set to a strong value in production")
             if "*" in self.backend_cors_origins:
                 raise ValueError("BACKEND_CORS_ORIGINS cannot contain '*' in production")
+            if not self.redis_url:
+                raise ValueError("REDIS_URL is required in production for distributed rate limiting")
         return self
 
     @property
@@ -71,7 +90,6 @@ class Settings(BaseSettings):
             self.cloudflare_r2_account_id,
             self.cloudflare_r2_access_key_id,
             self.cloudflare_r2_secret_access_key,
-            self.cloudflare_r2_public_base_url,
         )
         return all(values)
 

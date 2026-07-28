@@ -283,6 +283,18 @@ class FormResponseCreate(BaseModel):
     language: str = "es"
     answers: dict[str, object]
     metadata: dict | None = None
+    idempotency_key: str | None = Field(default=None, min_length=16, max_length=100)
+    website: str | None = Field(default=None, max_length=0, exclude=True)
+
+    @field_validator("answers")
+    @classmethod
+    def limit_payload_shape(cls, value):
+        if len(value) > 100:
+            raise ValueError("Too many answer fields")
+        for key, answer in value.items():
+            if len(str(key)) > 100 or len(str(answer)) > 10_000:
+                raise ValueError("Answer exceeds allowed length")
+        return value
 
 
 class FormAnswerRead(ORMModel):

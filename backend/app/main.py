@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from fastapi.staticfiles import StaticFiles
 
 from app.api.routers import routers
 from app.core.config import settings
@@ -73,7 +72,6 @@ app.add_middleware(
 for router in routers:
     app.include_router(router, prefix=settings.api_v1_prefix)
 
-app.mount("/uploads", StaticFiles(directory="uploads", check_dir=False), name="uploads")
 
 
 @app.get("/health", tags=["health"])

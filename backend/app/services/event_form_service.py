@@ -331,6 +331,14 @@ def public_form_payload(form: EventForm, lang: str | None) -> dict:
 def submit_public_form(db: Session, slug: str, payload: FormResponseCreate) -> tuple[FormResponse, str | None]:
     form = get_public_form_or_404(db, slug)
     _ensure_form_open(form)
+    if payload.idempotency_key:
+        existing = db.scalar(select(FormResponse).where(
+            FormResponse.form_id == form.id,
+            FormResponse.metadata_["idempotency_key"].astext == payload.idempotency_key,
+        ))
+        if existing:
+            bike = db.scalar(select(BikeZoneRecord).where(BikeZoneRecord.response_id == existing.id))
+            return existing, bike.code if bike else None
     language = payload.language if payload.language in (form.available_languages or []) else form.default_language
     answers = dict(payload.answers or {})
     for field in form.fields:
@@ -368,7 +376,7 @@ def submit_public_form(db: Session, slug: str, payload: FormResponseCreate) -> t
         session_id=form.session_id,
         language=language,
         raw_data=raw_data,
-        metadata_=payload.metadata or {},
+        metadata_={**(payload.metadata or {}), **({"idempotency_key": payload.idempotency_key} if payload.idempotency_key else {})},
         respondent_name=str(raw_data.get("full_name") or raw_data.get("name") or "")[:180] or None,
         respondent_email=str(raw_data.get("email") or "")[:180] or None,
         respondent_phone=str(raw_data.get("phone") or "")[:60] or None,

@@ -119,6 +119,8 @@ export type PublicEventForm = {
 export type FormResponseSubmit = {
   language: string;
   answers: Record<string, unknown>;
+  idempotency_key?: string;
+  website?: string;
 };
 
 export type FormSubmitResult = {

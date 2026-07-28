@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.models.enums import LogisticsEvidenceStage
 
@@ -28,6 +28,12 @@ class LogisticsEvidenceRead(BaseModel):
     uploaded_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def private_download_url(self):
+        self.file_url = f"/logistics-evidences/{self.id}/download"
+        self.file_key = None
+        return self
 
 
 class LogisticsEvidenceListResponse(BaseModel):

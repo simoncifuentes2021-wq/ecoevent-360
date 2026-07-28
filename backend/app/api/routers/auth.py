@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
+from app.core.config import settings
+from app.core.rate_limit import client_ip, limiter
 from app.db.session import get_db, set_rls_context
 from app.models.core import User
 from app.schemas.common import AuthUserResponse, LoginRequest, LogoutResponse, MeResponse, TokenResponse
@@ -23,6 +25,8 @@ def auth_user_from_model(user: User) -> AuthUserResponse:
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    limiter.check("login-ip", client_ip(request), settings.rate_limit_login_ip)
+    limiter.check("login-identity", payload.email, settings.rate_limit_login_identity)
     existing_user = get_user_by_email(db, payload.email)
     if existing_user and not existing_user.is_active:
         set_rls_context(
@@ -37,10 +41,10 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             action="LOGIN_FAILED",
             module="auth",
             status="FAILED",
-            metadata={"email": payload.email, "reason": "inactive_user"},
+            metadata={"reason": "inactive_user"},
             request=request,
         )
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     user = authenticate_user(db, payload.email, payload.password)
     if not user:
@@ -49,7 +53,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             action="LOGIN_FAILED",
             module="auth",
             status="FAILED",
-            metadata={"email": payload.email, "reason": "invalid_credentials"},
+            metadata={"reason": "invalid_credentials"},
             request=request,
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -60,7 +64,6 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         action="LOGIN_SUCCESS",
         module="auth",
         status="SUCCESS",
-        metadata={"email": user.email},
         request=request,
     )
     return TokenResponse(access_token=issue_token(user), user=auth_user_from_model(user))

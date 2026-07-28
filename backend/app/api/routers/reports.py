@@ -1,10 +1,7 @@
-from io import BytesIO
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
@@ -102,29 +99,3 @@ def delete_report(
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-
-@router.get("/events/{event_id}/pdf")
-def event_report_pdf(event_id: int, request: Request, db: Session = Depends(get_db)):
-    buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=letter)
-    pdf.setTitle(f"EcoEvent 360 Reporte Evento {event_id}")
-    pdf.drawString(72, 740, "EcoEvent 360")
-    pdf.drawString(72, 710, f"Reporte operacional y ambiental del evento #{event_id}")
-    pdf.drawString(72, 680, "Resumen generado desde datos registrados en la plataforma.")
-    pdf.showPage()
-    pdf.save()
-    buffer.seek(0)
-    create_audit_log(
-        db,
-        action="REPORT_DOWNLOADED",
-        module="reports",
-        entity_type="Report",
-        status="SUCCESS",
-        metadata={"legacy_event_id": event_id, "filename": f"event-{event_id}-report.pdf"},
-        request=request,
-    )
-    return StreamingResponse(
-        buffer,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="event-{event_id}-report.pdf"'},
-    )

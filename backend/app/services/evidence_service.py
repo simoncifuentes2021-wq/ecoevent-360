@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.permissions import can_access_event, can_close_assigned_task, can_operate_event
 from app.models.core import Event, Evidence, Incident, Task, User
 from app.models.enums import EventStatus, UserRole
-from app.services.file_storage_service import delete_stored_file, save_evidence_file
+from app.services.file_storage_service import delete_stored_file, read_stored_file, save_evidence_file
 
 
 def get_evidence_or_404(db: Session, evidence_id: UUID) -> Evidence:
@@ -121,6 +121,13 @@ def get_evidence(db: Session, evidence_id: UUID, current_user: User) -> Evidence
     if not can_access_event(current_user, evidence.event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
     return evidence
+
+
+def download_evidence(db: Session, evidence_id: UUID, current_user: User) -> tuple[bytes, str, str]:
+    evidence = get_evidence(db, evidence_id, current_user)
+    content, mime = read_stored_file(evidence.file_url)
+    extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}.get(mime, "")
+    return content, mime, f"evidencia-{evidence.id}{extension}"
 
 
 def delete_evidence(db: Session, evidence_id: UUID, current_user: User) -> None:

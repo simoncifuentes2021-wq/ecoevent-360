@@ -6,6 +6,8 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
+from app.core.config import settings
+from app.core.rate_limit import enforce
 from app.db.session import get_db
 from app.models.core import User
 from app.schemas.event_form_schema import (
@@ -202,29 +204,35 @@ def delete_form_qr(qr_id: UUID, db: Session = Depends(get_db), current_user: Use
 
 
 @public_router.get("/{slug}", response_model=EventFormPublicRead)
-def get_public_form(slug: str, lang: str | None = None, db: Session = Depends(get_db)):
+def get_public_form(slug: str, request: Request, lang: str | None = None, db: Session = Depends(get_db)):
+    enforce(request, "public-form-read", slug, settings.rate_limit_public_read)
     form = event_form_service.get_public_form_or_404(db, slug)
     return event_form_service.public_form_payload(form, lang)
 
 
 @public_router.post("/{slug}/submit", response_model=FormResponsePublicResult, status_code=status.HTTP_201_CREATED)
-def submit_public_form(slug: str, payload: FormResponseCreate, db: Session = Depends(get_db)):
+def submit_public_form(slug: str, payload: FormResponseCreate, request: Request, db: Session = Depends(get_db)):
+    enforce(request, "public-form-submit", slug, settings.rate_limit_public_submit)
+    enforce(request, "public-form-session", payload.idempotency_key or "missing", settings.rate_limit_public_submit)
     response, bike_code = event_form_service.submit_public_form(db, slug, payload)
     return FormResponsePublicResult(response_code=response.response_code, bike_zone_code=bike_code, message="Respuesta recibida correctamente.")
 
 
 @bike_router.get("/verify/{code}", response_model=BikeZoneRecordRead)
-def verify_bike_code(code: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+def verify_bike_code(code: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    enforce(request, "bike-verify", code, settings.rate_limit_bike_code)
     return bike_zone_service.verify(db, code, current_user)
 
 
 @bike_router.patch("/verify/{code}/check-in", response_model=BikeZoneRecordRead)
-def check_in_bike(code: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+def check_in_bike(code: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    enforce(request, "bike-check-in", str(current_user.id), settings.rate_limit_sensitive_user)
     return bike_zone_service.check_in(db, code, current_user)
 
 
 @bike_router.patch("/verify/{code}/check-out", response_model=BikeZoneRecordRead)
-def check_out_bike(code: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+def check_out_bike(code: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    enforce(request, "bike-check-out", str(current_user.id), settings.rate_limit_sensitive_user)
     return bike_zone_service.check_out(db, code, current_user)
 
 

@@ -24,10 +24,10 @@ def set_rls_context(
     client_id: UUID | None = None,
 ) -> None:
     role_value = role.value if isinstance(role, UserRole) else str(role)
-    db.execute(text("select set_config('app.current_user_id', :value, false)"), {"value": str(user_id)})
-    db.execute(text("select set_config('app.current_role', :value, false)"), {"value": role_value})
+    db.execute(text("select set_config('app.current_user_id', :value, true)"), {"value": str(user_id)})
+    db.execute(text("select set_config('app.current_role', :value, true)"), {"value": role_value})
     db.execute(
-        text("select set_config('app.current_client_id', :value, false)"),
+        text("select set_config('app.current_client_id', :value, true)"),
         {"value": str(client_id) if client_id else ""},
     )
 
@@ -35,9 +35,7 @@ def set_rls_context(
 def clear_rls_context(db: Session) -> None:
     if not db.is_active:
         return
-    db.execute(text("select set_config('app.current_user_id', '', false)"))
-    db.execute(text("select set_config('app.current_role', '', false)"))
-    db.execute(text("select set_config('app.current_client_id', '', false)"))
+    db.rollback()
 
 
 def get_db() -> Generator[Session, None, None]:

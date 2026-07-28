@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class EvidenceRead(BaseModel):
@@ -17,6 +17,11 @@ class EvidenceRead(BaseModel):
     description: str | None = None
     taken_at: datetime | None = None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def private_download_url(self):
+        self.file_url = f"/evidences/{self.id}/download"
+        return self
 
 
 class EvidenceListResponse(BaseModel):

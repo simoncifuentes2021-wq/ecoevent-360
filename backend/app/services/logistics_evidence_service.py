@@ -17,7 +17,7 @@ from app.models.core import (
     WarehouseUser,
 )
 from app.models.enums import LogisticsEvidenceStage, LogisticsOrderStatus, UserRole
-from app.services.file_storage_service import delete_stored_file, save_order_evidence_file
+from app.services.file_storage_service import delete_stored_file, read_stored_file, sanitize_filename, save_order_evidence_file
 
 
 def get_logistics_evidence_or_404(db: Session, evidence_id: UUID) -> LogisticsEvidence:
@@ -25,6 +25,26 @@ def get_logistics_evidence_or_404(db: Session, evidence_id: UUID) -> LogisticsEv
     if not evidence:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logistics evidence not found")
     return evidence
+
+
+def download_logistics_evidence(db: Session, evidence_id: UUID, user: User) -> tuple[bytes, str, str]:
+    evidence = get_logistics_evidence_or_404(db, evidence_id)
+    allowed = False
+    if evidence.logistics_order_id:
+        order = db.get(LogisticsOrder, evidence.logistics_order_id)
+        allowed = bool(order and _can_view_order(db, user, order))
+    elif evidence.purchase_request_id:
+        purchase = db.get(PurchaseRequest, evidence.purchase_request_id)
+        allowed = bool(purchase and _can_view_purchase(db, user, purchase))
+    elif evidence.stock_movement_id:
+        movement = db.get(StockMovement, evidence.stock_movement_id)
+        allowed = bool(movement and _can_view_stock_movement(db, user, movement))
+    elif evidence.event_id:
+        allowed = can_access_event(user, evidence.event_id, db)
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence not found")
+    content, mime = read_stored_file(evidence.file_url)
+    return content, mime, sanitize_filename(evidence.file_name, f"evidencia-{evidence.id}")
 
 
 def _clean_text(value: str | None) -> str | None:

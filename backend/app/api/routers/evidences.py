@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
@@ -77,6 +77,19 @@ def get_evidence(
     current_user: User = Depends(get_current_active_user),
 ):
     return evidence_service.get_evidence(db, evidence_id, current_user)
+
+
+@router.get("/evidences/{evidence_id}/download")
+def download_evidence(
+    evidence_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    content, mime, filename = evidence_service.download_evidence(db, evidence_id, current_user)
+    return Response(content=content, media_type=mime, headers={
+        "Content-Disposition": f'inline; filename="{filename}"',
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+    })
 
 
 @router.delete("/evidences/{evidence_id}", status_code=status.HTTP_204_NO_CONTENT)

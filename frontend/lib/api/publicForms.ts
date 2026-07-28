@@ -7,5 +7,6 @@ export function getPublicForm(slug: string, lang?: string | null) {
 }
 
 export function submitPublicForm(slug: string, data: FormResponseSubmit) {
-  return api.post<FormSubmitResult>(`/public/forms/${slug}/submit`, data, { auth: false });
+  const payload = { ...data, idempotency_key: data.idempotency_key || crypto.randomUUID() };
+  return api.post<FormSubmitResult>(`/public/forms/${slug}/submit`, payload, { auth: false });
 }

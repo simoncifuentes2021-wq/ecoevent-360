@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
@@ -12,6 +12,16 @@ from app.services import logistics_evidence_service
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(tags=["logistics evidences"])
+
+
+@router.get("/logistics-evidences/{evidence_id}/download")
+def download_logistics_evidence(evidence_id: UUID, db: Session = Depends(get_db),
+                                current_user: User = Depends(get_current_active_user)):
+    content, mime, filename = logistics_evidence_service.download_logistics_evidence(db, evidence_id, current_user)
+    return Response(content=content, media_type=mime, headers={
+        "Content-Disposition": f'inline; filename="{filename}"',
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+    })
 
 
 def _list_response(items, total: int, page: int, limit: int) -> LogisticsEvidenceListResponse:
