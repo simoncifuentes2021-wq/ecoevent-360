@@ -91,8 +91,8 @@ jobs:
       - name: Initialize isolated PostgreSQL and migrate to head
         run: |
           cd backend && python -m alembic upgrade head
-          python scripts/ci/verify_alembic_head.py
-          python scripts/ci/verify_security_schema.py
+          python ../scripts/ci/verify_alembic_head.py
+          python ../scripts/ci/verify_security_schema.py
       - name: Create limited runtime role and verify RLS isolation
         run: |
           psql "postgresql://ecoevent_ci:ci_password@127.0.0.1:5432/ecoevent_ci" \
@@ -102,7 +102,7 @@ jobs:
           cd backend
           DATABASE_URL="$RUNTIME_DATABASE_URL" python ../scripts/ci/verify_runtime_rls.py
       - name: Logbook PostgreSQL integration tests
-        run: python -m pytest -q
+        run: RLS_DATABASE_URL="$RUNTIME_DATABASE_URL" python -m pytest -q
 
   frontend-quality:
     name: Frontend quality and logbook tests
