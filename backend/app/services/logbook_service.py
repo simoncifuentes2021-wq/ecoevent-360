@@ -2,6 +2,7 @@
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
+from uuid import UUID
 from fastapi import HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, select
@@ -9,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.permissions import can_access_event, can_manage_event
 from app.core.security import create_access_token, decode_access_token
+from app.db.session import set_rls_context
 from app.models.core import Event, EventStaff, EventZone, Incident, Task, User
 from app.models.enums import *  # noqa: F403
 from app.models.logbook import *  # noqa: F403
@@ -1240,7 +1242,13 @@ def evidence_access(db, evidence_id, current):
     if not allowed:
         fail(403, "Insufficient role")
     token = create_access_token(
-        {"scope": "logbook_evidence", "evidence_id": str(evidence.id)},
+        {
+            "scope": "logbook_evidence",
+            "evidence_id": str(evidence.id),
+            "actor_id": str(current.id),
+            "actor_role": current.role.value,
+            "actor_client_id": str(current.client_id) if current.client_id else None,
+        },
         expires_delta=timedelta(minutes=5),
     )
     return {
@@ -1256,6 +1264,20 @@ def evidence_content(db, evidence_id, token):
         fail(401, "Invalid or expired evidence token")
     if payload.get("scope") != "logbook_evidence" or payload.get("evidence_id") != str(evidence_id):
         fail(403, "Invalid evidence token scope")
+    try:
+        actor_id = UUID(payload["actor_id"])
+        actor_role = UserRole(payload["actor_role"])
+        actor_client_id = (
+            UUID(payload["actor_client_id"]) if payload.get("actor_client_id") else None
+        )
+    except (KeyError, TypeError, ValueError):
+        fail(403, "Invalid evidence token context")
+    set_rls_context(
+        db,
+        user_id=actor_id,
+        role=actor_role,
+        client_id=actor_client_id,
+    )
     evidence = _evidence(db, evidence_id)
     return (*read_stored_file(evidence.storage_key), evidence.original_filename)
 

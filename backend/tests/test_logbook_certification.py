@@ -407,7 +407,7 @@ def test_certification_roles_templates_versions_and_audit(pg):
     } <= actions
 
 
-def test_certification_individual_all_types_evidence_review_and_client(pg):
+def test_certification_individual_all_types_evidence_review_and_client(pg, monkeypatch):
     db, users, event = pg["db"], pg["users"], pg["events"][0]
     template = make_template(db, users["admin"], all_types=True)
     version = published_version(db, template, users["admin"])
@@ -530,11 +530,27 @@ def test_certification_individual_all_types_evidence_review_and_client(pg):
     logbook_service.delete_evidence(db, second.id, users["worker1"])
     assert db.get(LogbookEvidence, second.id).deleted_at is not None
 
+    restored_contexts = []
+    original_set_rls_context = logbook_service.set_rls_context
+
+    def capture_rls_context(session, *, user_id, role, client_id=None):
+        restored_contexts.append((user_id, role, client_id))
+        return original_set_rls_context(
+            session,
+            user_id=user_id,
+            role=role,
+            client_id=client_id,
+        )
+
+    monkeypatch.setattr(logbook_service, "set_rls_context", capture_rls_context)
     access = logbook_service.evidence_access(db, evidence.id, users["worker1"])
     token = parse_qs(urlparse(access["url"]).query)["token"][0]
     content, _, filename = logbook_service.evidence_content(db, evidence.id, token)
     assert content == image_bytes("PNG")
     assert filename == "real.png"
+    assert restored_contexts == [
+        (users["worker1"].id, users["worker1"].role, users["worker1"].client_id)
+    ]
     expired = create_access_token(
         {"scope": "logbook_evidence", "evidence_id": str(evidence.id)},
         expires_delta=timedelta(seconds=-1),
@@ -547,6 +563,15 @@ def test_certification_individual_all_types_evidence_review_and_client(pg):
         expires_delta=timedelta(minutes=1),
     )
     expect_http(403, lambda: logbook_service.evidence_content(db, evidence.id, wrong))
+    missing_context = create_access_token(
+        {"scope": "logbook_evidence", "evidence_id": str(evidence.id)},
+        expires_delta=timedelta(minutes=1),
+    )
+    error = expect_http(
+        403,
+        lambda: logbook_service.evidence_content(db, evidence.id, missing_context),
+    )
+    assert error.detail == "Invalid evidence token context"
     expect_http(
         403, lambda: logbook_service.evidence_access(db, evidence.id, users["worker2"])
     )
