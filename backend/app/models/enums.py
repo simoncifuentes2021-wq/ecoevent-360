@@ -85,6 +85,30 @@ class LogbookResultStatus(StrEnum):
     NOT_APPLICABLE = "NOT_APPLICABLE"
 
 
+class LogbookRecurrenceFrequency(StrEnum):
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+
+
+class LogbookRecurrenceEndMode(StrEnum):
+    END_DATE = "END_DATE"
+    COUNT = "COUNT"
+
+
+class LogbookRecurrenceStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    FINISHED = "FINISHED"
+    CANCELLED = "CANCELLED"
+
+
+class LogbookRecurrenceExceptionType(StrEnum):
+    SKIPPED = "SKIPPED"
+    REPROGRAMMED = "REPROGRAMMED"
+    NO_VALID_PARTICIPANTS = "NO_VALID_PARTICIPANTS"
+
+
 class EventStatus(StrEnum):
     QUOTE = "QUOTE"
     PLANNING = "PLANNING"

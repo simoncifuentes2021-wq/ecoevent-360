@@ -46,6 +46,13 @@ def test_spoofed_or_corrupt_image_is_rejected():
     assert exc.value.status_code == 422
 
 
+def test_corrupted_png_checksum_is_rejected_as_validation_error():
+    corrupted = bytes.fromhex("89504e470d0a1a0a") + b"not-a-valid-png"
+    with pytest.raises(HTTPException) as exc:
+        validate_image_content(corrupted, "image/png")
+    assert exc.value.status_code == 422
+
+
 def test_status_select_requires_options():
     with pytest.raises(ValueError):
         ItemIn(

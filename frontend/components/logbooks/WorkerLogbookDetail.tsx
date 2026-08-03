@@ -84,7 +84,8 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
   if (!data || !assignment) return <LoadingState />;
 
   const canEditAsParticipant = Boolean(editableAssignment);
-  const locked = !canEditAsParticipant || !["PENDING", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(assignment.status);
+  const instanceEditable = ["OPEN", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(data.status);
+  const locked = !canEditAsParticipant || !instanceEditable || !["PENDING", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(assignment.status);
   const validation = validateLogbook(data.version.sections, responses);
 
   async function save(item: LogbookItem, patch: Partial<LogbookResponse>) {
@@ -205,6 +206,8 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
         </div>
         <p className="mt-1 text-sm text-slate-500">{data.metrics.completion_percentage}% completado · {saving ? "Guardando…" : "Cambios guardados"}</p>
       </header>
+
+      {!instanceEditable ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">{data.status === "SCHEDULED" ? "Esta bitácora está programada. Podrás responder cuando llegue su hora de apertura." : "Esta bitácora está en modo de solo lectura por su estado actual."}</p> : null}
 
       {data.version.sections.map((section) => (
         <section className="rounded-2xl border bg-white p-4" key={section.id}>

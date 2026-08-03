@@ -10,6 +10,7 @@ import { LoadingState } from "@/components/common/LoadingState";
 import { ModalShell } from "@/components/common/ModalShell";
 import { useToast } from "@/components/common/ToastProvider";
 import { LogbookDialog } from "@/components/logbooks/LogbookDialog";
+import { LogbookRecurrencePanel } from "@/components/logbooks/LogbookRecurrencePanel";
 import { Button } from "@/components/ui/button";
 import {
   cancelLogbookInstance, createEventLogbook, getEventLogbooks, getLogbookInstance,
@@ -54,11 +55,12 @@ export function EventLogbooksTab({ eventId, role }: { eventId: string; role?: st
     && (stageFilter === "ALL" || item.operational_stage === stageFilter));
 
   return <div className="space-y-4">
+    {role !== "CLIENT" ? <LogbookRecurrencePanel eventId={eventId} onChanged={load}/> : null}
     <div className="flex flex-wrap justify-between gap-3">
       <select className="rounded-xl border p-2" onChange={(event) => setFilter(event.target.value)} value={filter}><option value="ALL">Todos los estados</option>{["SCHEDULED","OPEN","OVERDUE","IN_PROGRESS","UNDER_REVIEW","CHANGES_REQUESTED","COMPLETED","CANCELLED"].map((value) => <option key={value} value={value}>{logbookLabel(logbookStatusLabels,value)}</option>)}</select>
       <select className="rounded-xl border p-2" onChange={(event) => setTemplateFilter(event.target.value)} value={templateFilter}><option value="ALL">Todas las plantillas</option>{Array.from(new Map(items.map((item) => [item.template_id,item.name])).entries()).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
       <select className="rounded-xl border p-2" onChange={(event) => setStageFilter(event.target.value)} value={stageFilter}><option value="ALL">Todas las etapas</option>{Object.entries(logbookStageLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
-      {role !== "CLIENT" ? <Button onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4"/>Asignar bitácora</Button> : null}
+      {role !== "CLIENT" ? <Button onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4"/>Asignar una vez</Button> : null}
       {role === "ADMIN" || role === "SUPER_ADMIN" ? <Button disabled={processing} onClick={async () => {
         if (processing) return;
         setProcessing(true);
@@ -74,6 +76,7 @@ export function EventLogbooksTab({ eventId, role }: { eventId: string; role?: st
       <div className="flex flex-wrap items-start justify-between gap-2"><div><Link className="font-semibold hover:text-emerald-700" href={role === "ADMIN" || role === "SUPER_ADMIN" ? `/admin/bitacoras/ejecuciones/${item.id}` : `/supervisor/bitacoras/${item.id}`}>{item.name}</Link><p className="text-xs text-slate-500">{logbookLabel(logbookStageLabels,item.operational_stage)} · {logbookLabel(logbookModeLabels,item.assignment_mode)} · {logbookLabel(logbookStatusLabels,item.status)}</p></div><div className="flex flex-wrap gap-2"><Link className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-700 px-3 text-sm font-medium text-white hover:bg-emerald-800" href={role === "ADMIN" || role === "SUPER_ADMIN" ? `/admin/bitacoras/ejecuciones/${item.id}` : `/supervisor/bitacoras/${item.id}`}>{role === "ADMIN" || role === "SUPER_ADMIN" ? "Administrar bitácora" : "Revisar bitácora"}</Link><InstanceActions item={item} done={load}/></div></div>
       {item.detail ? <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm"><Metric label="Cumplimiento" value={item.detail.metrics.completion_percentage}/><Metric label="Participación" value={item.detail.metrics.participation_percentage}/><Metric label="Aprobación" value={item.detail.metrics.approval_percentage}/></div> : null}
       <p className={item.status === "OVERDUE" ? "mt-3 text-xs font-semibold text-red-700" : "mt-3 text-xs text-slate-500"}>Apertura: {formatLifecycleDate(item.opens_at,"Inmediata")} · Vence: {formatLifecycleDate(item.due_at,"Sin vencimiento")} · America/Santiago</p>
+      {item.occurrence_date ? <p className="mt-1 text-xs font-medium text-emerald-700">Ocurrencia {new Date(`${item.occurrence_date}T12:00:00`).toLocaleDateString("es-CL")}{item.original_occurrence_date ? ` · reprogramada desde ${new Date(`${item.original_occurrence_date}T12:00:00`).toLocaleDateString("es-CL")}` : ""}</p> : null}
     </article>)}</div>}
     {open ? <AssignLogbook eventId={eventId} close={() => setOpen(false)} done={() => { setOpen(false); void load(); }}/> : null}
   </div>;

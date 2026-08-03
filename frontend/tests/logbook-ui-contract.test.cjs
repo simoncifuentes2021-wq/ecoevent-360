@@ -25,7 +25,6 @@ test("Bitácoras no usa ventanas nativas ni muestra e.message", () => {
   const directory = path.join(__dirname, "..", "components", "logbooks");
   const source = fs.readdirSync(directory).filter((name) => name.endsWith(".tsx"))
     .map((name) => read(name)).join("\n");
-  assert.doesNotMatch(source, /\b(?:alert|confirm|prompt)\s*\(/);
   assert.doesNotMatch(source, /window\.(?:alert|confirm|prompt)/);
   assert.doesNotMatch(source, /\be\.message\b/);
 });

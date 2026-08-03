@@ -1,22 +1,27 @@
 # ruff: noqa: F405
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -184,6 +189,15 @@ class LogbookInstance(Base):
     __table_args__ = (
         Index("idx_logbook_instances_event", "event_id"),
         Index("idx_logbook_instances_status", "status"),
+        UniqueConstraint(
+            "recurrence_series_id", "occurrence_date", name="uq_logbook_instance_recurrence_date"
+        ),
+        ForeignKeyConstraint(
+            ["recurrence_series_id", "event_id"],
+            ["logbook_recurrence_series.id", "logbook_recurrence_series.event_id"],
+            name="fk_logbook_instance_recurrence_event",
+            ondelete="RESTRICT",
+        ),
     )
     id: Mapped[UUID] = uuid_pk()
     event_id: Mapped[UUID] = mapped_column(
@@ -228,10 +242,132 @@ class LogbookInstance(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
     cancellation_reason: Mapped[str | None] = mapped_column(Text)
+    recurrence_series_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True)
+    )
+    occurrence_date: Mapped[date | None] = mapped_column(Date)
+    occurrence_modified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
+    original_occurrence_date: Mapped[date | None] = mapped_column(Date)
     version: Mapped[LogbookTemplateVersion] = relationship()
     assignments: Mapped[list["LogbookAssignment"]] = relationship(
         back_populates="instance", cascade="all, delete-orphan"
     )
+    recurrence_series: Mapped["LogbookRecurrenceSeries | None"] = relationship(
+        back_populates="occurrences"
+    )
+
+
+class LogbookRecurrenceSeries(Base):
+    __tablename__ = "logbook_recurrence_series"
+    __table_args__ = (
+        CheckConstraint("interval > 0", name="ck_logbook_recurrence_interval"),
+        CheckConstraint(
+            "max_occurrences is null or (max_occurrences > 0 and max_occurrences <= 500)",
+            name="ck_logbook_recurrence_max_occurrences",
+        ),
+        UniqueConstraint("id", "event_id", name="uq_logbook_recurrence_series_event"),
+        Index("idx_logbook_recurrence_event_status", "event_id", "status"),
+        Index("idx_logbook_recurrence_next", "status", "next_occurrence_date"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="RESTRICT"), nullable=False
+    )
+    template_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logbook_templates.id", ondelete="RESTRICT"), nullable=False
+    )
+    template_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logbook_template_versions.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    operational_stage: Mapped[LogbookOperationalStage] = mapped_column(
+        enum(LogbookOperationalStage, "logbook_operational_stage"), nullable=False
+    )
+    zone_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_zones.id", ondelete="SET NULL")
+    )
+    assignment_mode: Mapped[LogbookAssignmentMode] = mapped_column(
+        enum(LogbookAssignmentMode, "logbook_assignment_mode"), nullable=False
+    )
+    supervisor_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    client_visibility: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    frequency: Mapped[LogbookRecurrenceFrequency] = mapped_column(
+        enum(LogbookRecurrenceFrequency, "logbook_recurrence_frequency"), nullable=False
+    )
+    interval: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    weekdays: Mapped[list[int] | None] = mapped_column(JSONB)
+    day_of_month: Mapped[int | None] = mapped_column(Integer)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_mode: Mapped[LogbookRecurrenceEndMode] = mapped_column(
+        enum(LogbookRecurrenceEndMode, "logbook_recurrence_end_mode"), nullable=False
+    )
+    end_date: Mapped[date | None] = mapped_column(Date)
+    max_occurrences: Mapped[int | None] = mapped_column(Integer)
+    opens_at_local: Mapped[time] = mapped_column(Time, nullable=False)
+    due_at_local: Mapped[time] = mapped_column(Time, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("'America/Santiago'"))
+    status: Mapped[LogbookRecurrenceStatus] = mapped_column(
+        enum(LogbookRecurrenceStatus, "logbook_recurrence_status"), nullable=False,
+        server_default=text("'ACTIVE'"),
+    )
+    next_occurrence_date: Mapped[date | None] = mapped_column(Date)
+    generated_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+    participants: Mapped[list["LogbookRecurrenceParticipant"]] = relationship(
+        back_populates="series", cascade="all, delete-orphan"
+    )
+    exceptions: Mapped[list["LogbookRecurrenceException"]] = relationship(
+        back_populates="series", cascade="all, delete-orphan"
+    )
+    occurrences: Mapped[list[LogbookInstance]] = relationship(back_populates="recurrence_series")
+
+
+class LogbookRecurrenceParticipant(Base):
+    __tablename__ = "logbook_recurrence_participants"
+    __table_args__ = (
+        UniqueConstraint("series_id", "user_id", name="uq_logbook_recurrence_participant"),
+        ForeignKeyConstraint(
+            ["series_id", "event_id"],
+            ["logbook_recurrence_series.id", "logbook_recurrence_series.event_id"],
+            name="fk_logbook_recurrence_participant_series_event",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["event_id", "user_id"],
+            ["event_staff.event_id", "event_staff.user_id"],
+            name="fk_logbook_recurrence_participant_event_staff",
+            ondelete="CASCADE",
+        ),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    series_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = created_at_column()
+    series: Mapped[LogbookRecurrenceSeries] = relationship(back_populates="participants")
+
+
+class LogbookRecurrenceException(Base):
+    __tablename__ = "logbook_recurrence_exceptions"
+    __table_args__ = (UniqueConstraint("series_id", "original_date", name="uq_logbook_recurrence_exception_date"),)
+    id: Mapped[UUID] = uuid_pk()
+    series_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("logbook_recurrence_series.id", ondelete="CASCADE"), nullable=False)
+    original_date: Mapped[date] = mapped_column(Date, nullable=False)
+    exception_type: Mapped[LogbookRecurrenceExceptionType] = mapped_column(
+        enum(LogbookRecurrenceExceptionType, "logbook_recurrence_exception_type"), nullable=False
+    )
+    replacement_date: Mapped[date | None] = mapped_column(Date)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = created_at_column()
+    series: Mapped[LogbookRecurrenceSeries] = relationship(back_populates="exceptions")
 
 
 class LogbookAssignment(Base):
