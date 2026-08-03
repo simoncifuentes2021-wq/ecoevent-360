@@ -1,10 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
+from io import BytesIO
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.db.session import SessionLocal
 from app.models.audit_log import AuditLog
@@ -20,13 +22,20 @@ from app.models.enums import (
     UserRole,
 )
 from app.models.logbook import (
+    LogbookAssignment,
     LogbookEvidence,
     LogbookInstance,
     LogbookTemplate,
     LogbookTemplateVersion,
+    LogbookRecurrenceException,
+    LogbookRecurrenceParticipant,
+    LogbookRecurrenceSeries,
 )
-from app.schemas.logbook_schema import InstanceCreate, ItemIn, ResponseSave, SectionIn, TemplateCreate
-from app.services import logbook_service
+from app.schemas.logbook_schema import (
+    InstanceCreate, ItemIn, RecurrenceOccurrenceOperation, RecurrenceRescheduleIn,
+    RecurrenceSeriesCreate, ResponseSave, SectionIn, TemplateCreate,
+)
+from app.services import logbook_recurrence_service, logbook_service
 from app.services.logbook_lifecycle_service import process_logbook_lifecycle
 
 
@@ -166,6 +175,7 @@ def logbook_context():
         "event": event,
         "template_id": None,
         "instance_ids": [],
+        "series_ids": [],
     }
     try:
         yield context
@@ -178,6 +188,10 @@ def logbook_context():
                 )
             )
             db.execute(delete(LogbookInstance).where(LogbookInstance.id.in_(context["instance_ids"])))
+        if context["series_ids"]:
+            db.execute(delete(LogbookRecurrenceException).where(LogbookRecurrenceException.series_id.in_(context["series_ids"])))
+            db.execute(delete(LogbookRecurrenceParticipant).where(LogbookRecurrenceParticipant.series_id.in_(context["series_ids"])))
+            db.execute(delete(LogbookRecurrenceSeries).where(LogbookRecurrenceSeries.id.in_(context["series_ids"])))
         if context["template_id"]:
             db.execute(
                 delete(LogbookTemplateVersion).where(
@@ -765,3 +779,193 @@ def test_two_workers_do_not_duplicate_lifecycle_transition(logbook_context):
         )
         == 1
     )
+
+
+def test_recurrence_generates_independent_idempotent_occurrences_and_blocks_scheduled(
+    logbook_context,
+):
+    ctx = logbook_context
+    db = ctx["db"]
+    admin, _, supervisor, worker, *_ = ctx["users"]
+    template = logbook_service.create_template(
+        db,
+        TemplateCreate(
+            name="Control recurrente",
+            operational_stage="OPERATION",
+            default_assignment_mode="INDIVIDUAL",
+            sections=[SectionIn(
+                title="General", position=0,
+                items=[ItemIn(
+                    title="Confirmación recurrente", position=0,
+                    item_type="CONFIRMATION", evidence_policy="NONE",
+                )],
+            )],
+        ),
+        admin,
+    )
+    ctx["template_id"] = template.id
+    version = logbook_service.get_template_detail(db, template.id, admin).versions[0]
+    logbook_service.publish(db, version.id, admin)
+    start = (datetime.now(UTC) + timedelta(days=3)).date()
+    created = logbook_recurrence_service.create_series(
+        db,
+        ctx["event"].id,
+        RecurrenceSeriesCreate(
+            template_version_id=version.id,
+            assignment_mode="INDIVIDUAL",
+            participant_ids=[worker.id],
+            supervisor_id=supervisor.id,
+            frequency="DAILY",
+            interval=1,
+            start_date=start,
+            end_mode="COUNT",
+            max_occurrences=3,
+            opens_at_local="09:00",
+            due_at_local="18:00",
+            timezone="America/Santiago",
+        ),
+        admin,
+    )
+    ctx["series_ids"].append(created["id"])
+    occurrences = logbook_recurrence_service.list_occurrences(db, created["id"], admin)
+    ctx["instance_ids"].extend(item.id for item in occurrences)
+    assert [item.occurrence_date for item in occurrences] == [
+        start, start + timedelta(days=1), start + timedelta(days=2)
+    ]
+    assert len({item.id for item in occurrences}) == 3
+    assert all(item.status == LogbookInstanceStatus.SCHEDULED for item in occurrences)
+    assert all(len(item.assignments) == 1 for item in occurrences)
+
+    repeated = logbook_recurrence_service.generate_series_window(db, created["id"], actor=admin)
+    assert repeated["generated"] == 0
+    assert db.scalar(select(func.count(LogbookInstance.id)).where(
+        LogbookInstance.recurrence_series_id == created["id"]
+    )) == 3
+
+    item_id = version.sections[0].items[0].id
+    with pytest.raises(HTTPException) as early_response:
+        logbook_service.save_response(
+            db, occurrences[0].assignments[0].id,
+            ResponseSave(item_id=item_id, boolean_value=True, result_status="COMPLETED"),
+            worker,
+        )
+    assert early_response.value.status_code == 409
+    with pytest.raises(HTTPException) as early_evidence:
+        logbook_service.upload_evidence(
+            db, occurrences[0].assignments[0].id, uuid4(),
+            UploadFile(filename="evidence.png", file=BytesIO(b"not-read")), None, worker,
+        )
+    assert early_evidence.value.status_code == 409
+
+    rescheduled = logbook_recurrence_service.reschedule_occurrence(
+        db, created["id"],
+        RecurrenceRescheduleIn(
+            occurrence_date=start + timedelta(days=2),
+            replacement_date=start + timedelta(days=5), reason="Cambio operativo",
+        ),
+        admin,
+    )
+    assert rescheduled.original_occurrence_date == start + timedelta(days=2)
+    assert rescheduled.occurrence_modified
+    logbook_recurrence_service.skip_occurrence(
+        db, created["id"],
+        RecurrenceOccurrenceOperation(occurrence_date=start + timedelta(days=1), reason="Feriado"),
+        admin,
+    )
+    db.refresh(occurrences[1])
+    assert occurrences[1].status == LogbookInstanceStatus.CANCELLED
+    assert db.scalar(select(func.count(LogbookRecurrenceException.id)).where(
+        LogbookRecurrenceException.series_id == created["id"]
+    )) == 2
+
+
+def test_two_real_generators_are_idempotent_and_leave_no_partial_data(logbook_context):
+    ctx = logbook_context
+    db = ctx["db"]
+    admin, _, supervisor, worker, *_ = ctx["users"]
+    template = logbook_service.create_template(
+        db,
+        TemplateCreate(
+            name="Concurrencia recurrente",
+            operational_stage="OPERATION",
+            default_assignment_mode="INDIVIDUAL",
+            sections=[SectionIn(
+                title="General", position=0,
+                items=[ItemIn(
+                    title="Control", position=0, item_type="CONFIRMATION",
+                    evidence_policy="NONE",
+                )],
+            )],
+        ),
+        admin,
+    )
+    ctx["template_id"] = template.id
+    version = logbook_service.get_template_detail(db, template.id, admin).versions[0]
+    logbook_service.publish(db, version.id, admin)
+    start = (datetime.now(UTC) + timedelta(days=10)).date()
+    series = LogbookRecurrenceSeries(
+        event_id=ctx["event"].id, template_id=template.id,
+        template_version_id=version.id, name="Concurrencia recurrente",
+        operational_stage="OPERATION", assignment_mode="INDIVIDUAL",
+        supervisor_id=supervisor.id, client_visibility=False,
+        frequency="DAILY", interval=1, start_date=start, end_mode="COUNT",
+        max_occurrences=4, opens_at_local=time(9), due_at_local=time(18),
+        timezone="America/Santiago", status="ACTIVE",
+        next_occurrence_date=start, created_by=admin.id,
+    )
+    db.add(series)
+    db.flush()
+    db.add(LogbookRecurrenceParticipant(
+        series_id=series.id, event_id=ctx["event"].id, user_id=worker.id
+    ))
+    db.commit()
+    ctx["series_ids"].append(series.id)
+
+    def generate():
+        with SessionLocal() as independent_db:
+            return logbook_recurrence_service.generate_series_window(
+                independent_db, series.id, actor=admin
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: generate(), range(2)))
+
+    db.expire_all()
+    occurrences = list(db.scalars(select(LogbookInstance).where(
+        LogbookInstance.recurrence_series_id == series.id
+    ).order_by(LogbookInstance.occurrence_date)).all())
+    ctx["instance_ids"].extend(item.id for item in occurrences)
+    assert sum(result["generated"] for result in results) == 4
+    assert len(occurrences) == 4
+    assert len({item.occurrence_date for item in occurrences}) == 4
+    assert db.scalar(select(func.count(LogbookAssignment.id)).where(
+        LogbookAssignment.logbook_instance_id.in_([item.id for item in occurrences])
+    )) == 4
+    assert db.scalar(select(func.count(AuditLog.id)).where(
+        AuditLog.event_id == ctx["event"].id,
+        AuditLog.action == "LOGBOOK_RECURRENCE_GENERATED",
+        AuditLog.entity_id == series.id,
+    )) == 1
+    db.refresh(series)
+    assert series.generated_count == 4
+    assert series.next_occurrence_date is None
+
+    for _ in range(3):
+        assert generate()["generated"] == 0
+    with SessionLocal() as duplicate_db:
+        duplicate_db.add(LogbookInstance(
+            event_id=ctx["event"].id, template_id=template.id,
+            template_version_id=version.id, name="Duplicada",
+            operational_stage="OPERATION", assignment_mode="INDIVIDUAL",
+            opens_at=occurrences[0].opens_at, due_at=occurrences[0].due_at,
+            status="SCHEDULED", recurrence_series_id=series.id,
+            occurrence_date=occurrences[0].occurrence_date,
+        ))
+        with pytest.raises(IntegrityError) as duplicate:
+            duplicate_db.commit()
+        duplicate_db.rollback()
+    assert "uq_logbook_instance_recurrence_date" in str(duplicate.value)
+    with SessionLocal() as healthy_db:
+        assert healthy_db.scalar(select(func.count(LogbookInstance.id)).where(
+            LogbookInstance.recurrence_series_id == series.id
+        )) == 4

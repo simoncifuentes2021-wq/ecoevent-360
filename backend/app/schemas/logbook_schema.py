@@ -1,5 +1,5 @@
 # ruff: noqa: F405
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -164,6 +164,9 @@ class LifecycleProcessRead(BaseModel):
     skipped_count: int
     failed_count: int
     batch_count: int
+    series_inspected: int = 0
+    occurrences_generated: int = 0
+    series_failed: int = 0
 
 
 class InstanceRead(BaseModel):
@@ -182,6 +185,125 @@ class InstanceRead(BaseModel):
     status: LogbookInstanceStatus
     client_visibility: bool
     created_at: datetime
+    recurrence_series_id: UUID | None = None
+    occurrence_date: date | None = None
+    occurrence_modified: bool = False
+    original_occurrence_date: date | None = None
+
+
+class RecurrenceRule(BaseModel):
+    frequency: LogbookRecurrenceFrequency
+    interval: int = Field(1, ge=1, le=52)
+    weekdays: list[int] | None = None
+    day_of_month: int | None = Field(None, ge=1, le=31)
+    start_date: date
+    end_mode: LogbookRecurrenceEndMode
+    end_date: date | None = None
+    max_occurrences: int | None = Field(None, ge=1, le=500)
+    opens_at_local: time
+    due_at_local: time
+    timezone: str = Field("America/Santiago", min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def recurrence_is_consistent(self):
+        if self.end_mode == LogbookRecurrenceEndMode.END_DATE:
+            if not self.end_date or self.end_date < self.start_date:
+                raise ValueError("end_date must be on or after start_date")
+            self.max_occurrences = None
+        else:
+            if not self.max_occurrences:
+                raise ValueError("max_occurrences is required for COUNT")
+            self.end_date = None
+        if self.due_at_local <= self.opens_at_local:
+            raise ValueError("due_at_local must be after opens_at_local on the same day")
+        if self.frequency == LogbookRecurrenceFrequency.WEEKLY:
+            if not self.weekdays or any(day < 0 or day > 6 for day in self.weekdays):
+                raise ValueError("weekly recurrence requires weekdays from 0 (Monday) to 6")
+            self.weekdays = sorted(set(self.weekdays))
+        else:
+            self.weekdays = None
+        if self.frequency == LogbookRecurrenceFrequency.MONTHLY:
+            self.day_of_month = self.day_of_month or self.start_date.day
+        else:
+            self.day_of_month = None
+        return self
+
+
+class RecurrencePreviewIn(RecurrenceRule):
+    limit: int = Field(12, ge=1, le=100)
+
+
+class RecurrencePreviewRead(BaseModel):
+    dates: list[date]
+    truncated: bool
+    monthly_rule: str = "Los meses que no contienen el día seleccionado se omiten."
+
+
+class RecurrenceSeriesCreate(RecurrenceRule):
+    template_version_id: UUID
+    name: str | None = Field(None, max_length=180)
+    zone_id: UUID | None = None
+    assignment_mode: LogbookAssignmentMode
+    participant_ids: list[UUID] = Field(min_length=1)
+    supervisor_id: UUID | None = None
+    client_visibility: bool = False
+
+    @model_validator(mode="after")
+    def participants_are_unique(self):
+        if len(self.participant_ids) != len(set(self.participant_ids)):
+            raise ValueError("Duplicate participants")
+        return self
+
+
+class RecurrenceSeriesUpdate(BaseModel):
+    end_date: date | None = None
+    max_occurrences: int | None = Field(None, ge=1, le=500)
+    supervisor_id: UUID | None = None
+    participant_ids: list[UUID] | None = None
+    revision: int = Field(ge=1)
+
+
+class RecurrenceSeriesRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    event_id: UUID
+    template_id: UUID
+    template_version_id: UUID
+    name: str
+    assignment_mode: LogbookAssignmentMode
+    supervisor_id: UUID | None
+    client_visibility: bool
+    frequency: LogbookRecurrenceFrequency
+    interval: int
+    weekdays: list[int] | None
+    day_of_month: int | None
+    start_date: date
+    end_mode: LogbookRecurrenceEndMode
+    end_date: date | None
+    max_occurrences: int | None
+    opens_at_local: time
+    due_at_local: time
+    timezone: str
+    status: LogbookRecurrenceStatus
+    next_occurrence_date: date | None
+    generated_count: int
+    revision: int
+    created_at: datetime
+    participant_ids: list[UUID] = []
+    occurrence_counts: dict[str, int] = {}
+
+
+class RecurrenceOccurrenceOperation(BaseModel):
+    occurrence_date: date
+    reason: str | None = Field(None, max_length=1000)
+
+
+class RecurrenceRescheduleIn(RecurrenceOccurrenceOperation):
+    replacement_date: date
+
+
+class RecurrenceStatusIn(BaseModel):
+    reason: str | None = Field(None, max_length=1000)
 
 
 class AssignmentRead(BaseModel):

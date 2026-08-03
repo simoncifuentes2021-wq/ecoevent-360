@@ -404,6 +404,24 @@ EDITABLE_ASSIGNMENT_STATUSES = {
     LogbookAssignmentStatus.CHANGES_REQUESTED,
 }
 
+EDITABLE_INSTANCE_STATUSES = {
+    LogbookInstanceStatus.OPEN,
+    LogbookInstanceStatus.IN_PROGRESS,
+    LogbookInstanceStatus.CHANGES_REQUESTED,
+}
+
+
+def ensure_logbook_editable(instance, assignment):
+    """Backend source of truth for every participant mutation."""
+    if instance.status not in EDITABLE_INSTANCE_STATUSES:
+        fail(409, f"Logbook cannot be edited while it is {instance.status.value}")
+    if instance.status == LogbookInstanceStatus.CHANGES_REQUESTED and (
+        assignment.status != LogbookAssignmentStatus.CHANGES_REQUESTED
+    ):
+        fail(403, "Only the participant asked to make corrections can edit")
+    if assignment.status not in EDITABLE_ASSIGNMENT_STATUSES:
+        fail(409, "Submitted assignments are locked")
+
 
 def _editable_participant_assignment(db, assignment_id, current):
     target = db.get(LogbookAssignment, assignment_id)
@@ -422,8 +440,7 @@ def _editable_participant_assignment(db, assignment_id, current):
         participant = target if target.user_id == current.id else None
     if not participant:
         fail(403, "Only an assigned participant can edit responses")
-    if participant.status not in EDITABLE_ASSIGNMENT_STATUSES:
-        fail(409, "Submitted assignments are locked")
+    ensure_logbook_editable(target.instance, participant)
     return target, participant
 
 
@@ -612,6 +629,7 @@ def submit(db, id, current):
         .execution_options(populate_existing=True)
         .with_for_update()
     )
+    ensure_logbook_editable(a.instance, a)
     if a.status not in {
         LogbookAssignmentStatus.IN_PROGRESS,
         LogbookAssignmentStatus.CHANGES_REQUESTED,
@@ -931,6 +949,9 @@ def calculate_metrics(instance):
 
 
 def get_instance_detail(db, instance_id, current):
+    from app.services.logbook_lifecycle_service import refresh_instance_lifecycle
+
+    refresh_instance_lifecycle(db, instance_id)
     instance = _load_instance(db, instance_id)
     if current.role == UserRole.CLIENT:
         fail(403, "Use the client logbook summary endpoint")
@@ -1121,7 +1142,7 @@ def validate_image_content(content: bytes, claimed_mime: str) -> None:
         with Image.open(BytesIO(content)) as image:
             actual = image.format
             image.verify()
-    except (UnidentifiedImageError, OSError, ValueError):
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
         fail(422, "Invalid or corrupted image")
     if actual != expected:
         fail(422, "File content does not match the declared MIME type")
@@ -1244,12 +1265,7 @@ def delete_evidence(db, evidence_id, current):
     assignment = db.get(LogbookAssignment, evidence.assignment_id)
     if evidence.uploaded_by != current.id or assignment.user_id != current.id:
         fail(403, "Only the uploader can remove this evidence")
-    if assignment.status not in {
-        LogbookAssignmentStatus.PENDING,
-        LogbookAssignmentStatus.IN_PROGRESS,
-        LogbookAssignmentStatus.CHANGES_REQUESTED,
-    }:
-        fail(409, "Submitted assignments are locked")
+    ensure_logbook_editable(assignment.instance, assignment)
     evidence.deleted_at = datetime.utcnow()
     db.commit()
     audit(

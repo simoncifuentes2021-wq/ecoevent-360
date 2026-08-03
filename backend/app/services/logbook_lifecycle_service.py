@@ -30,6 +30,9 @@ class LifecycleSummary:
     skipped_count: int = 0
     failed_count: int = 0
     batch_count: int = 0
+    series_inspected: int = 0
+    occurrences_generated: int = 0
+    series_failed: int = 0
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -121,6 +124,14 @@ def process_logbook_lifecycle(
     summary = LifecycleSummary(run_id=uuid4(), started_at=utc_now(), finished_at=utc_now())
     logger.info("logbook lifecycle started run_id=%s", summary.run_id)
 
+    if not dry_run:
+        from app.services.logbook_recurrence_service import process_active_series
+
+        recurrence = process_active_series(db, actor=actor, batch_size=batch_size)
+        summary.series_inspected = recurrence["series_inspected"]
+        summary.occurrences_generated = recurrence["occurrences_generated"]
+        summary.series_failed = recurrence["series_failed"]
+
     while True:
         query = (
             select(LogbookInstance)
@@ -179,3 +190,27 @@ def process_logbook_lifecycle(
         summary.overdue_count, summary.failed_count,
     )
     return summary
+
+
+def refresh_instance_lifecycle(db: Session, instance_id: UUID, *, now: datetime | None = None) -> bool:
+    """Apply the same lifecycle rules lazily when one occurrence is opened or read."""
+    reference = (now or utc_now()).astimezone(UTC)
+    instance = db.scalar(
+        select(LogbookInstance).where(LogbookInstance.id == instance_id).with_for_update()
+    )
+    if not instance:
+        return False
+    transitions = lifecycle_transitions(instance, reference)
+    if not transitions:
+        db.rollback()
+        return False
+    run_id = uuid4()
+    for new_status, scheduled_at in transitions:
+        old_status = instance.status
+        instance.status = new_status
+        _audit_transition(
+            db, instance, old_status, new_status, scheduled_at,
+            processed_at=reference, origin="AUTOMATIC", run_id=run_id, actor=None,
+        )
+    db.commit()
+    return True

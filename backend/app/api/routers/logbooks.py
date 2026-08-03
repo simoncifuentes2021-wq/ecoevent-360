@@ -11,8 +11,91 @@ from app.schemas.logbook_schema import *  # noqa: F403
 from app.schemas.incident_schema import IncidentRead
 from app.schemas.task_schema import TaskRead
 from app.services import logbook_service as service
+from app.services import logbook_recurrence_service as recurrence
 
 router = APIRouter(tags=["logbooks"])
+
+
+@router.post("/logbook-recurrences/preview", response_model=RecurrencePreviewRead)
+def preview_recurrence(
+    payload: RecurrencePreviewIn,
+    current: User = Depends(require_roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.SUPERVISOR)),
+):
+    return recurrence.preview(payload)
+
+
+@router.post("/events/{event_id}/logbook-recurrences", response_model=RecurrenceSeriesRead, status_code=201)
+def create_recurrence(
+    event_id: UUID, payload: RecurrenceSeriesCreate, db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    return recurrence.create_series(db, event_id, payload, current)
+
+
+@router.get("/events/{event_id}/logbook-recurrences", response_model=list[RecurrenceSeriesRead])
+def event_recurrences(
+    event_id: UUID, db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    return recurrence.list_series(db, event_id, current)
+
+
+@router.get("/logbook-recurrences/{series_id}", response_model=RecurrenceSeriesRead)
+def recurrence_detail(
+    series_id: UUID, db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    return recurrence.get_series(db, series_id, current)
+
+
+@router.patch("/logbook-recurrences/{series_id}", response_model=RecurrenceSeriesRead)
+def update_recurrence(
+    series_id: UUID, payload: RecurrenceSeriesUpdate, db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    return recurrence.update_future(db, series_id, payload, current)
+
+
+@router.get("/logbook-recurrences/{series_id}/occurrences", response_model=list[InstanceRead])
+def recurrence_occurrences(
+    series_id: UUID, db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    return recurrence.list_occurrences(db, series_id, current)
+
+
+@router.post("/logbook-recurrences/{series_id}/pause", response_model=RecurrenceSeriesRead)
+def pause_recurrence(series_id: UUID, payload: RecurrenceStatusIn, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return recurrence.set_status(db, series_id, LogbookRecurrenceStatus.PAUSED, current, payload.reason)
+
+
+@router.post("/logbook-recurrences/{series_id}/resume", response_model=RecurrenceSeriesRead)
+def resume_recurrence(series_id: UUID, payload: RecurrenceStatusIn, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return recurrence.set_status(db, series_id, LogbookRecurrenceStatus.ACTIVE, current, payload.reason)
+
+
+@router.post("/logbook-recurrences/{series_id}/finish", response_model=RecurrenceSeriesRead)
+def finish_recurrence(series_id: UUID, payload: RecurrenceStatusIn, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return recurrence.set_status(db, series_id, LogbookRecurrenceStatus.FINISHED, current, payload.reason)
+
+
+@router.post("/logbook-recurrences/{series_id}/skip", response_model=RecurrenceSeriesRead)
+def skip_recurrence_occurrence(series_id: UUID, payload: RecurrenceOccurrenceOperation, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return recurrence.skip_occurrence(db, series_id, payload, current)
+
+
+@router.post("/logbook-recurrences/{series_id}/reschedule", response_model=InstanceRead)
+def reschedule_recurrence_occurrence(series_id: UUID, payload: RecurrenceRescheduleIn, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return recurrence.reschedule_occurrence(db, series_id, payload, current)
+
+
+@router.post("/logbook-recurrences/{series_id}/generate", response_model=dict)
+def generate_recurrence_window(
+    series_id: UUID, db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    detail = recurrence.get_series(db, series_id, current)
+    return recurrence.generate_series_window(db, detail["id"], actor=current)
 
 
 @router.post(

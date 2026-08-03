@@ -1,6 +1,6 @@
 import {api} from "@/lib/api";
 import type {ListResponse} from "@/types/common";
-import type {ClientLogbookSummary,LogbookAssignment,LogbookInstance,LogbookInstanceDetail,LogbookResponse,LogbookEvidence,LogbookTemplate,LogbookTemplateCreate,LogbookTemplateDetail,LogbookVersion,LogbookVersionDetail} from "@/types/logbook";
+import type {ClientLogbookSummary,LogbookAssignment,LogbookInstance,LogbookInstanceDetail,LogbookRecurrencePayload,LogbookRecurrenceSeries,LogbookResponse,LogbookEvidence,LogbookTemplate,LogbookTemplateCreate,LogbookTemplateDetail,LogbookVersion,LogbookVersionDetail} from "@/types/logbook";
 export const getLogbookTemplates=(status?:string)=>api.get<ListResponse<LogbookTemplate>>(`/logbook-templates${status?`?status=${status}`:""}`);
 export const createLogbookTemplate=(data:LogbookTemplateCreate)=>api.post<LogbookTemplate>("/logbook-templates",data);
 export const getLogbookTemplate=(id:string)=>api.get<LogbookTemplateDetail>(`/logbook-templates/${id}`);
@@ -29,3 +29,13 @@ export const getLogbookEvidenceAccess=(id:string)=>api.get<{url:string;expires_i
 export const deleteLogbookEvidence=(id:string)=>api.delete<void>(`/logbook-evidences/${id}`);
 export const addLogbookParticipants=(id:string,userIds:string[])=>api.post<LogbookAssignment[]>(`/logbook-instances/${id}/participants`,{user_ids:userIds});
 export const removeLogbookParticipant=(instanceId:string,assignmentId:string)=>api.delete<void>(`/logbook-instances/${instanceId}/participants/${assignmentId}`);
+export const previewLogbookRecurrence=(data:Omit<LogbookRecurrencePayload,"template_version_id"|"name"|"zone_id"|"assignment_mode"|"participant_ids"|"supervisor_id"|"client_visibility">&{limit?:number})=>api.post<{dates:string[];truncated:boolean;monthly_rule:string}>("/logbook-recurrences/preview",data);
+export const createLogbookRecurrence=(eventId:string,data:LogbookRecurrencePayload)=>api.post<LogbookRecurrenceSeries>(`/events/${eventId}/logbook-recurrences`,data);
+export const getLogbookRecurrences=(eventId:string)=>api.get<LogbookRecurrenceSeries[]>(`/events/${eventId}/logbook-recurrences`);
+export const updateLogbookRecurrence=(id:string,data:{participant_ids:string[];revision:number})=>api.patch<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}`,data);
+export const pauseLogbookRecurrence=(id:string)=>api.post<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}/pause`,{});
+export const resumeLogbookRecurrence=(id:string)=>api.post<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}/resume`,{});
+export const finishLogbookRecurrence=(id:string)=>api.post<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}/finish`,{});
+export const getLogbookRecurrenceOccurrences=(id:string)=>api.get<LogbookInstance[]>(`/logbook-recurrences/${id}/occurrences`);
+export const skipLogbookRecurrenceOccurrence=(id:string,occurrenceDate:string,reason:string)=>api.post<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}/skip`,{occurrence_date:occurrenceDate,reason});
+export const rescheduleLogbookRecurrenceOccurrence=(id:string,occurrenceDate:string,replacementDate:string,reason?:string)=>api.post<LogbookInstance>(`/logbook-recurrences/${id}/reschedule`,{occurrence_date:occurrenceDate,replacement_date:replacementDate,reason});
