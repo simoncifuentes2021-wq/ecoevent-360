@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import IncidentStatus, TaskStatus
 from app.schemas.staff_schema import EventStaffUserRead
@@ -13,6 +13,13 @@ class EventSessionStaffCreate(BaseModel):
     shift_end: datetime | None = None
     operational_role: str | None = Field(default=None, max_length=100)
     notes: str | None = None
+
+    @field_validator("shift_start", "shift_end", mode="after")
+    @classmethod
+    def normalize_shift(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(UTC).replace(tzinfo=None)
+        return value
 
     @model_validator(mode="after")
     def validate_shift(self):
@@ -27,6 +34,13 @@ class EventSessionStaffUpdate(BaseModel):
     operational_role: str | None = Field(default=None, max_length=100)
     notes: str | None = None
 
+    @field_validator("shift_start", "shift_end", mode="after")
+    @classmethod
+    def normalize_shift(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(UTC).replace(tzinfo=None)
+        return value
+
     @model_validator(mode="after")
     def validate_shift(self):
         if self.shift_start and self.shift_end and self.shift_start >= self.shift_end:
@@ -40,6 +54,7 @@ class EventSessionStaffRead(BaseModel):
     id: UUID
     event_id: UUID
     session_id: UUID
+    session_name: str | None = None
     event_staff_id: UUID
     shift_start: datetime | None = None
     shift_end: datetime | None = None

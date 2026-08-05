@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.permissions import can_access_event, can_manage_event, can_operate_event
 from app.models.core import Event, EventSession, EventStaff, EventZone, Evidence, Incident, Task, User
@@ -167,6 +167,7 @@ def list_event_incidents(
     items = list(
         db.scalars(
             select(Incident)
+            .options(selectinload(Incident.reporter), selectinload(Incident.assignee))
             .where(*filters)
             .order_by(Incident.created_at.desc())
             .offset((page - 1) * limit)

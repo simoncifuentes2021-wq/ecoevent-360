@@ -59,6 +59,8 @@ class AuditLogRead(BaseModel):
     incident_title: str | None = None
     zone_id: UUID | None = None
     zone_name: str | None = None
+    session_id: UUID | None = None
+    session_name: str | None = None
     action: str
     module: str
     entity_type: str | None = None
