@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -27,6 +27,10 @@ TRANSITIONS = {
     EventSessionStatus.COMPLETED: set(),
     EventSessionStatus.CANCELLED: {EventSessionStatus.PLANNED},
 }
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _event_or_404(db: Session, event_id: UUID) -> Event:
@@ -162,7 +166,7 @@ def update_session(db: Session, session_id: UUID, payload: EventSessionUpdate, u
     _validate_payload(db, event, data, session)
     for field, value in data.items():
         setattr(session, field, value)
-    session.updated_at = datetime.utcnow()
+    session.updated_at = _utcnow()
     db.commit()
     db.refresh(session)
     return _decorate(db, session)
@@ -178,7 +182,7 @@ def transition_session(db: Session, session_id: UUID, target: EventSessionStatus
     if target not in TRANSITIONS[session.status]:
         raise HTTPException(status_code=409, detail=f"Invalid transition from {session.status} to {target}")
     session.status = target
-    session.updated_at = datetime.utcnow()
+    session.updated_at = _utcnow()
     db.commit()
     db.refresh(session)
     return _decorate(db, session)
@@ -187,8 +191,8 @@ def transition_session(db: Session, session_id: UUID, target: EventSessionStatus
 def archive_session(db: Session, session_id: UUID, user: User) -> EventSession:
     session = get_session_or_404(db, session_id)
     _ensure_can_manage(db, session.event_id, user)
-    session.archived_at = session.archived_at or datetime.utcnow()
-    session.updated_at = datetime.utcnow()
+    session.archived_at = session.archived_at or _utcnow()
+    session.updated_at = _utcnow()
     db.commit()
     db.refresh(session)
     return _decorate(db, session)
@@ -198,7 +202,7 @@ def restore_session(db: Session, session_id: UUID, user: User) -> EventSession:
     session = get_session_or_404(db, session_id)
     _ensure_can_manage(db, session.event_id, user)
     session.archived_at = None
-    session.updated_at = datetime.utcnow()
+    session.updated_at = _utcnow()
     db.commit()
     db.refresh(session)
     return _decorate(db, session)
