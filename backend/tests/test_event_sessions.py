@@ -26,7 +26,8 @@ def session_context():
     suffix = uuid4().hex[:10]
     client = Client(business_name=f"Session Client {suffix}")
     other_client = Client(business_name=f"Other Session Client {suffix}")
-    db.add_all([client, other_client]); db.flush()
+    db.add_all([client, other_client])
+    db.flush()
     users = {
         name: User(full_name=name, email=f"session-{name}-{suffix}@example.test", password_hash="x", role=role,
                    client_id=client.id if name == "client" else None)
@@ -37,13 +38,15 @@ def session_context():
             "client": UserRole.CLIENT,
         }.items()
     }
-    db.add_all(users.values()); db.flush()
+    db.add_all(users.values())
+    db.flush()
     start = datetime(2026, 8, 1, 9)
     event = Event(client_id=client.id, name=f"Session Event {suffix}", start_date=start,
                   end_date=start + timedelta(days=3), status=EventStatus.PLANNING, created_by=users["admin"].id)
     other_event = Event(client_id=other_client.id, name=f"Other Session Event {suffix}", start_date=start,
                         end_date=start + timedelta(days=3), status=EventStatus.PLANNING, created_by=users["admin"].id)
-    db.add_all([event, other_event]); db.flush()
+    db.add_all([event, other_event])
+    db.flush()
     db.add_all([EventStaff(event_id=event.id, user_id=users[name].id) for name in ("supervisor", "worker", "logistics")]
                + [EventStaff(event_id=other_event.id, user_id=users["other_supervisor"].id)])
     db.commit()
@@ -55,7 +58,8 @@ def session_context():
         db.execute(delete(Event).where(Event.id.in_([event.id, other_event.id])))
         db.execute(delete(User).where(User.id.in_([user.id for user in users.values()])))
         db.execute(delete(Client).where(Client.id.in_([client.id, other_client.id])))
-        db.commit(); db.close()
+        db.commit()
+        db.close()
 
 
 def _payload(name="Show", **values):
@@ -123,7 +127,9 @@ def test_reorder_and_conflicts(session_context):
 def _form(db, event, session_id=None):
     item = EventForm(event_id=event.id, session_id=session_id, title=f"Form {uuid4().hex}", form_type=EventFormType.CUSTOM,
                      public_slug=f"form-{uuid4().hex}", status=EventFormStatus.DRAFT)
-    db.add(item); db.flush(); return item
+    db.add(item)
+    db.flush()
+    return item
 
 
 @pytest.mark.parametrize("relation", ["form", "response", "bike", "qr"])
@@ -133,9 +139,12 @@ def test_delete_blocked_by_each_relation(session_context, relation):
     form = _form(db, event, target.id if relation == "form" else None)
     if relation in {"response", "bike"}:
         response = FormResponse(form_id=form.id, event_id=event.id, session_id=target.id if relation == "response" else None, raw_data={})
-        db.add(response); db.flush()
-        if relation == "bike": db.add(BikeZoneRecord(response_id=response.id, event_id=event.id, session_id=target.id, code=f"B-{uuid4().hex}"))
-    if relation == "qr": db.add(FormQRCode(form_id=form.id, event_id=event.id, session_id=target.id, label="QR", target_url="https://example.test"))
+        db.add(response)
+        db.flush()
+        if relation == "bike":
+            db.add(BikeZoneRecord(response_id=response.id, event_id=event.id, session_id=target.id, code=f"B-{uuid4().hex}"))
+    if relation == "qr":
+        db.add(FormQRCode(form_id=form.id, event_id=event.id, session_id=target.id, label="QR", target_url="https://example.test"))
     db.commit()
     with pytest.raises(HTTPException, match="must be archived"):
         event_session_service.delete_session(db, target.id, users["admin"])
@@ -165,9 +174,11 @@ def _rls_run(engine, user, sql, params=None):
             result = connection.execute(text(sql), params or {})
             rows = result.fetchall() if result.returns_rows else []
             effective = bool(rows) if result.returns_rows else result.rowcount > 0
-            transaction.rollback(); return effective, None
+            transaction.rollback()
+            return effective, None
         except DBAPIError as error:
-            transaction.rollback(); return False, error
+            transaction.rollback()
+            return False, error
 
 
 @pytest.mark.parametrize("role_name,can_read,can_write", [
@@ -177,7 +188,8 @@ def _rls_run(engine, user, sql, params=None):
 ])
 def test_event_session_rls_by_role(session_context, role_name, can_read, can_write):
     runtime_url = os.environ.get("RLS_DATABASE_URL")
-    if not runtime_url: pytest.fail("RLS_DATABASE_URL is required")
+    if not runtime_url:
+        pytest.fail("RLS_DATABASE_URL is required")
     db, event, _, users = session_context
     item = event_session_service.create_session(db, event.id, _payload("RLS"), users["admin"])
     engine = create_engine(runtime_url)
@@ -187,7 +199,8 @@ def test_event_session_rls_by_role(session_context, role_name, can_read, can_wri
         updated, _ = _rls_run(engine, users[role_name], "update event_sessions set name=name where id=:id", {"id": item.id})
         deleted, _ = _rls_run(engine, users[role_name], "delete from event_sessions where id=:id", {"id": item.id})
         assert (read, inserted, updated, deleted) == (can_read, can_write, can_write, can_write)
-    finally: engine.dispose()
+    finally:
+        engine.dispose()
 
 
 def test_all_session_mutations_are_audited(session_context):
