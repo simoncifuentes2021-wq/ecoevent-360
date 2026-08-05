@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import create_engine, delete, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.db.session import SessionLocal
 from app.models.audit_log import AuditLog
@@ -108,14 +108,21 @@ def test_incident_inherits_task_show_and_corrective_task_inherits_incident(conte
         incident_service.create_incident(db, events[0].id, IncidentCreate(title="Bad", description="Bad relation", source_task_id=source.id, session_id=shows[1].id), users["supervisor"])
     corrective = incident_service.create_corrective_task(db, incident.id, IncidentCorrectiveTaskCreate(title="Correct", priority="HIGH"), users["admin"])
     assert corrective.session_id == incident.session_id and corrective.source_incident_id == incident.id
+    with pytest.raises(IntegrityError), db.begin_nested():
+        db.add(Task(event_id=incident.event_id, title="Duplicate corrective", source_incident_id=incident.id))
+        db.flush()
     with pytest.raises(HTTPException, match="inherited"):
         incident_service.update_incident(db, incident.id, IncidentUpdate(session_id=shows[1].id, reassignment_reason="No"), users["admin"])
 
 
 def test_cross_event_session_rejected_and_historical_null_semantics(context):
-    db, events, users, _, shows = context
+    db, events, users, staff, shows = context
     with pytest.raises(HTTPException, match="does not belong"):
         task_service.create_task(db, events[0].id, TaskCreate(title="Bad", priority="LOW", session_id=shows[2].id), users["admin"])
+    other_task = task_service.create_task(db, events[1].id, TaskCreate(title="Other event task"), users["admin"])
+    with pytest.raises(IntegrityError), db.begin_nested():
+        db.add(Evidence(event_id=events[0].id, task_id=other_task.id, file_url="private/evidences/cross.webp"))
+        db.flush()
     historical_task = Task(event_id=events[0].id, title="Historical")
     historical_incident = Incident(event_id=events[0].id, title="Historical incident", description="Legacy")
     db.add_all([historical_task, historical_incident])
@@ -123,6 +130,16 @@ def test_cross_event_session_rejected_and_historical_null_semantics(context):
     assert historical_task.session_id is None and historical_incident.session_id is None
     with pytest.raises(HTTPException, match="internal"):
         event_session_staff_service.operational_summary(db, shows[0].id, users["client"])
+    with pytest.raises(HTTPException, match="internal"):
+        event_session_staff_service.list_person_sessions(db, staff["worker"].id, users["client"])
+
+
+def test_direct_task_uuid_respects_internal_role_boundary(context):
+    db, events, users, _, _ = context
+    task = task_service.create_task(db, events[0].id, TaskCreate(title="Private task"), users["admin"])
+    for role in ("client", "logistics"):
+        with pytest.raises(HTTPException, match="not authorized"):
+            task_service.get_task(db, task.id, users[role])
 
 
 def test_evidence_show_is_derived_without_exposing_storage_key(context, monkeypatch):
@@ -135,6 +152,10 @@ def test_evidence_show_is_derived_without_exposing_storage_key(context, monkeypa
     assert total == 1 and items[0].session_id == shows[0].id
     with pytest.raises(HTTPException, match="contradicts"):
         evidence_service.create_evidence(db, event_id=events[0].id, task_id=task.id, incident_id=None, session_id=shows[1].id, description="Bad", file=UploadFile(filename="test.webp", file=BytesIO(b"x")), current_user=users["admin"])
+    shows[1].archived_at = datetime(2026, 8, 9)
+    db.commit()
+    with pytest.raises(HTTPException, match="Archived"):
+        evidence_service.create_evidence(db, event_id=events[0].id, task_id=None, incident_id=None, session_id=shows[1].id, description="Archived", file=UploadFile(filename="test.webp", file=BytesIO(b"x")), current_user=users["admin"])
 
 
 def _rls(engine, user, sql, params=None):
@@ -169,5 +190,56 @@ def test_show_staff_rls_matrix(context, role_name, can_read, can_write):
         read = _rls(engine, users[role_name], "select id from event_session_staff where id=:id", {"id": item.id})
         write = _rls(engine, users[role_name], "update event_session_staff set operational_role=operational_role where id=:id", {"id": item.id})
         assert (read, write) == (can_read, can_write)
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("role_name,task_access,incident_access,evidence_access", [
+    ("superadmin", (True, True), (True, True), (True, True)),
+    ("admin", (True, True), (True, True), (True, True)),
+    ("supervisor", (True, True), (True, True), (True, True)),
+    ("worker", (True, True), (True, False), (True, True)),
+    ("logistics", (False, False), (False, False), (True, False)),
+    ("client", (False, False), (False, False), (True, False)),
+    ("other", (False, False), (False, False), (False, False)),
+])
+def test_operational_entities_rls_matrix(
+    context, role_name, task_access, incident_access, evidence_access
+):
+    runtime_url = os.environ.get("RLS_DATABASE_URL")
+    if not runtime_url:
+        pytest.fail("RLS_DATABASE_URL is required")
+    db, events, users, _, shows = context
+    task = task_service.create_task(
+        db,
+        events[0].id,
+        TaskCreate(title="RLS task", assigned_to=users["worker"].id, session_id=shows[0].id),
+        users["admin"],
+    )
+    incident = Incident(
+        event_id=events[0].id,
+        title="RLS incident",
+        description="RLS incident",
+        session_id=shows[0].id,
+        reported_by=users["worker"].id,
+    )
+    evidence = Evidence(
+        event_id=events[0].id,
+        session_id=shows[0].id,
+        uploaded_by=users["worker"].id,
+        file_url="private/evidences/rls.webp",
+        file_type="image/webp",
+    )
+    db.add_all([incident, evidence])
+    db.commit()
+    engine = create_engine(runtime_url)
+    try:
+        actual = []
+        for table, item in (("tasks", task), ("incidents", incident), ("evidences", evidence)):
+            actual.append((
+                _rls(engine, users[role_name], f"select id from {table} where id=:id", {"id": item.id}),
+                _rls(engine, users[role_name], f"update {table} set event_id=event_id where id=:id", {"id": item.id}),
+            ))
+        assert actual == [task_access, incident_access, evidence_access]
     finally:
         engine.dispose()

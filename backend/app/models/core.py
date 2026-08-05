@@ -1105,7 +1105,7 @@ class Task(Base):
         Index("idx_tasks_assigned_to", "assigned_to"),
         Index("idx_tasks_status", "status"),
         Index("idx_tasks_event_session", "event_id", "session_id"),
-        Index("idx_tasks_source_incident_id", "source_incident_id"),
+        Index("uq_tasks_source_incident_id", "source_incident_id", unique=True, postgresql_where=text("source_incident_id is not null")),
         UniqueConstraint("event_id", "id", name="uq_tasks_event_id_id"),
         ForeignKeyConstraint(["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"], name="fk_tasks_event_session", ondelete="RESTRICT"),
         ForeignKeyConstraint(["event_id", "source_incident_id"], ["incidents.event_id", "incidents.id"], name="fk_tasks_source_incident", ondelete="RESTRICT", use_alter=True),
@@ -1144,7 +1144,9 @@ class Task(Base):
     zone: Mapped[EventZone | None] = relationship(back_populates="tasks")
     assignee: Mapped[User | None] = relationship(foreign_keys=[assigned_to])
     creator: Mapped[User | None] = relationship(foreign_keys=[created_by])
-    evidences: Mapped[list["Evidence"]] = relationship(back_populates="task")
+    evidences: Mapped[list["Evidence"]] = relationship(
+        back_populates="task", foreign_keys="Evidence.task_id"
+    )
 
 
 class Incident(Base):
@@ -1194,7 +1196,9 @@ class Incident(Base):
     zone: Mapped[EventZone | None] = relationship(back_populates="incidents")
     reporter: Mapped[User | None] = relationship(foreign_keys=[reported_by])
     assignee: Mapped[User | None] = relationship(foreign_keys=[assigned_to])
-    evidences: Mapped[list["Evidence"]] = relationship(back_populates="incident")
+    evidences: Mapped[list["Evidence"]] = relationship(
+        back_populates="incident", foreign_keys="Evidence.incident_id"
+    )
 
 
 class Evidence(Base):
@@ -1205,18 +1209,16 @@ class Evidence(Base):
         Index("idx_evidences_incident_id", "incident_id"),
         Index("idx_evidences_event_session", "event_id", "session_id"),
         ForeignKeyConstraint(["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"], name="fk_evidences_event_session", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["event_id", "task_id"], ["tasks.event_id", "tasks.id"], name="fk_evidences_event_task", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["event_id", "incident_id"], ["incidents.event_id", "incidents.id"], name="fk_evidences_event_incident", ondelete="RESTRICT"),
     )
 
     id: Mapped[UUID] = uuid_pk()
     event_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
-    task_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL")
-    )
-    incident_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("incidents.id", ondelete="SET NULL")
-    )
+    task_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    incident_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     uploaded_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
@@ -1228,8 +1230,10 @@ class Evidence(Base):
     created_at: Mapped[datetime] = created_at_column()
 
     event: Mapped[Event] = relationship(back_populates="evidences")
-    task: Mapped[Task | None] = relationship(back_populates="evidences")
-    incident: Mapped[Incident | None] = relationship(back_populates="evidences")
+    task: Mapped[Task | None] = relationship(back_populates="evidences", foreign_keys=[task_id])
+    incident: Mapped[Incident | None] = relationship(
+        back_populates="evidences", foreign_keys=[incident_id]
+    )
     uploader: Mapped[User | None] = relationship()
     waste_records: Mapped[list["WasteRecord"]] = relationship(back_populates="evidence")
 

@@ -1,8 +1,9 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.permissions import can_access_event, can_manage_event, can_operate_event
@@ -223,7 +224,7 @@ def resolve_incident(
     incident = get_incident_or_404(db, incident_id)
     _ensure_can_manage_incident(db, incident, current_user)
     incident.status = IncidentStatus.RESOLVED
-    incident.resolved_at = payload.resolved_at or datetime.utcnow()
+    incident.resolved_at = payload.resolved_at or datetime.now(UTC).replace(tzinfo=None)
     db.add(incident)
     db.commit()
     db.refresh(incident)
@@ -234,7 +235,7 @@ def close_incident(db: Session, incident_id: UUID, current_user: User) -> Incide
     incident = get_incident_or_404(db, incident_id)
     _ensure_can_manage_incident(db, incident, current_user)
     incident.status = IncidentStatus.CLOSED
-    incident.closed_at = datetime.utcnow()
+    incident.closed_at = datetime.now(UTC).replace(tzinfo=None)
     if not incident.resolved_at:
         incident.resolved_at = incident.closed_at
     db.add(incident)
@@ -252,6 +253,10 @@ def create_corrective_task(db: Session, incident_id: UUID, payload: IncidentCorr
         raise HTTPException(status_code=409, detail="A corrective task already exists for this incident")
     task = Task(event_id=incident.event_id, session_id=incident.session_id, source_incident_id=incident.id, created_by=current_user.id, status=TaskStatus.PENDING, **payload.model_dump())
     db.add(task)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A corrective task already exists for this incident") from exc
     db.refresh(task)
     return task

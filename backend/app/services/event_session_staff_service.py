@@ -3,7 +3,8 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.permissions import can_access_event, can_manage_event
 from app.models.core import Event, EventSession, EventSessionStaff, EventStaff, Evidence, Incident, Task, User
@@ -44,6 +45,29 @@ def _overlap(db: Session, item: EventSessionStaff) -> bool:
     ).limit(1)) is not None
 
 
+def _overlapping_assignment_ids(db: Session, item_ids: list[UUID]) -> set[UUID]:
+    if not item_ids:
+        return set()
+    candidate = aliased(EventSessionStaff)
+    overlap = aliased(EventSessionStaff)
+    return set(db.scalars(
+        select(candidate.id)
+        .join(
+            overlap,
+            (overlap.id != candidate.id)
+            & (overlap.event_staff_id == candidate.event_staff_id)
+            & (overlap.shift_start < candidate.shift_end)
+            & (overlap.shift_end > candidate.shift_start),
+        )
+        .where(
+            candidate.id.in_(item_ids),
+            candidate.shift_start.is_not(None),
+            candidate.shift_end.is_not(None),
+        )
+        .distinct()
+    ).all())
+
+
 def create_assignment(db: Session, session_id: UUID, payload: EventSessionStaffCreate, current_user: User):
     session = _session(db, session_id)
     if not can_manage_event(current_user, session.event_id, db):
@@ -58,7 +82,7 @@ def create_assignment(db: Session, session_id: UUID, payload: EventSessionStaffC
     db.add(item)
     try:
         db.commit()
-    except Exception:
+    except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="Person is already assigned to this show")
     db.refresh(item)
@@ -77,8 +101,9 @@ def list_assignments(db: Session, session_id: UUID, current_user: User, page: in
         filters.append(EventStaff.user_id == current_user.id)
     total = db.scalar(select(func.count()).select_from(EventSessionStaff).join(EventStaff).where(*filters)) or 0
     items = list(db.scalars(select(EventSessionStaff).join(EventStaff).options(joinedload(EventSessionStaff.event_staff).joinedload(EventStaff.user)).where(*filters).order_by(EventSessionStaff.shift_start, EventSessionStaff.created_at).offset((page - 1) * limit).limit(limit)).unique().all())
+    overlapping_ids = _overlapping_assignment_ids(db, [item.id for item in items])
     for item in items:
-        item.overlap_warning = _overlap(db, item)
+        item.overlap_warning = item.id in overlapping_ids
         item.user = item.event_staff.user
     return items, total
 
@@ -111,6 +136,8 @@ def list_person_sessions(db: Session, event_staff_id: UUID, current_user: User):
     staff = db.get(EventStaff, event_staff_id)
     if not staff or not can_access_event(current_user, staff.event_id, db):
         raise HTTPException(status_code=404, detail="Event staff assignment not found")
+    if current_user.role == UserRole.CLIENT:
+        raise HTTPException(status_code=403, detail="Show staffing is internal")
     if current_user.role in {UserRole.WORKER, UserRole.LOGISTICS_OPERATOR} and staff.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Insufficient role")
     return list(db.scalars(select(EventSessionStaff).where(EventSessionStaff.event_staff_id == event_staff_id).order_by(EventSessionStaff.shift_start)).all())

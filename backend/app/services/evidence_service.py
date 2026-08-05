@@ -78,6 +78,8 @@ def create_evidence(
         show = db.get(EventSession, resolved_session)
         if not show or show.event_id != event_id:
             raise HTTPException(status_code=400, detail="Event session does not belong to this event")
+        if show.archived_at:
+            raise HTTPException(status_code=400, detail="Archived shows cannot receive new evidence")
     can_upload_for_assigned_task = False
     if task_id and current_user.role == UserRole.WORKER:
         task = db.get(Task, task_id)

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -85,6 +85,8 @@ def _has_reassignment_activity(db: Session, task: Task) -> bool:
         or db.scalar(select(LogbookTaskLink.id).where(LogbookTaskLink.task_id == task.id).limit(1))
     )
 def _ensure_can_view_task(task: Task, current_user: User, db: Session) -> None:
+    if current_user.role in {UserRole.CLIENT, UserRole.LOGISTICS_OPERATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tasks are not authorized for this role")
     if current_user.role == UserRole.WORKER:
         if task.assigned_to != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
@@ -196,7 +198,7 @@ def update_task(db: Session, task_id: UUID, payload: TaskUpdate, current_user: U
 
     for field, value in data.items():
         setattr(task, field, value)
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now(UTC).replace(tzinfo=None)
     db.add(task)
     db.commit()
     db.refresh(task)
@@ -283,10 +285,10 @@ def complete_task(db: Session, task_id: UUID, payload: TaskComplete, current_use
             )
 
     task.status = TaskStatus.COMPLETED
-    task.completed_at = payload.completed_at or datetime.utcnow()
+    task.completed_at = payload.completed_at or datetime.now(UTC).replace(tzinfo=None)
     if not task.started_at:
         task.started_at = task.completed_at
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now(UTC).replace(tzinfo=None)
     db.add(task)
     db.commit()
     db.refresh(task)
@@ -325,7 +327,7 @@ def list_my_tasks(
 
 def _apply_task_status(task: Task, new_status: TaskStatus) -> None:
     task.status = new_status
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     if new_status == TaskStatus.IN_PROGRESS and not task.started_at:
         task.started_at = now
     if new_status == TaskStatus.COMPLETED:
