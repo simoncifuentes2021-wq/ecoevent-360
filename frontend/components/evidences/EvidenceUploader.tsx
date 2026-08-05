@@ -9,11 +9,13 @@ import type { Evidence } from "@/types/evidence";
 import type { FileUpload } from "@/types/file";
 import type { Incident } from "@/types/incident";
 import type { Task } from "@/types/task";
+import type { EventSession } from "@/types/eventSession";
 
 export function EvidenceUploader({
   eventId,
   tasks,
   incidents,
+  sessions = [],
   initialTaskId = "",
   initialIncidentId = "",
   loading,
@@ -23,6 +25,7 @@ export function EvidenceUploader({
   eventId: string;
   tasks: Task[];
   incidents: Incident[];
+  sessions?: EventSession[];
   initialTaskId?: string;
   initialIncidentId?: string;
   loading?: boolean;
@@ -33,6 +36,7 @@ export function EvidenceUploader({
   const [description, setDescription] = useState("");
   const [taskId, setTaskId] = useState(initialTaskId);
   const [incidentId, setIncidentId] = useState(initialIncidentId);
+  const [sessionId, setSessionId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
@@ -45,6 +49,7 @@ export function EvidenceUploader({
     formData.append("event_id", eventId);
     if (taskId) formData.append("task_id", taskId);
     if (incidentId) formData.append("incident_id", incidentId);
+    if (!taskId && !incidentId && sessionId) formData.append("session_id", sessionId);
     formData.append("description", description);
     formData.append("file", file.file);
     await onSubmit(formData);
@@ -59,6 +64,7 @@ export function EvidenceUploader({
         <label className="grid gap-2 text-sm font-semibold">Tarea<select className="h-12 rounded-2xl border px-4" value={taskId} onChange={(event) => setTaskId(event.target.value)}><option value="">Sin tarea</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
         <label className="grid gap-2 text-sm font-semibold">Incidencia<select className="h-12 rounded-2xl border px-4" value={incidentId} onChange={(event) => setIncidentId(event.target.value)}><option value="">Sin incidencia</option>{incidents.map((incident) => <option key={incident.id} value={incident.id}>{incident.title}</option>)}</select></label>
       </div>
+      <label className="grid gap-2 text-sm font-semibold">Contexto de evidencia independiente<select disabled={Boolean(taskId || incidentId)} className="h-12 rounded-2xl border px-4 disabled:bg-slate-100" value={sessionId} onChange={(event) => setSessionId(event.target.value)}><option value="">General del evento</option>{sessions.filter((item) => !item.archived_at).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><span className="text-xs font-normal text-slate-500">Si seleccionas tarea o incidencia, el show se deriva automáticamente.</span></label>
       <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onCancel}>Cancelar</Button><Button disabled={loading} type="button" onClick={submit}>{loading ? "Subiendo..." : "Subir evidencia"}</Button></div>
     </div>
   );

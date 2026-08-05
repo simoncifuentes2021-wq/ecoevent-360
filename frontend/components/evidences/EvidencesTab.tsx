@@ -14,16 +14,19 @@ import { Button } from "@/components/ui/button";
 import { createEvidence, deleteEvidence, getEventEvidences } from "@/lib/api/evidences";
 import { getEventIncidents } from "@/lib/api/incidents";
 import { getEventTasks } from "@/lib/api/tasks";
+import { getEventSessions } from "@/lib/api/eventSessions";
 import { canDeleteEvidence, canUploadEvidence } from "@/lib/permissions";
 import type { Evidence } from "@/types/evidence";
 import type { Incident } from "@/types/incident";
 import type { UserRole } from "@/types/roles";
 import type { Task } from "@/types/task";
+import type { EventSession } from "@/types/eventSession";
 
 export function EvidencesTab({ eventId, role }: { eventId: string; role?: UserRole | null }) {
   const [evidences, setEvidences] = useState<Evidence[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [sessions, setSessions] = useState<EventSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,10 +40,11 @@ export function EvidencesTab({ eventId, role }: { eventId: string; role?: UserRo
     setLoading(true);
     setError(null);
     try {
-      const [evidenceData, taskData, incidentData] = await Promise.all([getEventEvidences(eventId), getEventTasks(eventId), getEventIncidents(eventId)]);
+      const [evidenceData, taskData, incidentData, sessionData] = await Promise.all([getEventEvidences(eventId), getEventTasks(eventId), getEventIncidents(eventId), getEventSessions(eventId)]);
       setEvidences(evidenceData.items);
       setTasks(taskData.items);
       setIncidents(incidentData.items);
+      setSessions(sessionData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la informacion.");
     } finally {
@@ -79,7 +83,7 @@ export function EvidencesTab({ eventId, role }: { eventId: string; role?: UserRo
       <EvidenceFilters q={q} type={type} onQChange={setQ} onTypeChange={setType} />
       {error ? <ErrorState message={error} onRetry={load} /> : null}
       {loading ? <p className="text-sm text-slate-500">Cargando evidencias...</p> : <EvidenceGallery canDelete={canDeleteEvidence(role)} evidences={filtered} onDelete={setDeleting} onPreview={setPreview} />}
-      {uploadOpen ? <ModalShell title="Subir evidencia" description="Adjunta imagen o PDF al evento." onClose={() => setUploadOpen(false)}><EvidenceUploader eventId={eventId} incidents={incidents} loading={saving} tasks={tasks} onCancel={() => setUploadOpen(false)} onSubmit={upload} /></ModalShell> : null}
+      {uploadOpen ? <ModalShell title="Subir evidencia" description="Adjunta imagen o PDF al evento." onClose={() => setUploadOpen(false)}><EvidenceUploader eventId={eventId} incidents={incidents} loading={saving} sessions={sessions} tasks={tasks} onCancel={() => setUploadOpen(false)} onSubmit={upload} /></ModalShell> : null}
       {preview ? <EvidencePreviewModal evidence={preview} onClose={() => setPreview(null)} /> : null}
       <EvidenceDeleteDialog evidence={deleting} onClose={() => setDeleting(null)} onConfirm={confirmDelete} />
     </div>
