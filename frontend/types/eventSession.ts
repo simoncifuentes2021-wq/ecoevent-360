@@ -1,3 +1,5 @@
+export type EventSessionStatus = "PLANNED" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+
 export type EventSession = {
   id: string;
   event_id: string;
@@ -10,7 +12,12 @@ export type EventSession = {
   stage_name?: string | null;
   expected_attendees: number;
   real_attendees?: number | null;
-  status: string;
+  responsible_id?: string | null;
+  status: EventSessionStatus;
+  sort_order: number;
+  internal_notes?: string | null;
+  archived_at?: string | null;
+  overlap_warning?: boolean;
   created_at?: string;
   updated_at?: string;
 };
@@ -25,7 +32,10 @@ export type EventSessionCreate = {
   stage_name?: string | null;
   expected_attendees?: number;
   real_attendees?: number | null;
-  status?: string;
+  responsible_id?: string | null;
+  status?: EventSessionStatus;
+  sort_order?: number;
+  internal_notes?: string | null;
 };
 
 export type EventSessionUpdate = Partial<EventSessionCreate>;

@@ -20,6 +20,8 @@ from app.schemas.event_form_schema import (
     EventFormUpdate,
     EventSessionCreate,
     EventSessionRead,
+    EventSessionReorder,
+    EventSessionTransition,
     EventSessionUpdate,
     FormsSessionComparisonResponse,
     FormFieldCreate,
@@ -32,6 +34,7 @@ from app.schemas.event_form_schema import (
     FormResponseRead,
 )
 from app.services import bike_zone_service, event_form_service, event_session_service, form_qr_service
+from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 from app.models.enums import EventFormType
 
 router = APIRouter(tags=["event forms"])
@@ -40,13 +43,15 @@ bike_router = APIRouter(prefix="/bike-zone", tags=["bike zone"])
 
 
 @router.post("/events/{event_id}/sessions", response_model=EventSessionRead, status_code=status.HTTP_201_CREATED)
-def create_session(event_id: UUID, payload: EventSessionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
-    return event_session_service.create_session(db, event_id, payload, current_user)
+def create_session(event_id: UUID, payload: EventSessionCreate, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    item = event_session_service.create_session(db, event_id, payload, current_user)
+    _audit_session(db, current_user, request, "SESSION_CREATED", item, new_data=serialize_model_for_audit(item))
+    return item
 
 
 @router.get("/events/{event_id}/sessions", response_model=list[EventSessionRead])
-def list_sessions(event_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
-    return event_session_service.list_event_sessions(db, event_id, current_user)
+def list_sessions(event_id: UUID, include_archived: bool = False, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    return event_session_service.list_event_sessions(db, event_id, current_user, include_archived=include_archived)
 
 
 @router.get("/event-sessions/{session_id}", response_model=EventSessionRead)
@@ -55,14 +60,60 @@ def get_session(session_id: UUID, db: Session = Depends(get_db), current_user: U
 
 
 @router.patch("/event-sessions/{session_id}", response_model=EventSessionRead)
-def update_session(session_id: UUID, payload: EventSessionUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
-    return event_session_service.update_session(db, session_id, payload, current_user)
+def update_session(session_id: UUID, payload: EventSessionUpdate, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    old_data = serialize_model_for_audit(event_session_service.get_session_or_404(db, session_id))
+    item = event_session_service.update_session(db, session_id, payload, current_user)
+    _audit_session(db, current_user, request, "SESSION_UPDATED", item, old_data=old_data, new_data=serialize_model_for_audit(item))
+    return item
+
+
+@router.post("/event-sessions/{session_id}/transition", response_model=EventSessionRead)
+def transition_session(session_id: UUID, payload: EventSessionTransition, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    old_data = serialize_model_for_audit(event_session_service.get_session_or_404(db, session_id))
+    item = event_session_service.transition_session(db, session_id, payload.status, current_user)
+    _audit_session(db, current_user, request, "SESSION_STATUS_CHANGED", item, old_data=old_data, new_data=serialize_model_for_audit(item))
+    return item
+
+
+@router.post("/event-sessions/{session_id}/archive", response_model=EventSessionRead)
+def archive_session(session_id: UUID, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    item = event_session_service.archive_session(db, session_id, current_user)
+    _audit_session(db, current_user, request, "SESSION_ARCHIVED", item, new_data=serialize_model_for_audit(item))
+    return item
+
+
+@router.post("/event-sessions/{session_id}/restore", response_model=EventSessionRead)
+def restore_session(session_id: UUID, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    item = event_session_service.restore_session(db, session_id, current_user)
+    _audit_session(db, current_user, request, "SESSION_RESTORED", item, new_data=serialize_model_for_audit(item))
+    return item
+
+
+@router.post("/event-sessions/{session_id}/duplicate", response_model=EventSessionRead, status_code=status.HTTP_201_CREATED)
+def duplicate_session(session_id: UUID, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    item = event_session_service.duplicate_session(db, session_id, current_user)
+    _audit_session(db, current_user, request, "SESSION_DUPLICATED", item, new_data=serialize_model_for_audit(item))
+    return item
+
+
+@router.put("/events/{event_id}/sessions/reorder", response_model=list[EventSessionRead])
+def reorder_sessions(event_id: UUID, payload: EventSessionReorder, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    items = event_session_service.reorder_sessions(db, event_id, payload.session_ids, current_user)
+    create_audit_log(db, user=current_user, action="SESSIONS_REORDERED", module="event_sessions", event_id=event_id, metadata={"session_ids": payload.session_ids}, request=request)
+    return items
 
 
 @router.delete("/event-sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_session(session_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+def delete_session(session_id: UUID, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    item = event_session_service.get_session_or_404(db, session_id)
+    event_id, old_data = item.event_id, serialize_model_for_audit(item)
     event_session_service.delete_session(db, session_id, current_user)
+    create_audit_log(db, user=current_user, action="SESSION_DELETED", module="event_sessions", entity_type="EventSession", entity_id=session_id, event_id=event_id, old_data=old_data, request=request)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _audit_session(db: Session, user: User, request: Request, action: str, item, **data) -> None:
+    create_audit_log(db, user=user, action=action, module="event_sessions", entity_type="EventSession", entity_id=item.id, event_id=item.event_id, request=request, **data)
 
 
 @router.post("/events/{event_id}/forms", response_model=EventFormRead, status_code=status.HTTP_201_CREATED)

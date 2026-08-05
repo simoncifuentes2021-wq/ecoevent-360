@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID
@@ -58,7 +58,7 @@ def sanitize_audit_data(value):
         return str(value)
     if isinstance(value, Decimal):
         return float(value)
-    if isinstance(value, datetime | date):
+    if isinstance(value, datetime | date | time):
         return value.isoformat()
     if isinstance(value, Enum):
         return value.value

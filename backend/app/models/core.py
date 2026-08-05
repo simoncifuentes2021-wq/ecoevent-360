@@ -26,6 +26,7 @@ from app.models.enums import (
     CarbonScope,
     BikeZoneStatus,
     EventStatus,
+    EventSessionStatus,
     EventFormStatus,
     EventFormType,
     FormFieldType,
@@ -1341,6 +1342,12 @@ class EventSession(Base):
     __table_args__ = (
         Index("idx_event_sessions_event_id", "event_id"),
         Index("idx_event_sessions_status", "status"),
+        Index("idx_event_sessions_responsible_id", "responsible_id"),
+        Index("idx_event_sessions_event_sort_order", "event_id", "sort_order"),
+        UniqueConstraint("event_id", "id", name="uq_event_sessions_event_id_id"),
+        CheckConstraint("expected_attendees >= 0", name="ck_event_sessions_expected_attendees"),
+        CheckConstraint("real_attendees is null or real_attendees >= 0", name="ck_event_sessions_real_attendees"),
+        CheckConstraint("sort_order >= 0", name="ck_event_sessions_sort_order"),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -1356,13 +1363,24 @@ class EventSession(Base):
     stage_name: Mapped[str | None] = mapped_column(String(180))
     expected_attendees: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     real_attendees: Mapped[int | None] = mapped_column(Integer)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, server_default=text("'PLANNED'"))
+    responsible_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    status: Mapped[EventSessionStatus] = mapped_column(
+        Enum(EventSessionStatus, name="event_session_status", native_enum=False),
+        nullable=False,
+        server_default=text("'PLANNED'"),
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    internal_notes: Mapped[str | None] = mapped_column(Text)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
     event: Mapped[Event] = relationship(back_populates="sessions")
     forms: Mapped[list["EventForm"]] = relationship(back_populates="session")
     responses: Mapped[list["FormResponse"]] = relationship(back_populates="session")
+    responsible: Mapped[User | None] = relationship()
 
 
 class EventForm(Base):
