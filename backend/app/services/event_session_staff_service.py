@@ -120,11 +120,24 @@ def operational_summary(db: Session, session_id: UUID, current_user: User) -> di
     session = _session(db, session_id)
     if not can_access_event(current_user, session.event_id, db):
         raise HTTPException(status_code=403, detail="Insufficient role")
-    task_rows = db.execute(select(Task.status, func.count()).where(Task.session_id == session_id).group_by(Task.status)).all()
-    incident_rows = db.execute(select(Incident.status, func.count()).where(Incident.session_id == session_id).group_by(Incident.status)).all()
-    evidence_count = db.scalar(select(func.count()).select_from(Evidence).outerjoin(Task, Evidence.task_id == Task.id).outerjoin(Incident, Evidence.incident_id == Incident.id).where(or_(Evidence.session_id == session_id, Task.session_id == session_id, Incident.session_id == session_id))) or 0
+    if current_user.role == UserRole.CLIENT:
+        raise HTTPException(status_code=403, detail="Show operations are internal")
+    task_filters = [Task.session_id == session_id]
+    incident_filters = [Incident.session_id == session_id]
+    staff_query = select(func.count()).select_from(EventSessionStaff).join(EventStaff)
+    active_staff_query = staff_query.where(EventSessionStaff.shift_start.is_not(None), EventSessionStaff.shift_end.is_not(None))
+    evidence_filters = [or_(Evidence.session_id == session_id, Task.session_id == session_id, Incident.session_id == session_id)]
+    if current_user.role in {UserRole.WORKER, UserRole.LOGISTICS_OPERATOR}:
+        staff_query = staff_query.where(EventStaff.user_id == current_user.id)
+        active_staff_query = active_staff_query.where(EventStaff.user_id == current_user.id)
+        task_filters.append(Task.assigned_to == current_user.id)
+        incident_filters.append(or_(Incident.reported_by == current_user.id, Incident.assigned_to == current_user.id))
+        evidence_filters.append(Evidence.uploaded_by == current_user.id)
+    task_rows = db.execute(select(Task.status, func.count()).where(*task_filters).group_by(Task.status)).all()
+    incident_rows = db.execute(select(Incident.status, func.count()).where(*incident_filters).group_by(Incident.status)).all()
+    evidence_count = db.scalar(select(func.count()).select_from(Evidence).outerjoin(Task, Evidence.task_id == Task.id).outerjoin(Incident, Evidence.incident_id == Incident.id).where(*evidence_filters)) or 0
     return {
-        "staff_count": db.scalar(select(func.count()).select_from(EventSessionStaff).where(EventSessionStaff.session_id == session_id)) or 0,
-        "active_shift_count": db.scalar(select(func.count()).select_from(EventSessionStaff).where(EventSessionStaff.session_id == session_id, EventSessionStaff.shift_start.is_not(None), EventSessionStaff.shift_end.is_not(None))) or 0,
+        "staff_count": db.scalar(staff_query.where(EventSessionStaff.session_id == session_id)) or 0,
+        "active_shift_count": db.scalar(active_staff_query.where(EventSessionStaff.session_id == session_id)) or 0,
         "tasks_by_status": dict(task_rows), "incidents_by_status": dict(incident_rows), "evidence_count": evidence_count,
     }

@@ -5,7 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
-from app.core.permissions import can_access_event, can_close_assigned_task, can_operate_event
+from app.core.permissions import can_access_event, can_close_assigned_task, can_manage_event, can_operate_event
 from app.models.core import Event, EventSession, Evidence, Incident, Task, User
 from app.models.enums import EventStatus, UserRole
 from app.services.file_storage_service import delete_stored_file, read_stored_file, save_evidence_file
@@ -163,6 +163,10 @@ def delete_evidence(db: Session, evidence_id: UUID, current_user: User) -> None:
     evidence = get_evidence_or_404(db, evidence_id)
     event = _get_event_or_404(db, evidence.event_id)
     if not can_access_event(current_user, evidence.event_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+    if not can_manage_event(current_user, evidence.event_id, db) and not (
+        current_user.role == UserRole.WORKER and evidence.uploaded_by == current_user.id
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
     if event.status in {EventStatus.FINISHED, EventStatus.REPORT_DELIVERED}:
         if current_user.role != UserRole.SUPER_ADMIN:

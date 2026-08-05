@@ -67,11 +67,11 @@ def upgrade() -> None:
 
     for table in ("tasks", "incidents", "evidences"):
         op.execute(f"drop policy if exists {table}_rls on {table}")
-    op.execute("create policy tasks_select on tasks for select using (app_can_view_event(event_id) or assigned_to=app_current_user_id())")
+    op.execute("create policy tasks_select on tasks for select using (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)) or (app_current_role()='WORKER' and assigned_to=app_current_user_id()))")
     op.execute("create policy tasks_insert on tasks for insert with check (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)))")
-    op.execute("create policy tasks_update on tasks for update using (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)) or assigned_to=app_current_user_id()) with check (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)) or assigned_to=app_current_user_id())")
+    op.execute("create policy tasks_update on tasks for update using (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)) or (app_current_role()='WORKER' and assigned_to=app_current_user_id())) with check (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)) or (app_current_role()='WORKER' and assigned_to=app_current_user_id()))")
     op.execute("create policy tasks_delete on tasks for delete using (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)))")
-    op.execute("create policy incidents_select on incidents for select using (app_can_view_event(event_id) or reported_by=app_current_user_id() or assigned_to=app_current_user_id())")
+    op.execute("create policy incidents_select on incidents for select using (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)) or (app_current_role()='WORKER' and (reported_by=app_current_user_id() or assigned_to=app_current_user_id())))")
     op.execute("create policy incidents_insert on incidents for insert with check (app_is_admin() or (app_current_role() in ('SUPERVISOR','WORKER') and app_can_view_event(event_id)))")
     op.execute("create policy incidents_update on incidents for update using (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id))) with check (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)))")
     op.execute("create policy incidents_delete on incidents for delete using (app_is_admin() or (app_current_role()='SUPERVISOR' and app_can_view_event(event_id)))")

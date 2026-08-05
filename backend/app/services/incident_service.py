@@ -2,12 +2,12 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import can_access_event, can_manage_event, can_operate_event
 from app.models.core import Event, EventSession, EventStaff, EventZone, Evidence, Incident, Task, User
-from app.models.enums import IncidentStatus, TaskStatus
+from app.models.enums import IncidentStatus, TaskStatus, UserRole
 from app.schemas.incident_schema import IncidentCorrectiveTaskCreate, IncidentCreate, IncidentResolve, IncidentUpdate
 
 
@@ -136,10 +136,14 @@ def list_event_incidents(
     scope: str | None = None,
 ) -> tuple[list[Incident], int]:
     _get_event_or_404(db, event_id)
+    if current_user.role in {UserRole.CLIENT, UserRole.LOGISTICS_OPERATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Incidents are not authorized for this role")
     if not can_access_event(current_user, event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
 
     filters = [Incident.event_id == event_id]
+    if current_user.role == UserRole.WORKER:
+        filters.append(or_(Incident.reported_by == current_user.id, Incident.assigned_to == current_user.id))
     if status_filter is not None:
         filters.append(Incident.status == status_filter)
     if scope == "general":
@@ -173,7 +177,11 @@ def list_event_incidents(
 
 def get_incident(db: Session, incident_id: UUID, current_user: User) -> Incident:
     incident = get_incident_or_404(db, incident_id)
+    if current_user.role in {UserRole.CLIENT, UserRole.LOGISTICS_OPERATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Incidents are not authorized for this role")
     if not can_access_event(current_user, incident.event_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+    if current_user.role == UserRole.WORKER and current_user.id not in {incident.reported_by, incident.assigned_to}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
     return incident
 

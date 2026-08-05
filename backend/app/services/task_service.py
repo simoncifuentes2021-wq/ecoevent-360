@@ -131,6 +131,8 @@ def list_event_tasks(
     scope: str | None = None,
 ) -> tuple[list[Task], int]:
     _get_event_or_404(db, event_id)
+    if current_user.role in {UserRole.CLIENT, UserRole.LOGISTICS_OPERATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tasks are not authorized for this role")
     if not can_access_event(current_user, event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
 

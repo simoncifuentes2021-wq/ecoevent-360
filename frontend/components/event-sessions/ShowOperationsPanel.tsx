@@ -36,6 +36,12 @@ export function ShowOperationsPanel({ eventId, session, staff, role }: { eventId
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if (role === "LOGISTICS_OPERATOR") {
+        setSummary(await getShowOperationalSummary(session.id));
+        setAssignments((await getShowStaff(session.id)).items);
+        setTasks([]); setIncidents([]); setEvidences([]);
+        return;
+      }
       const [summaryData, taskData, incidentData, evidenceData] = await Promise.all([
         getShowOperationalSummary(session.id), getEventTasks(eventId, { session_id: session.id }),
         getEventIncidents(eventId, { session_id: session.id }), getEventEvidences(eventId, { session_id: session.id })
