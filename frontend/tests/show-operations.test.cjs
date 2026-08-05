@@ -10,6 +10,8 @@ test("tareas e incidencias permiten General del evento o show activo", () => {
   for (const source of [read("tasks", "TaskFormModal.tsx"), read("incidents", "IncidentFormModal.tsx")]) {
     assert.match(source, /General del evento/);
     assert.match(source, /session_id/);
+    assert.match(source, /reassignment_reason/);
+    assert.match(source, /Motivo del cambio de show/);
     assert.match(source, /!item\.archived_at/);
   }
 });

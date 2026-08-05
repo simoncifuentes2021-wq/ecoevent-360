@@ -19,7 +19,8 @@ const schema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
   zone_id: z.string().optional(),
   assigned_to: z.string().optional(),
-  session_id: z.string().optional()
+  session_id: z.string().optional(),
+  reassignment_reason: z.string().max(500).optional()
 });
 
 export function IncidentFormModal({ incident, zones, staff, sessions = [], loading, onClose, onSubmit }: { incident?: Incident | null; zones: Zone[]; staff: EventStaff[]; sessions?: EventSession[]; loading?: boolean; onClose: () => void; onSubmit: (data: IncidentCreate | IncidentUpdate) => Promise<void> }) {
@@ -32,13 +33,14 @@ export function IncidentFormModal({ incident, zones, staff, sessions = [], loadi
       priority: incident?.priority || "MEDIUM",
       zone_id: incident?.zone_id || "",
       assigned_to: incident?.assigned_to || "",
-      session_id: incident?.session_id || ""
+      session_id: incident?.session_id || "",
+      reassignment_reason: ""
     }
   });
 
   return (
     <ModalShell title={incident ? "Editar incidencia" : "Crear incidencia"} description="Registra un problema operativo y asigna seguimiento." onClose={onClose}>
-      <form className="space-y-4" onSubmit={handleSubmit((values) => onSubmit({ ...values, zone_id: values.zone_id || null, assigned_to: values.assigned_to || null, session_id: values.session_id || null }))}>
+      <form className="space-y-4" onSubmit={handleSubmit((values) => onSubmit({ ...values, zone_id: values.zone_id || null, assigned_to: values.assigned_to || null, session_id: values.session_id || null, ...(incident ? { reassignment_reason: values.reassignment_reason?.trim() || null } : {}) }))}>
         <label className="grid gap-2 text-sm font-semibold">Titulo<Input {...register("title")} />{errors.title ? <span className="text-xs text-rose-600">{errors.title.message}</span> : null}</label>
         <label className="grid gap-2 text-sm font-semibold">Descripcion<textarea className="min-h-24 rounded-2xl border px-4 py-3" {...register("description")} />{errors.description ? <span className="text-xs text-rose-600">{errors.description.message}</span> : null}</label>
         <div className="grid gap-3 md:grid-cols-2">
@@ -47,6 +49,7 @@ export function IncidentFormModal({ incident, zones, staff, sessions = [], loadi
           <label className="grid gap-2 text-sm font-semibold">Zona<select className="h-12 rounded-2xl border px-4" {...register("zone_id")}><option value="">Sin zona</option>{zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}</select></label>
           <label className="grid gap-2 text-sm font-semibold">Responsable<select className="h-12 rounded-2xl border px-4" {...register("assigned_to")}><option value="">Sin asignar</option>{staff.map((item) => <option key={item.user_id} value={item.user_id}>{item.user?.full_name || item.user_id}</option>)}</select></label>
           <label className="grid gap-2 text-sm font-semibold md:col-span-2">Contexto<select className="h-12 rounded-2xl border px-4" {...register("session_id")}><option value="">General del evento</option>{sessions.filter((item) => !item.archived_at).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.session_date || "Sin fecha"} {item.start_time?.slice(0, 5) || ""}</option>)}</select></label>
+          {incident ? <label className="grid gap-2 text-sm font-semibold md:col-span-2">Motivo del cambio de show<textarea className="min-h-20 rounded-2xl border px-4 py-3 font-normal" placeholder="Obligatorio si cambias el contexto del show" {...register("reassignment_reason")} /></label> : null}
         </div>
         <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={loading} type="submit">{loading ? "Guardando..." : "Guardar"}</Button></div>
       </form>
