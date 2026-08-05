@@ -118,6 +118,14 @@ class EventStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class EventSessionStatus(StrEnum):
+    PLANNED = "PLANNED"
+    READY = "READY"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+
+
 class TaskStatus(StrEnum):
     PENDING = "PENDING"
     IN_PROGRESS = "IN_PROGRESS"

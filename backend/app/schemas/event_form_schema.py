@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.enums import BikeZoneStatus, EventFormStatus, EventFormType, FormFieldType
+from app.models.enums import BikeZoneStatus, EventFormStatus, EventFormType, EventSessionStatus, FormFieldType
 
 
 class ORMModel(BaseModel):
@@ -21,7 +21,10 @@ class EventSessionCreate(BaseModel):
     stage_name: str | None = Field(default=None, max_length=180)
     expected_attendees: int = Field(default=0, ge=0)
     real_attendees: int | None = Field(default=None, ge=0)
-    status: str = Field(default="PLANNED", max_length=50)
+    responsible_id: UUID | None = None
+    status: EventSessionStatus = EventSessionStatus.PLANNED
+    sort_order: int = Field(default=0, ge=0)
+    internal_notes: str | None = None
 
     @field_validator("description", "session_date", "start_time", "end_time", "venue_name", "stage_name", mode="before")
     @classmethod
@@ -41,7 +44,9 @@ class EventSessionUpdate(BaseModel):
     stage_name: str | None = Field(default=None, max_length=180)
     expected_attendees: int | None = Field(default=None, ge=0)
     real_attendees: int | None = Field(default=None, ge=0)
-    status: str | None = Field(default=None, max_length=50)
+    responsible_id: UUID | None = None
+    sort_order: int | None = Field(default=None, ge=0)
+    internal_notes: str | None = None
 
     @field_validator("description", "session_date", "start_time", "end_time", "venue_name", "stage_name", mode="before")
     @classmethod
@@ -56,6 +61,16 @@ class EventSessionRead(EventSessionCreate, ORMModel):
     event_id: UUID
     created_at: datetime
     updated_at: datetime
+    archived_at: datetime | None = None
+    overlap_warning: bool = False
+
+
+class EventSessionTransition(BaseModel):
+    status: EventSessionStatus
+
+
+class EventSessionReorder(BaseModel):
+    session_ids: list[UUID] = Field(min_length=1)
 
 
 class FormFieldOptionCreate(BaseModel):
