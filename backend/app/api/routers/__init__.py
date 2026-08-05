@@ -23,6 +23,7 @@ from app.api.routers import (
     stock,
     surveys,
     tasks,
+    temporary_database_diagnostic,
     users,
     waste,
     warehouses,
@@ -31,6 +32,7 @@ from app.api.routers import (
 
 routers = [
     health.router,
+    temporary_database_diagnostic.router,
     audit_logs.router,
     audit_logs.event_router,
     auth.router,
