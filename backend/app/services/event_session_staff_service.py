@@ -123,6 +123,8 @@ def update_assignment(db: Session, assignment_id: UUID, payload: EventSessionSta
     db.commit()
     db.refresh(item)
     item.overlap_warning = _overlap(db, item)
+    item.user = item.event_staff.user
+    item.session_name = _session(db, item.session_id).name
     return item
 
 

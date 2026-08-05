@@ -82,6 +82,11 @@ def test_show_staff_integrity_overlap_update_and_remove(context):
         event_session_staff_service.create_assignment(db, shows[0].id, EventSessionStaffCreate(event_staff_id=staff["other"].id), users["admin"])
     changed = event_session_staff_service.update_assignment(db, first.id, EventSessionStaffUpdate(operational_role="Stage manager"), users["supervisor"])
     assert changed.operational_role == "Stage manager"
+    assert changed.user.full_name == "Worker"
+    assert changed.session_name == "Show A"
+    changed_response = EventSessionStaffRead.model_validate(changed)
+    assert changed_response.user.full_name == "Worker"
+    assert changed_response.session_name == "Show A"
     event_session_staff_service.delete_assignment(db, changed.id, users["admin"])
     assert db.get(EventSessionStaff, changed.id) is None
 
