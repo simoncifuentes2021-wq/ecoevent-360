@@ -9,6 +9,14 @@ from app.models.enums import IncidentStatus, PriorityLevel
 IncidentType = Literal["SANITARY", "WASTE", "CLEANING", "ENVIRONMENTAL", "SAFETY", "OTHER"]
 
 
+class IncidentReporterRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    full_name: str
+    email: str
+
+
 class IncidentCreate(BaseModel):
     session_id: UUID | None = None
     source_task_id: UUID | None = None
@@ -45,6 +53,7 @@ class IncidentRead(BaseModel):
     source_task_id: UUID | None = None
     zone_id: UUID | None = None
     reported_by: UUID | None = None
+    reporter: IncidentReporterRead | None = None
     assigned_to: UUID | None = None
     title: str
     description: str | None = None

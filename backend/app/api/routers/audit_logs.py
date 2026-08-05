@@ -6,13 +6,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user, require_roles
 from app.core.permissions import can_access_event
 from app.db.session import get_db
 from app.models.audit_log import AuditLog
-from app.models.core import User
+from app.models.core import EventSession, User
 from app.models.enums import UserRole
 from app.schemas.audit_log_schema import AuditLogListResponse, AuditLogRead
 from app.services.audit_log_service import list_audit_logs
@@ -21,7 +22,19 @@ router = APIRouter(prefix="/audit-logs", tags=["audit logs"])
 event_router = APIRouter(prefix="/events", tags=["audit logs"])
 
 
-def _to_read(log: AuditLog) -> AuditLogRead:
+def _session_id(log: AuditLog) -> UUID | None:
+    for data in (log.metadata_, log.new_data, log.old_data):
+        value = data.get("session_id") if isinstance(data, dict) else None
+        if value:
+            try:
+                return UUID(str(value))
+            except ValueError:
+                return None
+    return None
+
+
+def _to_read(log: AuditLog, session_names: dict[UUID, str]) -> AuditLogRead:
+    session_id = _session_id(log)
     return AuditLogRead(
         id=log.id,
         user_id=log.user_id,
@@ -38,6 +51,8 @@ def _to_read(log: AuditLog) -> AuditLogRead:
         incident_title=log.incident.title if log.incident else None,
         zone_id=log.zone_id,
         zone_name=log.zone.name if log.zone else None,
+        session_id=session_id,
+        session_name=session_names.get(session_id) if session_id else None,
         action=log.action,
         module=log.module,
         entity_type=log.entity_type,
@@ -98,8 +113,10 @@ def get_audit_logs(
         to_date=to_date,
         q=q,
     )
+    session_ids = {session_id for item in items if (session_id := _session_id(item)) is not None}
+    session_names = dict(db.execute(select(EventSession.id, EventSession.name).where(EventSession.id.in_(session_ids))).all()) if session_ids else {}
     return AuditLogListResponse(
-        items=[_to_read(item) for item in items],
+        items=[_to_read(item, session_names) for item in items],
         total=total,
         page=page,
         limit=limit,
@@ -243,8 +260,10 @@ def get_event_audit_logs(
         from_date=from_date,
         to_date=to_date,
     )
+    session_ids = {session_id for item in items if (session_id := _session_id(item)) is not None}
+    session_names = dict(db.execute(select(EventSession.id, EventSession.name).where(EventSession.id.in_(session_ids))).all()) if session_ids else {}
     return AuditLogListResponse(
-        items=[_to_read(item) for item in items],
+        items=[_to_read(item, session_names) for item in items],
         total=total,
         page=page,
         limit=limit,

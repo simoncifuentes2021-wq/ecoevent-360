@@ -18,6 +18,7 @@ export function StaffTable({ staff, loading, error, canManage, onRemove }: { sta
     { key: "email", header: "Email", cell: (item) => item.user?.email || "-" },
     { key: "role", header: "Rol global", cell: (item) => item.user?.role ? <RoleBadge role={item.user.role} /> : "-" },
     { key: "event_role", header: "Rol evento", cell: (item) => <StaffRoleBadge role={item.role_in_event} /> },
+    { key: "context", header: "Contexto", cell: (item) => <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold">{item.session_name || "General del evento"}</span> },
     { key: "start", header: "Inicio turno", cell: (item) => dateTime(item.shift_start) },
     { key: "end", header: "Fin turno", cell: (item) => dateTime(item.shift_end) }
   ];
@@ -30,7 +31,7 @@ export function StaffTable({ staff, loading, error, canManage, onRemove }: { sta
       emptyDescription="Asigna supervisores y trabajadores para habilitar tareas operativas."
       emptyTitle="Sin personal asignado"
       error={error}
-      getRowKey={(item) => item.user_id}
+      getRowKey={(item) => item.show_assignment_id || `general-${item.user_id}`}
       loading={loading}
     />
   );

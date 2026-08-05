@@ -87,6 +87,8 @@ def create_assignment(db: Session, session_id: UUID, payload: EventSessionStaffC
         raise HTTPException(status_code=409, detail="Person is already assigned to this show")
     db.refresh(item)
     item.overlap_warning = _overlap(db, item)
+    item.user = staff.user
+    item.session_name = session.name
     return item
 
 
@@ -105,6 +107,7 @@ def list_assignments(db: Session, session_id: UUID, current_user: User, page: in
     for item in items:
         item.overlap_warning = item.id in overlapping_ids
         item.user = item.event_staff.user
+        item.session_name = session.name
     return items, total
 
 

@@ -42,7 +42,7 @@ export function IncidentTable({
     { key: "zone", header: "Zona", cell: (item) => item.zone?.name || "-" },
     { key: "priority", header: "Prioridad", cell: (item) => <PriorityBadge priority={item.priority} /> },
     { key: "status", header: "Estado", cell: (item) => <IncidentStatusBadge status={item.status} /> },
-    { key: "reported", header: "Reportado por", cell: (item) => item.reporter?.full_name || item.reported_by || "-" },
+    { key: "reported", header: "Reportado por", cell: (item) => item.reporter?.full_name?.trim() || item.reporter?.email || "Usuario no disponible" },
     { key: "assigned", header: "Responsable", cell: (item) => item.assignee?.full_name || item.assigned_to || "-" },
     { key: "created", header: "Creada", cell: (item) => date(item.created_at) }
   ];

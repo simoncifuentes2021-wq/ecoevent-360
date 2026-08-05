@@ -105,6 +105,9 @@ def create_evidence(
     db.add(evidence)
     db.commit()
     db.refresh(evidence)
+    if resolved_session is not None:
+        set_committed_value(evidence, "session_id", resolved_session)
+        evidence.session_name = show.name
     return evidence
 
 
@@ -133,16 +136,18 @@ def list_event_evidences(
     base = Evidence.__table__.outerjoin(Task, Evidence.task_id == Task.id).outerjoin(Incident, Evidence.incident_id == Incident.id)
     total = db.scalar(select(func.count(Evidence.id)).select_from(base).where(*filters)) or 0
     rows = db.execute(
-            select(Evidence, derived_session.label("resolved_session_id")).select_from(base)
+            select(Evidence, derived_session.label("resolved_session_id"), EventSession.name.label("session_name"))
+            .select_from(base.outerjoin(EventSession, EventSession.id == derived_session))
             .where(*filters)
             .order_by(Evidence.created_at.desc())
             .offset((page - 1) * limit)
             .limit(limit)
         ).all()
     items = []
-    for evidence, resolved_session_id in rows:
+    for evidence, resolved_session_id, session_name in rows:
         if evidence.session_id is None:
             set_committed_value(evidence, "session_id", resolved_session_id)
+        evidence.session_name = session_name
         items.append(evidence)
     return items, total
 
@@ -151,6 +156,13 @@ def get_evidence(db: Session, evidence_id: UUID, current_user: User) -> Evidence
     evidence = get_evidence_or_404(db, evidence_id)
     if not can_access_event(current_user, evidence.event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+    task = db.get(Task, evidence.task_id) if evidence.task_id else None
+    incident = db.get(Incident, evidence.incident_id) if evidence.incident_id else None
+    resolved_session_id = (task.session_id if task else None) or (incident.session_id if incident else None) or evidence.session_id
+    if resolved_session_id is not None:
+        session = db.get(EventSession, resolved_session_id)
+        set_committed_value(evidence, "session_id", resolved_session_id)
+        evidence.session_name = session.name if session else None
     return evidence
 
 

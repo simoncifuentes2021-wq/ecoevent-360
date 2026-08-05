@@ -12,6 +12,7 @@ class EvidenceRead(BaseModel):
     task_id: UUID | None = None
     incident_id: UUID | None = None
     session_id: UUID | None = None
+    session_name: str | None = None
     uploaded_by: UUID | None = None
     file_url: str
     file_type: str | None = None

@@ -14,6 +14,8 @@ from app.models.core import Client, Event, EventSessionStaff, EventStaff, Eviden
 from app.models.enums import EventStatus, UserRole
 from app.schemas.event_form_schema import EventSessionCreate
 from app.schemas.event_session_staff_schema import EventSessionStaffCreate, EventSessionStaffUpdate
+from app.schemas.event_session_staff_schema import EventSessionStaffRead
+from app.schemas.evidence_schema import EvidenceRead
 from app.schemas.incident_schema import IncidentCorrectiveTaskCreate, IncidentCreate, IncidentUpdate
 from app.schemas.task_schema import TaskCreate, TaskUpdate
 from app.services import evidence_service, event_session_service, event_session_staff_service, incident_service, task_service
@@ -84,6 +86,28 @@ def test_show_staff_integrity_overlap_update_and_remove(context):
     assert db.get(EventSessionStaff, changed.id) is None
 
 
+def test_show_staff_shift_timezone_normalization_and_response_context(context):
+    db, _, users, staff, shows = context
+    payload = EventSessionStaffCreate(
+        event_staff_id=staff["worker"].id,
+        shift_start="2026-08-10T06:00:00-04:00",
+        shift_end="2026-08-10T12:00:00Z",
+    )
+    assert payload.shift_start == datetime(2026, 8, 10, 10)
+    assert payload.shift_end == datetime(2026, 8, 10, 12)
+    item = event_session_staff_service.create_assignment(db, shows[0].id, payload, users["admin"])
+    assert item.user.full_name == "Worker"
+    assert item.session_name == "Show A"
+    response = EventSessionStaffRead.model_validate(item)
+    assert response.user.full_name == "Worker" and response.session_name == "Show A"
+    assert response.shift_start == datetime(2026, 8, 10, 10)
+    assert EventSessionStaffCreate(event_staff_id=staff["supervisor"].id).shift_start is None
+    with pytest.raises(ValueError, match="shift_start must be before shift_end"):
+        EventSessionStaffCreate(event_staff_id=staff["supervisor"].id, shift_start="2026-08-10T13:00:00Z", shift_end="2026-08-10T12:00:00Z")
+    with pytest.raises(ValueError):
+        EventSessionStaffCreate(event_staff_id=staff["supervisor"].id, shift_start="not-a-date")
+
+
 def test_general_and_show_tasks_filters_and_safe_reassignment(context):
     db, events, users, _, shows = context
     general = task_service.create_task(db, events[0].id, TaskCreate(title="General", priority="MEDIUM"), users["admin"])
@@ -147,9 +171,13 @@ def test_evidence_show_is_derived_without_exposing_storage_key(context, monkeypa
     task = task_service.create_task(db, events[0].id, TaskCreate(title="Evidence task", priority="MEDIUM", session_id=shows[0].id), users["admin"])
     monkeypatch.setattr(evidence_service, "save_evidence_file", lambda _: ("private/evidences/test.webp", "image/webp"))
     evidence = evidence_service.create_evidence(db, event_id=events[0].id, task_id=task.id, incident_id=None, description="Derived", file=UploadFile(filename="test.webp", file=BytesIO(b"x")), current_user=users["admin"])
-    assert evidence.session_id is None
+    assert evidence.session_id == shows[0].id
+    assert evidence.session_name == "Show A"
+    response = EvidenceRead.model_validate(evidence)
+    assert response.session_id == shows[0].id and response.session_name == "Show A"
+    assert response.file_url == f"/evidences/{evidence.id}/download"
     items, total = evidence_service.list_event_evidences(db, event_id=events[0].id, current_user=users["admin"], page=1, limit=20, session_id=shows[0].id)
-    assert total == 1 and items[0].session_id == shows[0].id
+    assert total == 1 and items[0].session_id == shows[0].id and items[0].session_name == "Show A"
     with pytest.raises(HTTPException, match="contradicts"):
         evidence_service.create_evidence(db, event_id=events[0].id, task_id=task.id, incident_id=None, session_id=shows[1].id, description="Bad", file=UploadFile(filename="test.webp", file=BytesIO(b"x")), current_user=users["admin"])
     shows[1].archived_at = datetime(2026, 8, 9)

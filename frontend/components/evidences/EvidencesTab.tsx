@@ -35,6 +35,7 @@ export function EvidencesTab({ eventId, role }: { eventId: string; role?: UserRo
   const [deleting, setDeleting] = useState<Evidence | null>(null);
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
+  const [context, setContext] = useState("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,7 +55,7 @@ export function EvidencesTab({ eventId, role }: { eventId: string; role?: UserRo
 
   useEffect(() => { void load(); }, [load]);
 
-  const filtered = useMemo(() => evidences.filter((item) => (!q || `${item.description || ""} ${item.filename || ""}`.toLowerCase().includes(q.toLowerCase())) && (!type || (type === "image" ? item.file_type.startsWith("image/") : item.file_type.includes("pdf")))), [evidences, q, type]);
+  const filtered = useMemo(() => evidences.filter((item) => (!q || `${item.description || ""} ${item.filename || ""}`.toLowerCase().includes(q.toLowerCase())) && (!type || (type === "image" ? item.file_type.startsWith("image/") : item.file_type.includes("pdf"))) && (context === "all" || (context === "general" ? !item.session_id : item.session_id === context))), [context, evidences, q, type]);
 
   async function upload(formData: FormData) {
     setSaving(true);
@@ -80,7 +81,7 @@ export function EvidencesTab({ eventId, role }: { eventId: string; role?: UserRo
         <div><h2 className="text-xl font-bold text-slate-950">Evidencias</h2><p className="text-sm text-slate-600">Fotos y documentos que respaldan la operacion del evento.</p></div>
         {canUploadEvidence(role) ? <Button onClick={() => setUploadOpen(true)}><Upload className="h-4 w-4" />Subir evidencia</Button> : null}
       </div>
-      <EvidenceFilters q={q} type={type} onQChange={setQ} onTypeChange={setType} />
+      <EvidenceFilters q={q} type={type} context={context} sessions={sessions} onQChange={setQ} onTypeChange={setType} onContextChange={setContext} />
       {error ? <ErrorState message={error} onRetry={load} /> : null}
       {loading ? <p className="text-sm text-slate-500">Cargando evidencias...</p> : <EvidenceGallery canDelete={canDeleteEvidence(role)} evidences={filtered} onDelete={setDeleting} onPreview={setPreview} />}
       {uploadOpen ? <ModalShell title="Subir evidencia" description="Adjunta imagen o PDF al evento." onClose={() => setUploadOpen(false)}><EvidenceUploader eventId={eventId} incidents={incidents} loading={saving} sessions={sessions} tasks={tasks} onCancel={() => setUploadOpen(false)} onSubmit={upload} /></ModalShell> : null}

@@ -27,6 +27,7 @@ export function EvidenceCard({ evidence, canDelete, onPreview, onDelete }: { evi
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-semibold text-slate-950">{evidence.description || evidence.filename || "Evidencia operacional"}</p>
+            <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">{evidence.session_name || "General"}</p>
             <p className="text-xs text-slate-500">{date(evidence.created_at || evidence.taken_at)}</p>
           </div>
           {isImage ? <ImageIcon className="h-5 w-5 text-emerald-700" /> : <FileText className="h-5 w-5 text-slate-500" />}

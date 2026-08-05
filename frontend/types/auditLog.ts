@@ -36,6 +36,8 @@ export type AuditLog = {
   incident_title?: string | null;
   zone_id?: string | null;
   zone_name?: string | null;
+  session_id?: string | null;
+  session_name?: string | null;
   action: string;
   module: string;
   entity_type?: string | null;

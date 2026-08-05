@@ -6,6 +6,7 @@ export type Evidence = {
   task_id?: string | null;
   incident_id?: string | null;
   session_id?: string | null;
+  session_name?: string | null;
   uploaded_by?: string | null;
   uploader?: Pick<User, "id" | "full_name" | "email"> | null;
   file_url: string;
