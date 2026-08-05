@@ -47,6 +47,8 @@ export function AuditDetailModal({ log, onClose }: { log: AuditLog | null; onClo
             <Info label="Evento" value={log.event_name || "-"} />
             <Info label="Cliente" value={log.client_name || "-"} />
             <Info label="Zona" value={log.zone_name || "-"} />
+            <Info label="Show" value={log.session_id ? (log.session_name || "Show no disponible") : "General"} />
+            {log.session_id ? <Info label="ID tecnico del show" value={log.session_id} /> : null}
             <Info label="Tarea" value={log.task_title || "-"} />
             <Info label="Incidencia" value={log.incident_title || "-"} />
             <Info label="Entidad" value={`${log.entity_type || "-"} ${log.entity_id || ""}`} />

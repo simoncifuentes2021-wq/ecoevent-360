@@ -6,6 +6,7 @@ export type ShowStaffAssignment = {
   id: string;
   event_id: string;
   session_id: string;
+  session_name?: string | null;
   event_staff_id: string;
   shift_start?: string | null;
   shift_end?: string | null;

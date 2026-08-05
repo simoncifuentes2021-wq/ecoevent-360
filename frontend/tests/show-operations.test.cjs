@@ -36,3 +36,18 @@ test("detalle del show integra resumen y operación humana sin diálogos nativos
   assert.match(sources, /ConfirmDialog/);
   assert.doesNotMatch(sources, /window\.(?:alert|confirm|prompt)|\b(?:alert|confirm|prompt)\s*\(/);
 });
+
+test("contexto legible en personal, evidencias, incidencias y auditoria", () => {
+  const evidenceTab = read("evidences", "EvidencesTab.tsx");
+  const evidenceCard = read("evidences", "EvidenceCard.tsx");
+  const staffTab = read("staff", "StaffTab.tsx");
+  const incidentTable = read("incidents", "IncidentTable.tsx");
+  const auditModal = read("audit", "AuditDetailModal.tsx");
+  assert.match(evidenceTab, /context === "general"/);
+  assert.match(evidenceCard, /session_name \|\| "General"/);
+  assert.match(staffTab, /session\.name/);
+  assert.doesNotMatch(incidentTable, /item\.reported_by \|\|/);
+  assert.match(incidentTable, /Usuario no disponible/);
+  assert.match(auditModal, /Show no disponible/);
+  assert.match(auditModal, /ID tecnico del show/);
+});
