@@ -10,6 +10,8 @@ IncidentType = Literal["SANITARY", "WASTE", "CLEANING", "ENVIRONMENTAL", "SAFETY
 
 
 class IncidentCreate(BaseModel):
+    session_id: UUID | None = None
+    source_task_id: UUID | None = None
     zone_id: UUID | None = None
     assigned_to: UUID | None = None
     title: str = Field(min_length=1, max_length=180)
@@ -19,6 +21,8 @@ class IncidentCreate(BaseModel):
 
 
 class IncidentUpdate(BaseModel):
+    session_id: UUID | None = None
+    reassignment_reason: str | None = Field(default=None, max_length=500)
     zone_id: UUID | None = None
     assigned_to: UUID | None = None
     title: str | None = Field(default=None, min_length=1, max_length=180)
@@ -37,6 +41,8 @@ class IncidentRead(BaseModel):
 
     id: UUID
     event_id: UUID
+    session_id: UUID | None = None
+    source_task_id: UUID | None = None
     zone_id: UUID | None = None
     reported_by: UUID | None = None
     assigned_to: UUID | None = None
@@ -56,3 +62,11 @@ class IncidentListResponse(BaseModel):
     total: int
     page: int
     limit: int
+
+
+class IncidentCorrectiveTaskCreate(BaseModel):
+    assigned_to: UUID | None = None
+    title: str = Field(min_length=1, max_length=180)
+    description: str | None = None
+    priority: PriorityLevel = PriorityLevel.MEDIUM
+    scheduled_at: datetime | None = None

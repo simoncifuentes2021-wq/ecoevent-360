@@ -37,7 +37,7 @@ export function IncidentTable({
   onCloseIncident: (incident: Incident) => void;
 }) {
   const columns: DataTableColumn<Incident>[] = [
-    { key: "title", header: "Incidencia", cell: (item) => <span className="font-semibold">{item.title}</span> },
+    { key: "title", header: "Incidencia", cell: (item) => <div><span className="font-semibold">{item.title}</span><p className="text-xs text-slate-500">{item.session_name || "General del evento"}</p></div> },
     { key: "type", header: "Tipo", cell: (item) => <IncidentTypeBadge type={item.incident_type || item.type} /> },
     { key: "zone", header: "Zona", cell: (item) => item.zone?.name || "-" },
     { key: "priority", header: "Prioridad", cell: (item) => <PriorityBadge priority={item.priority} /> },

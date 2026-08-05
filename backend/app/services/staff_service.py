@@ -58,6 +58,8 @@ def assign_staff(
 
 def list_event_staff(db: Session, event_id: UUID, current_user: User) -> list[EventStaff]:
     _get_event_or_404(db, event_id)
+    if current_user.role == UserRole.CLIENT:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Event staffing is internal")
     if not can_access_event(current_user, event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
     return list(

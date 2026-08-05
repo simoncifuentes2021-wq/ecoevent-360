@@ -8,6 +8,9 @@ export type IncidentType = "SANITARY" | "WASTE" | "CLEANING" | "ENVIRONMENTAL" |
 export type Incident = {
   id: string;
   event_id: string;
+  session_id?: string | null;
+  session_name?: string | null;
+  source_task_id?: string | null;
   zone_id?: string | null;
   zone?: Pick<Zone, "id" | "name"> | null;
   reported_by?: string | null;
@@ -28,6 +31,8 @@ export type Incident = {
 };
 
 export type IncidentCreate = {
+  session_id?: string | null;
+  source_task_id?: string | null;
   zone_id?: string | null;
   title: string;
   description: string;
@@ -38,6 +43,7 @@ export type IncidentCreate = {
 
 export type IncidentUpdate = Partial<IncidentCreate> & {
   status?: IncidentStatus;
+  reassignment_reason?: string | null;
 };
 
 export type IncidentResolve = {

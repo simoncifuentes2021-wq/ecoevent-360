@@ -36,7 +36,7 @@ export function TaskTable({
   onComplete: (task: Task) => void;
 }) {
   const columns: DataTableColumn<Task>[] = [
-    { key: "title", header: "Tarea", cell: (task) => <span className="font-semibold">{task.title}</span> },
+    { key: "title", header: "Tarea", cell: (task) => <div><span className="font-semibold">{task.title}</span><p className="text-xs text-slate-500">{task.session_name || "General del evento"}</p></div> },
     { key: "zone", header: "Zona", cell: (task) => task.zone?.name || "-" },
     { key: "assignee", header: "Responsable", cell: (task) => task.assignee?.full_name || task.assigned_user?.full_name || "Sin asignar" },
     { key: "status", header: "Estado", cell: (task) => <TaskStatusBadge status={task.status} /> },

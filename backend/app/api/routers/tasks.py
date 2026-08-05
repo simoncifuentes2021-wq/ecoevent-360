@@ -42,7 +42,7 @@ def create_task(
         entity_type="Task",
         entity_id=task.id,
         event_id=task.event_id,
-        new_data={"id": task.id, "title": task.title, "status": task.status},
+        new_data={"id": task.id, "title": task.title, "status": task.status, "session_id": task.session_id},
         request=request,
     )
     return task
@@ -55,6 +55,8 @@ def list_event_tasks(
     assigned_to: UUID | None = None,
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
+    session_id: UUID | None = None,
+    scope: str | None = Query(default=None, pattern="^(general|session|general_and_session)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -66,6 +68,8 @@ def list_event_tasks(
         assigned_to=assigned_to,
         page=page,
         limit=limit,
+        session_id=session_id,
+        scope=scope,
     )
     return TaskListResponse(items=items, total=total, page=page, limit=limit)
 
@@ -94,18 +98,20 @@ def update_task(
         "priority": before.priority,
         "assigned_to": before.assigned_to,
         "zone_id": before.zone_id,
+        "session_id": before.session_id,
     }
     task = task_service.update_task(db, task_id, payload, current_user)
     create_audit_log(
         db,
         user=current_user,
-        action="UPDATE",
+        action="TASK_SESSION_REASSIGNED" if "session_id" in payload.model_fields_set and old_data["session_id"] != task.session_id else "UPDATE",
         module="tasks",
         entity_type="Task",
         entity_id=task.id,
         event_id=task.event_id,
         old_data=old_data,
         new_data=payload.model_dump(exclude_unset=True),
+        metadata={"session_id": task.session_id, "reassignment_reason": payload.reassignment_reason} if "session_id" in payload.model_fields_set else None,
         request=request,
     )
     return task

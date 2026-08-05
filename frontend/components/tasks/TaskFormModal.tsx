@@ -8,6 +8,7 @@ import { ModalShell } from "@/components/common/ModalShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { EventStaff } from "@/types/staff";
+import type { EventSession } from "@/types/eventSession";
 import type { Task, TaskCreate, TaskUpdate } from "@/types/task";
 import type { Zone } from "@/types/zone";
 
@@ -16,11 +17,13 @@ const schema = z.object({
   description: z.string().optional(),
   zone_id: z.string().optional(),
   assigned_to: z.string().optional(),
+  session_id: z.string().optional(),
+  reassignment_reason: z.string().max(500).optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
   scheduled_at: z.string().optional()
 });
 
-export function TaskFormModal({ task, zones, staff, loading, onClose, onSubmit }: { task?: Task | null; zones: Zone[]; staff: EventStaff[]; loading?: boolean; onClose: () => void; onSubmit: (data: TaskCreate | TaskUpdate) => Promise<void> }) {
+export function TaskFormModal({ task, zones, staff, sessions = [], loading, onClose, onSubmit }: { task?: Task | null; zones: Zone[]; staff: EventStaff[]; sessions?: EventSession[]; loading?: boolean; onClose: () => void; onSubmit: (data: TaskCreate | TaskUpdate) => Promise<void> }) {
   const { register, handleSubmit, formState: { errors } } = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -28,6 +31,8 @@ export function TaskFormModal({ task, zones, staff, loading, onClose, onSubmit }
       description: task?.description || "",
       zone_id: task?.zone_id || "",
       assigned_to: task?.assigned_to || "",
+      session_id: task?.session_id || "",
+      reassignment_reason: "",
       priority: task?.priority || "MEDIUM",
       scheduled_at: task?.scheduled_at ? task.scheduled_at.slice(0, 16) : ""
     }
@@ -40,6 +45,8 @@ export function TaskFormModal({ task, zones, staff, loading, onClose, onSubmit }
         description: values.description || null,
         zone_id: values.zone_id || null,
         assigned_to: values.assigned_to || null,
+        session_id: values.session_id || null,
+        ...(task ? { reassignment_reason: values.reassignment_reason?.trim() || null } : {}),
         priority: values.priority,
         scheduled_at: values.scheduled_at || null
       }))}>
@@ -58,6 +65,13 @@ export function TaskFormModal({ task, zones, staff, loading, onClose, onSubmit }
               {staff.map((item) => <option key={item.user_id} value={item.user_id}>{item.user?.full_name || item.user_id}</option>)}
             </select>
           </label>
+          <label className="grid min-w-0 gap-2 text-sm font-semibold">Contexto
+            <select className="h-12 min-w-0 w-full rounded-2xl border bg-white px-4" {...register("session_id")}>
+              <option value="">General del evento</option>
+              {sessions.filter((item) => !item.archived_at).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.session_date || "Sin fecha"} {item.start_time?.slice(0, 5) || ""}</option>)}
+            </select>
+          </label>
+          {task ? <label className="grid min-w-0 gap-2 text-sm font-semibold md:col-span-2">Motivo del cambio de show<textarea className="min-h-20 rounded-2xl border px-4 py-3 font-normal" placeholder="Obligatorio si cambias el contexto del show" {...register("reassignment_reason")} /></label> : null}
           <label className="grid min-w-0 gap-2 text-sm font-semibold">Prioridad
             <select className="h-12 min-w-0 w-full rounded-2xl border bg-white px-4 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" {...register("priority")}>
               <option value="LOW">Baja</option><option value="MEDIUM">Media</option><option value="HIGH">Alta</option><option value="CRITICAL">Critica</option>

@@ -14,6 +14,7 @@ import { TaskTable } from "@/components/tasks/TaskTable";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import { getEventStaff } from "@/lib/api/staff";
+import { getEventSessions } from "@/lib/api/eventSessions";
 import { changeTaskStatus, completeTask, createTask, getEventTasks, updateTask } from "@/lib/api/tasks";
 import { getEventZones } from "@/lib/api/zones";
 import { canManageTasks } from "@/lib/permissions";
@@ -21,12 +22,14 @@ import type { UserRole } from "@/types/roles";
 import type { EventStaff } from "@/types/staff";
 import type { Priority, Task, TaskCreate, TaskStatus, TaskUpdate } from "@/types/task";
 import type { Zone } from "@/types/zone";
+import type { EventSession } from "@/types/eventSession";
 
 export function TasksTab({ eventId, role }: { eventId: string; role?: UserRole | null }) {
   const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [staff, setStaff] = useState<EventStaff[]>([]);
+  const [sessions, setSessions] = useState<EventSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +41,7 @@ export function TasksTab({ eventId, role }: { eventId: string; role?: UserRole |
   const [priority, setPriority] = useState("");
   const [zoneId, setZoneId] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+  const [sessionId, setSessionId] = useState("");
   const canManage = canManageTasks(role);
 
   function attachStaffUsers(taskItems: Task[], staffItems: EventStaff[]) {
@@ -53,10 +57,12 @@ export function TasksTab({ eventId, role }: { eventId: string; role?: UserRole |
     setLoading(true);
     setError(null);
     try {
-      const [taskData, zoneData, staffData] = await Promise.all([getEventTasks(eventId), getEventZones(eventId), getEventStaff(eventId)]);
-      setTasks(attachStaffUsers(taskData.items, staffData));
+      const [taskData, zoneData, staffData, sessionData] = await Promise.all([getEventTasks(eventId), getEventZones(eventId), getEventStaff(eventId), getEventSessions(eventId)]);
+      const sessionNames = new Map(sessionData.map((item) => [item.id, item.name]));
+      setTasks(attachStaffUsers(taskData.items.map((item) => ({ ...item, session_name: item.session_id ? sessionNames.get(item.session_id) : null })), staffData));
       setZones(zoneData);
       setStaff(staffData);
+      setSessions(sessionData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la informacion.");
     } finally {
@@ -72,8 +78,9 @@ export function TasksTab({ eventId, role }: { eventId: string; role?: UserRole |
       && (!status || task.status === status)
       && (!priority || task.priority === priority)
       && (!zoneId || task.zone_id === zoneId)
-      && (!assigneeId || task.assigned_to === assigneeId);
-  }), [tasks, q, status, priority, zoneId, assigneeId]);
+      && (!assigneeId || task.assigned_to === assigneeId)
+      && (!sessionId || (sessionId === "general" ? !task.session_id : task.session_id === sessionId));
+  }), [tasks, q, status, priority, zoneId, assigneeId, sessionId]);
 
   async function save(data: TaskCreate | TaskUpdate) {
     setSaving(true);
@@ -136,12 +143,13 @@ export function TasksTab({ eventId, role }: { eventId: string; role?: UserRole |
         </div>
         {canManage ? <Button onClick={() => setFormTask(null)}><Plus className="h-4 w-4" />Crear tarea</Button> : null}
       </div>
-      <div className="grid gap-3 lg:grid-cols-[1fr_160px_160px_180px_200px]">
+      <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <SearchInput placeholder="Buscar tarea..." value={q} onChange={setQ} />
         <FilterSelect label="Estado" value={status} onChange={setStatus} options={[{ label: "Todos", value: "" }, { label: "Pendiente", value: "PENDING" }, { label: "En progreso", value: "IN_PROGRESS" }, { label: "Completada", value: "COMPLETED" }, { label: "Observada", value: "OBSERVED" }, { label: "Cancelada", value: "CANCELLED" }]} />
         <FilterSelect label="Prioridad" value={priority} onChange={setPriority} options={[{ label: "Todas", value: "" }, { label: "Baja", value: "LOW" }, { label: "Media", value: "MEDIUM" }, { label: "Alta", value: "HIGH" }, { label: "Critica", value: "CRITICAL" }]} />
         <FilterSelect label="Zona" value={zoneId} onChange={setZoneId} options={[{ label: "Todas", value: "" }, ...zones.map((zone) => ({ label: zone.name, value: zone.id }))]} />
         <FilterSelect label="Responsable" value={assigneeId} onChange={setAssigneeId} options={[{ label: "Todos", value: "" }, ...staff.map((item) => ({ label: item.user?.full_name || item.user_id, value: item.user_id }))]} />
+        <FilterSelect label="Show" value={sessionId} onChange={setSessionId} options={[{ label: "Todos", value: "" }, { label: "General del evento", value: "general" }, ...sessions.map((item) => ({ label: item.name, value: item.id }))]} />
       </div>
       {error ? <ErrorState message={error} onRetry={load} /> : null}
       <TaskTable
@@ -156,7 +164,7 @@ export function TasksTab({ eventId, role }: { eventId: string; role?: UserRole |
         onStatus={setTaskStatus}
         onView={setDetailTask}
       />
-      {formTask !== undefined ? <TaskFormModal loading={saving} staff={staff} task={formTask} zones={zones} onClose={() => setFormTask(undefined)} onSubmit={save} /> : null}
+      {formTask !== undefined ? <TaskFormModal loading={saving} sessions={sessions} staff={staff} task={formTask} zones={zones} onClose={() => setFormTask(undefined)} onSubmit={save} /> : null}
       {detailTask ? <TaskDetailPanel task={detailTask} onClose={() => setDetailTask(null)} /> : null}
       {completeTarget ? <CompleteTaskDialog loading={saving} onClose={() => setCompleteTarget(null)} onConfirm={confirmComplete} /> : null}
     </div>

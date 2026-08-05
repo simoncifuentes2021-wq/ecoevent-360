@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { getEventEvidences } from "@/lib/api/evidences";
 import { closeIncident, createIncident, getEventIncidents, resolveIncident, updateIncident } from "@/lib/api/incidents";
 import { getEventStaff } from "@/lib/api/staff";
+import { getEventSessions } from "@/lib/api/eventSessions";
 import { getEventZones } from "@/lib/api/zones";
 import { canCloseIncident, canCreateIncident, canEditIncident, canResolveIncident } from "@/lib/permissions";
 import type { Evidence } from "@/types/evidence";
@@ -22,12 +23,14 @@ import type { Incident, IncidentCreate, IncidentStatus, IncidentUpdate } from "@
 import type { UserRole } from "@/types/roles";
 import type { EventStaff } from "@/types/staff";
 import type { Zone } from "@/types/zone";
+import type { EventSession } from "@/types/eventSession";
 
 export function IncidentsTab({ eventId, role }: { eventId: string; role?: UserRole | null }) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [staff, setStaff] = useState<EventStaff[]>([]);
   const [evidences, setEvidences] = useState<Evidence[]>([]);
+  const [sessions, setSessions] = useState<EventSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,16 +43,19 @@ export function IncidentsTab({ eventId, role }: { eventId: string; role?: UserRo
   const [type, setType] = useState("");
   const [priority, setPriority] = useState("");
   const [zoneId, setZoneId] = useState("");
+  const [sessionId, setSessionId] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [incidentData, zoneData, staffData, evidenceData] = await Promise.all([getEventIncidents(eventId), getEventZones(eventId), getEventStaff(eventId), getEventEvidences(eventId)]);
-      setIncidents(incidentData.items);
+      const [incidentData, zoneData, staffData, evidenceData, sessionData] = await Promise.all([getEventIncidents(eventId), getEventZones(eventId), getEventStaff(eventId), getEventEvidences(eventId), getEventSessions(eventId)]);
+      const sessionNames = new Map(sessionData.map((item) => [item.id, item.name]));
+      setIncidents(incidentData.items.map((item) => ({ ...item, session_name: item.session_id ? sessionNames.get(item.session_id) : null })));
       setZones(zoneData);
       setStaff(staffData);
       setEvidences(evidenceData.items);
+      setSessions(sessionData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la informacion.");
     } finally {
@@ -65,8 +71,9 @@ export function IncidentsTab({ eventId, role }: { eventId: string; role?: UserRo
       && (!status || item.status === status)
       && (!type || itemType === type)
       && (!priority || item.priority === priority)
-      && (!zoneId || item.zone_id === zoneId);
-  }), [incidents, priority, q, status, type, zoneId]);
+      && (!zoneId || item.zone_id === zoneId)
+      && (!sessionId || (sessionId === "general" ? !item.session_id : item.session_id === sessionId));
+  }), [incidents, priority, q, sessionId, status, type, zoneId]);
 
   async function save(data: IncidentCreate | IncidentUpdate) {
     setSaving(true);
@@ -107,16 +114,17 @@ export function IncidentsTab({ eventId, role }: { eventId: string; role?: UserRo
         <div><h2 className="text-xl font-bold text-slate-950">Incidencias</h2><p className="text-sm text-slate-600">Registra, asigna y resuelve situaciones operativas del evento.</p></div>
         {canCreateIncident(role) ? <Button onClick={() => setFormIncident(null)}><Plus className="h-4 w-4" />Crear incidencia</Button> : null}
       </div>
-      <div className="grid gap-3 lg:grid-cols-[1fr_160px_160px_160px_180px]">
+      <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <SearchInput placeholder="Buscar incidencia..." value={q} onChange={setQ} />
         <FilterSelect label="Estado" value={status} onChange={setStatus} options={[{ label: "Todos", value: "" }, { label: "Reportada", value: "REPORTED" }, { label: "Asignada", value: "ASSIGNED" }, { label: "En progreso", value: "IN_PROGRESS" }, { label: "Resuelta", value: "RESOLVED" }, { label: "Cerrada", value: "CLOSED" }]} />
         <FilterSelect label="Tipo" value={type} onChange={setType} options={[{ label: "Todos", value: "" }, { label: "Sanitaria", value: "SANITARY" }, { label: "Residuos", value: "WASTE" }, { label: "Limpieza", value: "CLEANING" }, { label: "Ambiental", value: "ENVIRONMENTAL" }, { label: "Seguridad", value: "SAFETY" }, { label: "Otra", value: "OTHER" }]} />
         <FilterSelect label="Prioridad" value={priority} onChange={setPriority} options={[{ label: "Todas", value: "" }, { label: "Baja", value: "LOW" }, { label: "Media", value: "MEDIUM" }, { label: "Alta", value: "HIGH" }, { label: "Critica", value: "CRITICAL" }]} />
         <FilterSelect label="Zona" value={zoneId} onChange={setZoneId} options={[{ label: "Todas", value: "" }, ...zones.map((zone) => ({ label: zone.name, value: zone.id }))]} />
+        <FilterSelect label="Show" value={sessionId} onChange={setSessionId} options={[{ label: "Todos", value: "" }, { label: "General del evento", value: "general" }, ...sessions.map((item) => ({ label: item.name, value: item.id }))]} />
       </div>
       {error ? <ErrorState message={error} onRetry={load} /> : null}
       <IncidentTable canClose={canCloseIncident(role)} canEdit={canEditIncident(role)} canResolve={canResolveIncident(role)} error={null} incidents={filtered} loading={loading} onCloseIncident={setCloseTarget} onEdit={setFormIncident} onResolve={setResolveTarget} onView={setDetail} />
-      {formIncident !== undefined ? <IncidentFormModal incident={formIncident} loading={saving} staff={staff} zones={zones} onClose={() => setFormIncident(undefined)} onSubmit={save} /> : null}
+      {formIncident !== undefined ? <IncidentFormModal incident={formIncident} loading={saving} sessions={sessions} staff={staff} zones={zones} onClose={() => setFormIncident(undefined)} onSubmit={save} /> : null}
       {detail ? <IncidentDetailDrawer canClose={canCloseIncident(role)} canResolve={canResolveIncident(role)} incident={detail} onClose={() => setDetail(null)} onCloseIncident={() => setCloseTarget(detail)} onResolve={() => setResolveTarget(detail)} /> : null}
       {resolveTarget ? <ResolveIncidentDialog evidences={evidences} loading={saving} onClose={() => setResolveTarget(null)} onConfirm={doResolve} /> : null}
       <CloseIncidentDialog open={Boolean(closeTarget)} onClose={() => setCloseTarget(null)} onConfirm={doClose} />

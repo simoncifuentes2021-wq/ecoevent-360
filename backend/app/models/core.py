@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -1028,6 +1029,7 @@ class EventStaff(Base):
     __tablename__ = "event_staff"
     __table_args__ = (
         UniqueConstraint("event_id", "user_id"),
+        UniqueConstraint("event_id", "id", name="uq_event_staff_event_id_id"),
         Index("idx_event_staff_event_id", "event_id"),
         Index("idx_event_staff_user_id", "user_id"),
     )
@@ -1046,6 +1048,53 @@ class EventStaff(Base):
 
     event: Mapped[Event] = relationship(back_populates="staff_assignments")
     user: Mapped[User] = relationship(back_populates="event_staff")
+    session_assignments: Mapped[list["EventSessionStaff"]] = relationship(
+        back_populates="event_staff", overlaps="session,staff_assignments"
+    )
+
+
+class EventSessionStaff(Base):
+    __tablename__ = "event_session_staff"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"],
+            name="fk_event_session_staff_session", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["event_id", "event_staff_id"], ["event_staff.event_id", "event_staff.id"],
+            name="fk_event_session_staff_event_staff", ondelete="CASCADE",
+        ),
+        UniqueConstraint("session_id", "event_staff_id", name="uq_event_session_staff_assignment"),
+        CheckConstraint(
+            "shift_start is null or shift_end is null or shift_start < shift_end",
+            name="ck_event_session_staff_shift",
+        ),
+        Index("idx_event_session_staff_event", "event_id"),
+        Index("idx_event_session_staff_session", "session_id"),
+        Index("idx_event_session_staff_person", "event_staff_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    session_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    event_staff_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    shift_start: Mapped[datetime | None] = mapped_column(DateTime)
+    shift_end: Mapped[datetime | None] = mapped_column(DateTime)
+    operational_role: Mapped[str | None] = mapped_column(String(100))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    session: Mapped["EventSession"] = relationship(
+        back_populates="staff_assignments", overlaps="event_staff,session_assignments"
+    )
+    event_staff: Mapped[EventStaff] = relationship(
+        back_populates="session_assignments", overlaps="session,staff_assignments"
+    )
+    creator: Mapped[User | None] = relationship()
 
 
 class Task(Base):
@@ -1055,6 +1104,11 @@ class Task(Base):
         Index("idx_tasks_zone_id", "zone_id"),
         Index("idx_tasks_assigned_to", "assigned_to"),
         Index("idx_tasks_status", "status"),
+        Index("idx_tasks_event_session", "event_id", "session_id"),
+        Index("uq_tasks_source_incident_id", "source_incident_id", unique=True, postgresql_where=text("source_incident_id is not null")),
+        UniqueConstraint("event_id", "id", name="uq_tasks_event_id_id"),
+        ForeignKeyConstraint(["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"], name="fk_tasks_event_session", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["event_id", "source_incident_id"], ["incidents.event_id", "incidents.id"], name="fk_tasks_source_incident", ondelete="RESTRICT", use_alter=True),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -1067,6 +1121,8 @@ class Task(Base):
     assigned_to: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
+    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    source_incident_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     title: Mapped[str] = mapped_column(String(180), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[TaskStatus] = mapped_column(
@@ -1088,7 +1144,9 @@ class Task(Base):
     zone: Mapped[EventZone | None] = relationship(back_populates="tasks")
     assignee: Mapped[User | None] = relationship(foreign_keys=[assigned_to])
     creator: Mapped[User | None] = relationship(foreign_keys=[created_by])
-    evidences: Mapped[list["Evidence"]] = relationship(back_populates="task")
+    evidences: Mapped[list["Evidence"]] = relationship(
+        back_populates="task", foreign_keys="Evidence.task_id"
+    )
 
 
 class Incident(Base):
@@ -1098,6 +1156,11 @@ class Incident(Base):
         Index("idx_incidents_zone_id", "zone_id"),
         Index("idx_incidents_status", "status"),
         Index("idx_incidents_priority", "priority"),
+        Index("idx_incidents_event_session", "event_id", "session_id"),
+        Index("idx_incidents_source_task_id", "source_task_id"),
+        UniqueConstraint("event_id", "id", name="uq_incidents_event_id_id"),
+        ForeignKeyConstraint(["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"], name="fk_incidents_event_session", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["event_id", "source_task_id"], ["tasks.event_id", "tasks.id"], name="fk_incidents_source_task", ondelete="RESTRICT"),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -1113,6 +1176,8 @@ class Incident(Base):
     assigned_to: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
+    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    source_task_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     title: Mapped[str] = mapped_column(String(180), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     incident_type: Mapped[str | None] = mapped_column(String(100))
@@ -1131,7 +1196,9 @@ class Incident(Base):
     zone: Mapped[EventZone | None] = relationship(back_populates="incidents")
     reporter: Mapped[User | None] = relationship(foreign_keys=[reported_by])
     assignee: Mapped[User | None] = relationship(foreign_keys=[assigned_to])
-    evidences: Mapped[list["Evidence"]] = relationship(back_populates="incident")
+    evidences: Mapped[list["Evidence"]] = relationship(
+        back_populates="incident", foreign_keys="Evidence.incident_id"
+    )
 
 
 class Evidence(Base):
@@ -1140,18 +1207,19 @@ class Evidence(Base):
         Index("idx_evidences_event_id", "event_id"),
         Index("idx_evidences_task_id", "task_id"),
         Index("idx_evidences_incident_id", "incident_id"),
+        Index("idx_evidences_event_session", "event_id", "session_id"),
+        ForeignKeyConstraint(["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"], name="fk_evidences_event_session", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["event_id", "task_id"], ["tasks.event_id", "tasks.id"], name="fk_evidences_event_task", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["event_id", "incident_id"], ["incidents.event_id", "incidents.id"], name="fk_evidences_event_incident", ondelete="RESTRICT"),
     )
 
     id: Mapped[UUID] = uuid_pk()
     event_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
-    task_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL")
-    )
-    incident_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("incidents.id", ondelete="SET NULL")
-    )
+    task_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    incident_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     uploaded_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -1162,8 +1230,10 @@ class Evidence(Base):
     created_at: Mapped[datetime] = created_at_column()
 
     event: Mapped[Event] = relationship(back_populates="evidences")
-    task: Mapped[Task | None] = relationship(back_populates="evidences")
-    incident: Mapped[Incident | None] = relationship(back_populates="evidences")
+    task: Mapped[Task | None] = relationship(back_populates="evidences", foreign_keys=[task_id])
+    incident: Mapped[Incident | None] = relationship(
+        back_populates="evidences", foreign_keys=[incident_id]
+    )
     uploader: Mapped[User | None] = relationship()
     waste_records: Mapped[list["WasteRecord"]] = relationship(back_populates="evidence")
 
@@ -1381,6 +1451,9 @@ class EventSession(Base):
     forms: Mapped[list["EventForm"]] = relationship(back_populates="session")
     responses: Mapped[list["FormResponse"]] = relationship(back_populates="session")
     responsible: Mapped[User | None] = relationship()
+    staff_assignments: Mapped[list[EventSessionStaff]] = relationship(
+        back_populates="session", overlaps="event_staff,session_assignments"
+    )
 
 
 class EventForm(Base):

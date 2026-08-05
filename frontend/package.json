@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:logbooks": "node tests/logbook-clear.test.cjs && node tests/logbook-validation.test.cjs && node tests/logbook-ui-contract.test.cjs && node tests/logbook-lifecycle.test.cjs && node tests/logbook-recurrence.test.cjs",
+    "test:show-operations": "node tests/show-operations.test.cjs",
     "test:e2e:logbook-recurrence": "node tests/logbook-recurrence.e2e.cjs",
     "test:e2e:logbook-recurrence-real": "node tests/logbook-recurrence-real.e2e.cjs",
     "verify:quick": "npm run typecheck && npm run lint -- --no-cache && npm run test:logbooks"

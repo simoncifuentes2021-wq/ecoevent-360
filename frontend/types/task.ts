@@ -8,6 +8,9 @@ export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type Task = {
   id: string;
   event_id: string;
+  session_id?: string | null;
+  session_name?: string | null;
+  source_incident_id?: string | null;
   event?: Pick<Event, "id" | "name" | "start_date" | "status"> | null;
   zone_id?: string | null;
   zone?: Pick<Zone, "id" | "name"> | null;
@@ -28,6 +31,7 @@ export type Task = {
 };
 
 export type TaskCreate = {
+  session_id?: string | null;
   title: string;
   description?: string | null;
   zone_id?: string | null;
@@ -38,6 +42,7 @@ export type TaskCreate = {
 
 export type TaskUpdate = Partial<TaskCreate> & {
   status?: TaskStatus;
+  reassignment_reason?: string | null;
 };
 
 export type TaskComplete = {
