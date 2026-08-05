@@ -23,6 +23,7 @@ def create_evidence(
     event_id: UUID = Form(...),
     task_id: UUID | None = Form(default=None),
     incident_id: UUID | None = Form(default=None),
+    session_id: UUID | None = Form(default=None),
     description: str | None = Form(default=None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -33,6 +34,7 @@ def create_evidence(
         event_id=event_id,
         task_id=task_id,
         incident_id=incident_id,
+        session_id=session_id,
         description=description,
         file=file,
         current_user=current_user,
@@ -49,6 +51,7 @@ def create_evidence(
             "id": evidence.id,
             "task_id": evidence.task_id,
             "incident_id": evidence.incident_id,
+            "session_id": evidence.session_id,
             "file_type": evidence.file_type,
         },
         request=request,
@@ -61,11 +64,14 @@ def list_event_evidences(
     event_id: UUID,
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
+    session_id: UUID | None = None,
+    scope: str | None = Query(default=None, pattern="^(general|session|general_and_session)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     items, total = evidence_service.list_event_evidences(
-        db, event_id=event_id, current_user=current_user, page=page, limit=limit
+        db, event_id=event_id, current_user=current_user, page=page, limit=limit,
+        session_id=session_id, scope=scope,
     )
     return EvidenceListResponse(items=items, total=total, page=page, limit=limit)
 

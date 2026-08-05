@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import can_access_event, can_close_assigned_task, can_manage_event, can_operate_event
-from app.models.core import Event, EventStaff, EventZone, Task, User
+from app.models.core import Event, EventSession, EventStaff, EventZone, Evidence, Incident, Task, User
 from app.models.enums import EventStatus, TaskStatus, UserRole
 from app.schemas.task_schema import TaskComplete, TaskCreate, TaskStatusUpdate, TaskUpdate
 
@@ -63,6 +63,27 @@ def _validate_assignee(db: Session, event_id: UUID, user_id: UUID | None) -> Non
         )
 
 
+def _validate_session(db: Session, event_id: UUID, session_id: UUID | None) -> None:
+    if session_id is None:
+        return
+    session = db.get(EventSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Event session not found")
+    if session.event_id != event_id:
+        raise HTTPException(status_code=400, detail="Event session does not belong to this event")
+    if session.archived_at:
+        raise HTTPException(status_code=400, detail="Archived shows cannot receive new tasks")
+
+
+def _has_reassignment_activity(db: Session, task: Task) -> bool:
+    from app.models.logbook import LogbookTaskLink
+
+    return bool(
+        task.started_at or task.completed_at or task.status != TaskStatus.PENDING
+        or db.scalar(select(Evidence.id).where(Evidence.task_id == task.id).limit(1))
+        or db.scalar(select(Incident.id).where(Incident.source_task_id == task.id).limit(1))
+        or db.scalar(select(LogbookTaskLink.id).where(LogbookTaskLink.task_id == task.id).limit(1))
+    )
 def _ensure_can_view_task(task: Task, current_user: User, db: Session) -> None:
     if current_user.role == UserRole.WORKER:
         if task.assigned_to != current_user.id:
@@ -83,6 +104,7 @@ def create_task(db: Session, event_id: UUID, payload: TaskCreate, current_user: 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
     _validate_zone(db, event_id, payload.zone_id)
     _validate_assignee(db, event_id, payload.assigned_to)
+    _validate_session(db, event_id, payload.session_id)
 
     task = Task(
         event_id=event_id,
@@ -105,6 +127,8 @@ def list_event_tasks(
     assigned_to: UUID | None,
     page: int,
     limit: int,
+    session_id: UUID | None = None,
+    scope: str | None = None,
 ) -> tuple[list[Task], int]:
     _get_event_or_404(db, event_id)
     if not can_access_event(current_user, event_id, db):
@@ -117,6 +141,21 @@ def list_event_tasks(
         filters.append(Task.assigned_to == assigned_to)
     if status_filter is not None:
         filters.append(Task.status == status_filter)
+    if scope == "general":
+        filters.append(Task.session_id.is_(None))
+    elif scope == "session":
+        if session_id is None:
+            raise HTTPException(status_code=400, detail="session_id is required for session scope")
+        _validate_session(db, event_id, session_id)
+        filters.append(Task.session_id == session_id)
+    elif scope == "general_and_session":
+        if session_id is None:
+            raise HTTPException(status_code=400, detail="session_id is required for general_and_session scope")
+        _validate_session(db, event_id, session_id)
+        filters.append((Task.session_id == session_id) | Task.session_id.is_(None))
+    elif session_id is not None:
+        _validate_session(db, event_id, session_id)
+        filters.append(Task.session_id == session_id)
 
     total = db.scalar(select(func.count()).select_from(Task).where(*filters)) or 0
     items = list(
@@ -141,10 +180,17 @@ def update_task(db: Session, task_id: UUID, payload: TaskUpdate, current_user: U
     task = get_task_or_404(db, task_id)
     _ensure_can_manage_task(task, current_user, db)
     data = payload.model_dump(exclude_unset=True)
+    reason = data.pop("reassignment_reason", None)
     if "zone_id" in data:
         _validate_zone(db, task.event_id, data["zone_id"])
     if "assigned_to" in data:
         _validate_assignee(db, task.event_id, data["assigned_to"])
+    if "session_id" in data and data["session_id"] != task.session_id:
+        _validate_session(db, task.event_id, data["session_id"])
+        if _has_reassignment_activity(db, task):
+            raise HTTPException(status_code=409, detail="Task with operational activity cannot be reassigned to another show")
+        if not reason or not reason.strip():
+            raise HTTPException(status_code=400, detail="reassignment_reason is required when changing show")
 
     for field, value in data.items():
         setattr(task, field, value)
