@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/exhaustive-deps -- Reload only when the logbook identity changes. */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ErrorState } from "@/components/common/ErrorState";

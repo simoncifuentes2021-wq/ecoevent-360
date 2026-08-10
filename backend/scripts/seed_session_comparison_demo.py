@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# Application imports intentionally follow the sys.path bootstrap below.
+# ruff: noqa: E402
+
 import argparse
 import os
 import sys

@@ -26,9 +26,15 @@ from app.schemas.client_portal_schema import (
     ClientPortalResponse,
     ClientPortalTemplateApply,
 )
-from app.schemas.report_schema import ReportListResponse, ReportRead
+from app.schemas.report_schema import DraftCreate, ReportEditor, ReportListResponse, ReportRead
 from app.schemas.zone_schema import EventZoneCreate, EventZoneRead
-from app.services import client_portal_service, dashboard_service, event_service, report_service, zone_service
+from app.services import (
+    client_portal_service,
+    dashboard_service,
+    event_service,
+    report_service,
+    zone_service,
+)
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -128,7 +134,9 @@ def update_client_portal_config(
     return client_portal_service.update_config(db, event_id, payload, current_user)
 
 
-@router.post("/{event_id}/client-portal-config/apply-template", response_model=ClientPortalConfigRead)
+@router.post(
+    "/{event_id}/client-portal-config/apply-template", response_model=ClientPortalConfigRead
+)
 def apply_client_portal_template(
     event_id: UUID,
     payload: ClientPortalTemplateApply,
@@ -165,7 +173,9 @@ def list_event_reports(
     return ReportListResponse(items=items, total=total, page=page, limit=limit)
 
 
-@router.post("/{event_id}/reports/final", response_model=ReportRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{event_id}/reports/final", response_model=ReportRead, status_code=status.HTTP_201_CREATED
+)
 def generate_event_final_report(
     event_id: UUID,
     request: Request,
@@ -182,6 +192,35 @@ def generate_event_final_report(
         entity_id=report.id,
         event_id=report.event_id,
         new_data=serialize_model_for_audit(report),
+        request=request,
+    )
+    return report
+
+
+@router.post(
+    "/{event_id}/reports/drafts", response_model=ReportEditor, status_code=status.HTTP_201_CREATED
+)
+def create_report_draft(
+    event_id: UUID,
+    payload: DraftCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_builder_service
+
+    report = report_builder_service.create_draft(
+        db, event_id, payload.scope, payload.session_id, current_user
+    )
+    create_audit_log(
+        db,
+        user=current_user,
+        action="REPORT_DRAFT_CREATED",
+        module="reports",
+        entity_type="Report",
+        entity_id=report.id,
+        event_id=report.event_id,
+        new_data={"scope": report.scope, "session_id": report.session_id},
         request=request,
     )
     return report
@@ -345,9 +384,7 @@ def update_event_service(
 ):
     before = event_service.get_event_service_or_404(db, event_id, event_service_id)
     old_data = serialize_model_for_audit(before)
-    item = event_service.update_event_service(
-        db, event_id, event_service_id, payload, current_user
-    )
+    item = event_service.update_event_service(db, event_id, event_service_id, payload, current_user)
     create_audit_log(
         db,
         user=current_user,

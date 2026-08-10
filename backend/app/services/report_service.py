@@ -41,6 +41,8 @@ def get_report_or_404(db: Session, report_id: UUID) -> Report:
 def ensure_can_access_report(db: Session, user: User, report_id: UUID) -> Report:
     report = get_report_or_404(db, report_id)
     _ensure_can_access_event(db, user, report.event_id)
+    if user.role == UserRole.CLIENT and report.status == ReportStatus.DRAFT:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
     return report
 
 
@@ -54,6 +56,8 @@ def list_event_reports(
 ) -> tuple[list[Report], int]:
     _ensure_can_access_event(db, current_user, event_id)
     filters = [Report.event_id == event_id, Report.status != ReportStatus.ARCHIVED]
+    if current_user.role == UserRole.CLIENT:
+        filters.append(Report.status == ReportStatus.DELIVERED)
 
     total = db.scalar(select(func.count()).select_from(Report).where(*filters)) or 0
     items = list(
@@ -79,6 +83,7 @@ def create_final_report(db: Session, *, event_id: UUID, current_user: User) -> R
         status=ReportStatus.GENERATED,
         generated_by=current_user.id,
         generated_at=datetime.utcnow(),
+        created_by=current_user.id,
     )
     db.add(report)
     db.commit()
@@ -114,10 +119,14 @@ def build_report_pdf(report: Report) -> BytesIO:
     pdf.drawString(72, 710, report.title)
     pdf.drawString(72, 680, f"Evento: {event.name if event else report.event_id}")
     if event:
-        pdf.drawString(72, 650, f"Ubicacion: {event.location_name or event.city or 'No registrada'}")
+        pdf.drawString(
+            72, 650, f"Ubicacion: {event.location_name or event.city or 'No registrada'}"
+        )
         pdf.drawString(72, 620, f"Fechas: {event.start_date.date()} - {event.end_date.date()}")
         pdf.drawString(72, 590, f"Estado: {event.status.value}")
-    pdf.drawString(72, 550, report.summary or "Resumen generado desde datos registrados en la plataforma.")
+    pdf.drawString(
+        72, 550, report.summary or "Resumen generado desde datos registrados en la plataforma."
+    )
     pdf.showPage()
     pdf.save()
     buffer.seek(0)

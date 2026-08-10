@@ -3,6 +3,7 @@
 Database values created by this module are opaque storage keys.  Absolute URLs and
 old ``uploads/...`` paths remain readable during the controlled legacy migration.
 """
+
 from __future__ import annotations
 
 import csv
@@ -77,7 +78,9 @@ def save_survey_import_file(filename: str, content: bytes) -> str:
     return _save_content("surveys", content, "text/csv", ".csv")
 
 
-def save_upload_file(folder: str, file: UploadFile, allowed_content_types: dict[str, str]) -> tuple[str, str]:
+def save_upload_file(
+    folder: str, file: UploadFile, allowed_content_types: dict[str, str]
+) -> tuple[str, str]:
     content = _read_upload_file(file)
     if set(allowed_content_types).issubset(IMAGE_CONTENT_TYPES):
         mime, extension = _validate_image(content)
@@ -91,13 +94,41 @@ def save_upload_file(folder: str, file: UploadFile, allowed_content_types: dict[
     return _save_content(folder, content, mime, extension), mime
 
 
-def save_bytes_file(folder: str, content: bytes, *, content_type: str,
-                    allowed_content_types: dict[str, str], original_filename: str | None = None) -> str:
+def save_bytes_file(
+    folder: str,
+    content: bytes,
+    *,
+    content_type: str,
+    allowed_content_types: dict[str, str],
+    original_filename: str | None = None,
+) -> str:
     _ensure_allowed_size(len(content))
     extension = allowed_content_types.get(content_type)
     if not extension:
         _bad_file("Unsupported file type")
     return _save_content(folder, content, content_type, extension)
+
+
+def save_private_object(key: str, content: bytes, *, content_type: str) -> str:
+    """Store immutable server-generated content at an explicit private key."""
+    _ensure_allowed_size(len(content))
+    prefix = settings.r2_private_prefix.strip("/")
+    normalized = validate_storage_key(key, allowed_prefix=prefix)
+    if settings.use_r2_storage:
+        _r2_client().put_object(
+            Bucket=settings.cloudflare_r2_bucket,
+            Key=normalized,
+            Body=content,
+            ContentType=content_type,
+            CacheControl="private, no-store",
+        )
+    else:
+        destination = _local_path(normalized)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists():
+            raise FileExistsError("Immutable object already exists")
+        destination.write_bytes(content)
+    return normalized
 
 
 def read_stored_file(reference: str) -> tuple[bytes, str]:
@@ -111,7 +142,11 @@ def get_stored_object(reference: str) -> StoredObject:
         try:
             response = _r2_client().get_object(Bucket=settings.cloudflare_r2_bucket, Key=key)
             content = response["Body"].read()
-            mime = response.get("ContentType") or mimetypes.guess_type(key)[0] or "application/octet-stream"
+            mime = (
+                response.get("ContentType")
+                or mimetypes.guess_type(key)[0]
+                or "application/octet-stream"
+            )
             return StoredObject(content, mime, len(content))
         except Exception as exc:
             raise HTTPException(status_code=404, detail="Stored file not found") from exc
@@ -119,7 +154,9 @@ def get_stored_object(reference: str) -> StoredObject:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Stored file not found")
     content = path.read_bytes()
-    return StoredObject(content, mimetypes.guess_type(path.name)[0] or "application/octet-stream", len(content))
+    return StoredObject(
+        content, mimetypes.guess_type(path.name)[0] or "application/octet-stream", len(content)
+    )
 
 
 def stored_file_exists(reference: str) -> bool:
@@ -135,7 +172,8 @@ def generate_temporary_download(reference: str, expires: int | None = None) -> s
         return None
     key = legacy_reference_to_key(reference)
     return _r2_client().generate_presigned_url(
-        "get_object", Params={"Bucket": settings.cloudflare_r2_bucket, "Key": key},
+        "get_object",
+        Params={"Bucket": settings.cloudflare_r2_bucket, "Key": key},
         ExpiresIn=expires or settings.r2_signed_url_expires_seconds,
     )
 
@@ -157,13 +195,15 @@ def legacy_reference_to_key(reference: str) -> str:
     value = (reference or "").strip()
     public = str(settings.cloudflare_r2_public_base_url or "").rstrip("/")
     if public and value.startswith(public + "/"):
-        value = unquote(value[len(public) + 1:])
+        value = unquote(value[len(public) + 1 :])
     elif value.startswith(("http://", "https://")):
         parsed = urlparse(value)
         value = unquote(parsed.path.lstrip("/"))
     value = value.replace("\\", "/")
+    if value.startswith("/uploads/"):
+        value = value[1:]
     if value.startswith("uploads/"):
-        value = value[len("uploads/"):]
+        value = value[len("uploads/") :]
     # New keys are private/<category>/<uuid.ext>; legacy keys are category/name.
     allowed = settings.r2_private_prefix.strip("/")
     if value.startswith(allowed + "/"):
@@ -177,8 +217,13 @@ def _save_content(folder: str, content: bytes, content_type: str, extension: str
     prefix = settings.r2_private_prefix.strip("/")
     key = validate_storage_key(f"{prefix}/{folder}/{uuid4().hex}{extension}", allowed_prefix=prefix)
     if settings.use_r2_storage:
-        _r2_client().put_object(Bucket=settings.cloudflare_r2_bucket, Key=key, Body=content,
-                                ContentType=content_type, CacheControl="no-store")
+        _r2_client().put_object(
+            Bucket=settings.cloudflare_r2_bucket,
+            Key=key,
+            Body=content,
+            ContentType=content_type,
+            CacheControl="no-store",
+        )
     else:
         destination = _local_path(key)
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -190,7 +235,7 @@ def _local_path(key: str, *, allow_legacy: bool = False) -> Path:
     normalized = validate_storage_key(key)
     private_root = Path(settings.local_private_storage_root).resolve()
     prefix = settings.r2_private_prefix.strip("/") + "/"
-    relative = normalized[len(prefix):] if normalized.startswith(prefix) else normalized
+    relative = normalized[len(prefix) :] if normalized.startswith(prefix) else normalized
     root = private_root if normalized.startswith(prefix) else Path("uploads").resolve()
     if root != private_root and not allow_legacy:
         raise ValueError("Legacy path is read-only")
@@ -211,7 +256,11 @@ def _validate_image(content: bytes) -> tuple[str, str]:
             fmt = (image.format or "").upper()
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         raise HTTPException(status_code=400, detail="Invalid or corrupt image") from exc
-    mapping = {"JPEG": ("image/jpeg", ".jpg"), "PNG": ("image/png", ".png"), "WEBP": ("image/webp", ".webp")}
+    mapping = {
+        "JPEG": ("image/jpeg", ".jpg"),
+        "PNG": ("image/png", ".png"),
+        "WEBP": ("image/webp", ".webp"),
+    }
     if fmt not in mapping:
         _bad_file("Unsupported image format")
     return mapping[fmt]
@@ -227,8 +276,10 @@ def _read_upload_file(file: UploadFile) -> bytes:
 
 def _ensure_allowed_size(size: int) -> None:
     if size > settings.max_upload_size_bytes:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                            detail=f"File exceeds {settings.max_upload_size_mb} MB limit")
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds {settings.max_upload_size_mb} MB limit",
+        )
 
 
 def _bad_file(detail: str):
@@ -237,8 +288,15 @@ def _bad_file(detail: str):
 
 def _r2_client():
     import boto3
-    endpoint = settings.cloudflare_r2_endpoint or f"https://{settings.cloudflare_r2_account_id}.r2.cloudflarestorage.com"
-    return boto3.client("s3", endpoint_url=endpoint,
-                        aws_access_key_id=settings.cloudflare_r2_access_key_id,
-                        aws_secret_access_key=settings.cloudflare_r2_secret_access_key,
-                        region_name=settings.cloudflare_r2_region)
+
+    endpoint = (
+        settings.cloudflare_r2_endpoint
+        or f"https://{settings.cloudflare_r2_account_id}.r2.cloudflarestorage.com"
+    )
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=settings.cloudflare_r2_access_key_id,
+        aws_secret_access_key=settings.cloudflare_r2_secret_access_key,
+        region_name=settings.cloudflare_r2_region,
+    )

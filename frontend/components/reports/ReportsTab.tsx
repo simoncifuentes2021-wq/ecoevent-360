@@ -1,21 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { ErrorState } from "@/components/common/ErrorState";
 import { GenerateReportButton } from "@/components/reports/GenerateReportButton";
-import { GenerateReportDialog } from "@/components/reports/GenerateReportDialog";
+import { ReportDraftDialog } from "@/components/reports/ReportDraftDialog";
 import { MarkReportDeliveredDialog } from "@/components/reports/MarkReportDeliveredDialog";
 import { ReportDeleteDialog } from "@/components/reports/ReportDeleteDialog";
 import { ReportDetailDrawer } from "@/components/reports/ReportDetailDrawer";
 import { ReportEmptyState } from "@/components/reports/ReportEmptyState";
 import { ReportList } from "@/components/reports/ReportList";
 import { ReportPreviewPanel } from "@/components/reports/ReportPreviewPanel";
-import { deleteReport, generateFinalReport, getEventReports, markReportDelivered } from "@/lib/api/reports";
+import { createReportDraft, deleteReport, getEventReports, markReportDelivered } from "@/lib/api/reports";
 import { normalizeGenerateReportResponse, normalizeReport } from "@/lib/normalizers/reports";
 import { canDeleteReports, canGenerateReports, canMarkReportDelivered, canViewReportPreview } from "@/lib/permissions";
 import type { UserRole } from "@/types/roles";
-import type { Report } from "@/types/report";
+import type { Report, ReportScope } from "@/types/report";
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -29,6 +30,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function ReportsTab({ eventId, role }: { eventId: string; role?: UserRole | null }) {
+  const router = useRouter();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,14 +56,12 @@ export function ReportsTab({ eventId, role }: { eventId: string; role?: UserRole
 
   useEffect(() => { void load(); }, [load]);
 
-  async function generate() {
+  async function generate(scope: ReportScope, sessionId?: string) {
     setSaving(true);
     try {
-      const response = normalizeGenerateReportResponse(await generateFinalReport(eventId));
-      if (response.blob) downloadBlob(response.blob, response.filename || `ecoevent-360-reporte-${eventId}.pdf`);
-      if (response.pdf_url || response.file_url) window.open(response.pdf_url || response.file_url, "_blank");
+      const response = await createReportDraft(eventId, scope, sessionId);
       setGenerateOpen(false);
-      await load();
+      router.push(`/reports/${response.id}/edit`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "El generador de reportes aun no esta disponible en el backend.");
     } finally {
@@ -121,10 +121,10 @@ export function ReportsTab({ eventId, role }: { eventId: string; role?: UserRole
           reports={reports}
           onDelete={setDeleting}
           onDeliver={setDelivering}
-          onView={setDetail}
+          onView={(report) => report.status === "DRAFT" ? router.push(`/reports/${report.id}/edit`) : setDetail(report)}
         />
       ) : <ReportEmptyState />}
-      <GenerateReportDialog loading={saving} open={generateOpen} onClose={() => setGenerateOpen(false)} onConfirm={generate} />
+      <ReportDraftDialog eventId={eventId} loading={saving} open={generateOpen} onClose={() => setGenerateOpen(false)} onCreate={generate} />
       <ReportDeleteDialog loading={saving} report={deleting} onClose={() => setDeleting(null)} onConfirm={confirmDelete} />
       <MarkReportDeliveredDialog loading={saving} report={delivering} onClose={() => setDelivering(null)} onConfirm={confirmDelivered} />
       <ReportDetailDrawer report={detail} onClose={() => setDetail(null)} />

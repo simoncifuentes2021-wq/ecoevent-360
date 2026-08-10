@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Evidence URLs are authenticated object-storage resources. */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, Eye, FileText, Images, Trash2 } from "lucide-react";
 

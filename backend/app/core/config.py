@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     r2_public_prefix: str = "public"
     r2_signed_url_expires_seconds: int = 300
     local_private_storage_root: str = "uploads/private"
+    force_local_storage: bool = False
     local_public_storage_root: str = "uploads/public"
     max_upload_size_mb: int = 10
     max_image_pixels: int = 40_000_000
@@ -85,6 +86,8 @@ class Settings(BaseSettings):
 
     @property
     def use_r2_storage(self) -> bool:
+        if self.force_local_storage:
+            return False
         values = (
             self.cloudflare_r2_bucket,
             self.cloudflare_r2_account_id,

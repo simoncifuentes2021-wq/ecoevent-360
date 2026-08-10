@@ -21,7 +21,7 @@ def main() -> int:
     decoded = _decode_with_opencv(path)
 
     print(f"file: {path}")
-    print(f"exists: yes")
+    print("exists: yes")
     print(f"format: {image.format}")
     print(f"size: {image.size[0]}x{image.size[1]}")
     print(f"mode: {image.mode}")
