@@ -42,6 +42,11 @@ from app.models.enums import (
     PurchaseDeliveryMode,
     PurchaseRequestStatus,
     ReportStatus,
+    ReportScope,
+    ReportLayoutVariant,
+    ReportPublicationStatus,
+    ReportSectionType,
+    ReportTemplateKey,
     StockMovementType,
     SurveyStatus,
     TaskStatus,
@@ -79,13 +84,16 @@ event_form_status_enum = Enum(EventFormStatus, name="event_form_status", create_
 form_field_type_enum = Enum(FormFieldType, name="form_field_type", create_type=False)
 bike_zone_status_enum = Enum(BikeZoneStatus, name="bike_zone_status", create_type=False)
 report_status_enum = Enum(ReportStatus, name="report_status", create_type=False)
+report_scope_enum = Enum(ReportScope, name="report_scope", native_enum=False)
+report_layout_variant_enum = Enum(
+    ReportLayoutVariant, name="report_layout_variant", native_enum=False
+)
+report_section_type_enum = Enum(ReportSectionType, name="report_section_type", native_enum=False)
 order_status_enum = Enum(OrderStatus, name="order_status", create_type=False)
 order_item_stage_status_enum = Enum(
     OrderItemStageStatus, name="order_item_stage_status", create_type=False
 )
-order_evidence_stage_enum = Enum(
-    OrderEvidenceStage, name="order_evidence_stage", create_type=False
-)
+order_evidence_stage_enum = Enum(OrderEvidenceStage, name="order_evidence_stage", create_type=False)
 inventory_item_type_enum = Enum(InventoryItemType, name="inventory_item_type", create_type=False)
 stock_movement_type_enum = Enum(StockMovementType, name="stock_movement_type", create_type=False)
 purchase_request_status_enum = Enum(
@@ -225,19 +233,29 @@ class ClientPortalConfig(Base):
     )
 
     id: Mapped[UUID] = uuid_pk()
-    client_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
-    event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    client_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
+    )
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
     scope: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'EVENT'"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
-    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
     client: Mapped[Client] = relationship(back_populates="portal_configs")
     event: Mapped[Event] = relationship(back_populates="client_portal_config")
     creator: Mapped[User | None] = relationship()
-    sections: Mapped[list["ClientPortalSection"]] = relationship(back_populates="config", cascade="all, delete-orphan")
-    widgets: Mapped[list["ClientPortalWidget"]] = relationship(back_populates="config", cascade="all, delete-orphan")
+    sections: Mapped[list["ClientPortalSection"]] = relationship(
+        back_populates="config", cascade="all, delete-orphan"
+    )
+    widgets: Mapped[list["ClientPortalWidget"]] = relationship(
+        back_populates="config", cascade="all, delete-orphan"
+    )
 
 
 class ClientPortalSection(Base):
@@ -248,7 +266,11 @@ class ClientPortalSection(Base):
     )
 
     id: Mapped[UUID] = uuid_pk()
-    config_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("client_portal_configs.id", ondelete="CASCADE"), nullable=False)
+    config_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("client_portal_configs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     section_key: Mapped[str] = mapped_column(String(100), nullable=False)
     label: Mapped[str] = mapped_column(String(160), nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
@@ -266,13 +288,19 @@ class ClientPortalWidget(Base):
     )
 
     id: Mapped[UUID] = uuid_pk()
-    config_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("client_portal_configs.id", ondelete="CASCADE"), nullable=False)
+    config_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("client_portal_configs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     widget_key: Mapped[str] = mapped_column(String(120), nullable=False)
     section_key: Mapped[str] = mapped_column(String(100), nullable=False)
     label: Mapped[str] = mapped_column(String(180), nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    visibility_config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    visibility_config: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
 
     config: Mapped[ClientPortalConfig] = relationship(back_populates="widgets")
 
@@ -496,9 +524,15 @@ class WarehouseUser(Base):
     user_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    can_view_stock: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
-    can_manage_stock: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
-    can_dispatch_orders: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    can_view_stock: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+    can_manage_stock: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
+    can_dispatch_orders: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
     created_at: Mapped[datetime] = created_at_column()
 
     warehouse: Mapped[Warehouse] = relationship(back_populates="users")
@@ -521,13 +555,19 @@ class InventoryItem(Base):
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     item_type: Mapped[InventoryItemType] = mapped_column(inventory_item_type_enum, nullable=False)
-    return_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    return_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
     unit: Mapped[str | None] = mapped_column(String(50))
     # Future order flow: copy this to logistics_order_items.unit_price_snapshot and
     # calculate total_price = quantity_requested * unit_price_snapshot.
-    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    unit_price: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
     replacement_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
-    min_stock: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    min_stock: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     created_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
@@ -539,7 +579,9 @@ class InventoryItem(Base):
     stock_balances: Mapped[list["StockBalance"]] = relationship(back_populates="item")
     stock_movements: Mapped[list["StockMovement"]] = relationship(back_populates="item")
     logistics_order_items: Mapped[list["LogisticsOrderItem"]] = relationship(back_populates="item")
-    purchase_request_items: Mapped[list["PurchaseRequestItem"]] = relationship(back_populates="item")
+    purchase_request_items: Mapped[list["PurchaseRequestItem"]] = relationship(
+        back_populates="item"
+    )
 
 
 class StockBalance(Base):
@@ -701,7 +743,9 @@ class LogisticsOrder(Base):
     items: Mapped[list["LogisticsOrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
-    purchase_requests: Mapped[list["PurchaseRequest"]] = relationship(back_populates="logistics_order")
+    purchase_requests: Mapped[list["PurchaseRequest"]] = relationship(
+        back_populates="logistics_order"
+    )
 
 
 class LogisticsOrderItem(Base):
@@ -843,7 +887,9 @@ class PurchaseRequest(Base):
     description: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     rejection_reason: Mapped[str | None] = mapped_column(Text)
-    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text("NOW()"))
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=text("NOW()")
+    )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime)
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime)
     purchased_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -859,7 +905,9 @@ class PurchaseRequest(Base):
     updated_at: Mapped[datetime] = updated_at_column()
 
     event: Mapped[Event | None] = relationship(back_populates="purchase_requests")
-    logistics_order: Mapped[LogisticsOrder | None] = relationship(back_populates="purchase_requests")
+    logistics_order: Mapped[LogisticsOrder | None] = relationship(
+        back_populates="purchase_requests"
+    )
     warehouse: Mapped[Warehouse | None] = relationship(back_populates="purchase_requests")
     requester: Mapped[User | None] = relationship(foreign_keys=[requested_by])
     approver: Mapped[User | None] = relationship(foreign_keys=[approved_by])
@@ -1057,12 +1105,16 @@ class EventSessionStaff(Base):
     __tablename__ = "event_session_staff"
     __table_args__ = (
         ForeignKeyConstraint(
-            ["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"],
-            name="fk_event_session_staff_session", ondelete="CASCADE",
+            ["event_id", "session_id"],
+            ["event_sessions.event_id", "event_sessions.id"],
+            name="fk_event_session_staff_session",
+            ondelete="CASCADE",
         ),
         ForeignKeyConstraint(
-            ["event_id", "event_staff_id"], ["event_staff.event_id", "event_staff.id"],
-            name="fk_event_session_staff_event_staff", ondelete="CASCADE",
+            ["event_id", "event_staff_id"],
+            ["event_staff.event_id", "event_staff.id"],
+            name="fk_event_session_staff_event_staff",
+            ondelete="CASCADE",
         ),
         UniqueConstraint("session_id", "event_staff_id", name="uq_event_session_staff_assignment"),
         CheckConstraint(
@@ -1105,10 +1157,26 @@ class Task(Base):
         Index("idx_tasks_assigned_to", "assigned_to"),
         Index("idx_tasks_status", "status"),
         Index("idx_tasks_event_session", "event_id", "session_id"),
-        Index("uq_tasks_source_incident_id", "source_incident_id", unique=True, postgresql_where=text("source_incident_id is not null")),
+        Index(
+            "uq_tasks_source_incident_id",
+            "source_incident_id",
+            unique=True,
+            postgresql_where=text("source_incident_id is not null"),
+        ),
         UniqueConstraint("event_id", "id", name="uq_tasks_event_id_id"),
-        ForeignKeyConstraint(["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"], name="fk_tasks_event_session", ondelete="RESTRICT"),
-        ForeignKeyConstraint(["event_id", "source_incident_id"], ["incidents.event_id", "incidents.id"], name="fk_tasks_source_incident", ondelete="RESTRICT", use_alter=True),
+        ForeignKeyConstraint(
+            ["event_id", "session_id"],
+            ["event_sessions.event_id", "event_sessions.id"],
+            name="fk_tasks_event_session",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["event_id", "source_incident_id"],
+            ["incidents.event_id", "incidents.id"],
+            name="fk_tasks_source_incident",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -1159,8 +1227,18 @@ class Incident(Base):
         Index("idx_incidents_event_session", "event_id", "session_id"),
         Index("idx_incidents_source_task_id", "source_task_id"),
         UniqueConstraint("event_id", "id", name="uq_incidents_event_id_id"),
-        ForeignKeyConstraint(["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"], name="fk_incidents_event_session", ondelete="RESTRICT"),
-        ForeignKeyConstraint(["event_id", "source_task_id"], ["tasks.event_id", "tasks.id"], name="fk_incidents_source_task", ondelete="RESTRICT"),
+        ForeignKeyConstraint(
+            ["event_id", "session_id"],
+            ["event_sessions.event_id", "event_sessions.id"],
+            name="fk_incidents_event_session",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["event_id", "source_task_id"],
+            ["tasks.event_id", "tasks.id"],
+            name="fk_incidents_source_task",
+            ondelete="RESTRICT",
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -1208,9 +1286,24 @@ class Evidence(Base):
         Index("idx_evidences_task_id", "task_id"),
         Index("idx_evidences_incident_id", "incident_id"),
         Index("idx_evidences_event_session", "event_id", "session_id"),
-        ForeignKeyConstraint(["event_id", "session_id"], ["event_sessions.event_id", "event_sessions.id"], name="fk_evidences_event_session", ondelete="RESTRICT"),
-        ForeignKeyConstraint(["event_id", "task_id"], ["tasks.event_id", "tasks.id"], name="fk_evidences_event_task", ondelete="RESTRICT"),
-        ForeignKeyConstraint(["event_id", "incident_id"], ["incidents.event_id", "incidents.id"], name="fk_evidences_event_incident", ondelete="RESTRICT"),
+        ForeignKeyConstraint(
+            ["event_id", "session_id"],
+            ["event_sessions.event_id", "event_sessions.id"],
+            name="fk_evidences_event_session",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["event_id", "task_id"],
+            ["tasks.event_id", "tasks.id"],
+            name="fk_evidences_event_task",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["event_id", "incident_id"],
+            ["incidents.event_id", "incidents.id"],
+            name="fk_evidences_event_incident",
+            ondelete="RESTRICT",
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -1416,7 +1509,9 @@ class EventSession(Base):
         Index("idx_event_sessions_event_sort_order", "event_id", "sort_order"),
         UniqueConstraint("event_id", "id", name="uq_event_sessions_event_id_id"),
         CheckConstraint("expected_attendees >= 0", name="ck_event_sessions_expected_attendees"),
-        CheckConstraint("real_attendees is null or real_attendees >= 0", name="ck_event_sessions_real_attendees"),
+        CheckConstraint(
+            "real_attendees is null or real_attendees >= 0", name="ck_event_sessions_real_attendees"
+        ),
         CheckConstraint("sort_order >= 0", name="ck_event_sessions_sort_order"),
     )
 
@@ -1431,7 +1526,9 @@ class EventSession(Base):
     end_time: Mapped[time | None] = mapped_column(Time)
     venue_name: Mapped[str | None] = mapped_column(String(180))
     stage_name: Mapped[str | None] = mapped_column(String(180))
-    expected_attendees: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    expected_attendees: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     real_attendees: Mapped[int | None] = mapped_column(Integer)
     responsible_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
@@ -1482,23 +1579,41 @@ class EventForm(Base):
     banner_url: Mapped[str | None] = mapped_column(Text)
     primary_logo_url: Mapped[str | None] = mapped_column(Text)
     secondary_logo_url: Mapped[str | None] = mapped_column(Text)
-    primary_color: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'#16b86a'"))
-    show_event_name: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
-    show_session_name: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
-    collect_personal_data: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
-    default_language: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'es'"))
-    available_languages: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[\"es\"]'::jsonb"))
-    requires_language_selection: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    primary_color: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'#16b86a'")
+    )
+    show_event_name: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+    show_session_name: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+    collect_personal_data: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
+    default_language: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default=text("'es'")
+    )
+    available_languages: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[\"es\"]'::jsonb")
+    )
+    requires_language_selection: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
     opens_at: Mapped[datetime | None] = mapped_column(DateTime)
     closes_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
     event: Mapped[Event] = relationship(back_populates="forms")
     session: Mapped[EventSession | None] = relationship(back_populates="forms")
     creator: Mapped[User | None] = relationship()
-    fields: Mapped[list["FormField"]] = relationship(back_populates="form", order_by="FormField.sort_order")
+    fields: Mapped[list["FormField"]] = relationship(
+        back_populates="form", order_by="FormField.sort_order"
+    )
     responses: Mapped[list["FormResponse"]] = relationship(back_populates="form")
     qr_codes: Mapped[list["FormQRCode"]] = relationship(back_populates="form")
 
@@ -1530,7 +1645,9 @@ class FormField(Base):
     updated_at: Mapped[datetime] = updated_at_column()
 
     form: Mapped[EventForm] = relationship(back_populates="fields")
-    options: Mapped[list["FormFieldOption"]] = relationship(back_populates="field", order_by="FormFieldOption.sort_order")
+    options: Mapped[list["FormFieldOption"]] = relationship(
+        back_populates="field", order_by="FormFieldOption.sort_order"
+    )
     answers: Mapped[list["FormAnswer"]] = relationship(back_populates="field")
     translations: Mapped[list["FormFieldTranslation"]] = relationship(back_populates="field")
 
@@ -1557,7 +1674,9 @@ class FormFieldOption(Base):
 
 class FormFieldTranslation(Base):
     __tablename__ = "form_field_translations"
-    __table_args__ = (UniqueConstraint("field_id", "language", name="uq_form_field_translations_field_language"),)
+    __table_args__ = (
+        UniqueConstraint("field_id", "language", name="uq_form_field_translations_field_language"),
+    )
 
     id: Mapped[UUID] = uuid_pk()
     field_id: Mapped[UUID] = mapped_column(
@@ -1574,11 +1693,17 @@ class FormFieldTranslation(Base):
 
 class FormFieldOptionTranslation(Base):
     __tablename__ = "form_field_option_translations"
-    __table_args__ = (UniqueConstraint("option_id", "language", name="uq_form_field_option_translations_option_language"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "option_id", "language", name="uq_form_field_option_translations_option_language"
+        ),
+    )
 
     id: Mapped[UUID] = uuid_pk()
     option_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("form_field_options.id", ondelete="CASCADE"), nullable=False
+        PGUUID(as_uuid=True),
+        ForeignKey("form_field_options.id", ondelete="CASCADE"),
+        nullable=False,
     )
     language: Mapped[str] = mapped_column(String(10), nullable=False)
     label: Mapped[str] = mapped_column(String(180), nullable=False)
@@ -1603,15 +1728,23 @@ class FormResponse(Base):
     event_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
-    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL"))
+    session_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL")
+    )
     response_code: Mapped[str | None] = mapped_column(String(100))
     respondent_name: Mapped[str | None] = mapped_column(String(180))
     respondent_email: Mapped[str | None] = mapped_column(String(180))
     respondent_phone: Mapped[str | None] = mapped_column(String(60))
     language: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'es'"))
-    raw_data: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, server_default=text("'{}'::jsonb"))
-    submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text("NOW()"))
+    raw_data: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    metadata_: Mapped[dict | None] = mapped_column(
+        "metadata", JSONB, server_default=text("'{}'::jsonb")
+    )
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=text("NOW()")
+    )
 
     form: Mapped[EventForm] = relationship(back_populates="responses")
     event: Mapped[Event] = relationship(back_populates="form_responses")
@@ -1659,15 +1792,21 @@ class BikeZoneRecord(Base):
     event_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
-    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL"))
+    session_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL")
+    )
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[BikeZoneStatus] = mapped_column(
         bike_zone_status_enum, nullable=False, server_default=text("'REGISTERED'")
     )
     check_in_at: Mapped[datetime | None] = mapped_column(DateTime)
     check_out_at: Mapped[datetime | None] = mapped_column(DateTime)
-    checked_in_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
-    checked_out_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    checked_in_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    checked_out_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
@@ -1683,7 +1822,9 @@ class FormQRCode(Base):
         Index("idx_form_qr_codes_event_id", "event_id"),
         Index("idx_form_qr_codes_session_id", "session_id"),
         Index("idx_form_qr_codes_qr_type", "qr_type"),
-        UniqueConstraint("form_id", "qr_type", "language", name="uq_form_qr_codes_form_type_language"),
+        UniqueConstraint(
+            "form_id", "qr_type", "language", name="uq_form_qr_codes_form_type_language"
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -1693,7 +1834,9 @@ class FormQRCode(Base):
     event_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
-    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL"))
+    session_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_sessions.id", ondelete="SET NULL")
+    )
     label: Mapped[str] = mapped_column(String(180), nullable=False)
     target_url: Mapped[str] = mapped_column(Text, nullable=False)
     qr_type: Mapped[str] = mapped_column(String(50), nullable=False, server_default=text("'FORM'"))
@@ -1701,7 +1844,9 @@ class FormQRCode(Base):
     file_url: Mapped[str | None] = mapped_column(Text)
     file_path: Mapped[str | None] = mapped_column(Text)
     format: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'PNG'"))
-    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = created_at_column()
 
     form: Mapped[EventForm] = relationship(back_populates="qr_codes")
@@ -1827,6 +1972,17 @@ class Report(Base):
     __table_args__ = (
         Index("idx_reports_event_id", "event_id"),
         Index("idx_reports_status", "status"),
+        Index("idx_reports_session_id", "session_id"),
+        ForeignKeyConstraint(
+            ["event_id", "session_id"],
+            ["event_sessions.event_id", "event_sessions.id"],
+            name="fk_reports_event_session",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "(scope = 'EVENT' and session_id is null) or (scope = 'SHOW' and session_id is not null)",
+            name="ck_reports_scope_session",
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk()
@@ -1834,6 +1990,10 @@ class Report(Base):
         PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(180), nullable=False)
+    scope: Mapped[ReportScope] = mapped_column(
+        report_scope_enum, nullable=False, server_default=text("'EVENT'")
+    )
+    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     summary: Mapped[str | None] = mapped_column(Text)
     pdf_url: Mapped[str | None] = mapped_column(Text)
     status: Mapped[ReportStatus] = mapped_column(
@@ -1844,7 +2004,166 @@ class Report(Base):
     )
     generated_at: Mapped[datetime | None] = mapped_column(DateTime)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    updated_at: Mapped[datetime] = updated_at_column()
+    edit_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     created_at: Mapped[datetime] = created_at_column()
 
     event: Mapped[Event] = relationship(back_populates="reports")
-    generator: Mapped[User | None] = relationship()
+    generator: Mapped[User | None] = relationship(foreign_keys=[generated_by])
+    session: Mapped[EventSession | None] = relationship(overlaps="event,reports")
+    creator: Mapped[User | None] = relationship(foreign_keys=[created_by])
+    sections: Mapped[list["ReportSection"]] = relationship(
+        back_populates="report", cascade="all, delete-orphan"
+    )
+    evidences: Mapped[list["ReportEvidence"]] = relationship(
+        back_populates="report", cascade="all, delete-orphan"
+    )
+    revisions: Mapped[list["ReportRevision"]] = relationship(
+        back_populates="report", cascade="all, delete-orphan"
+    )
+    publications: Mapped[list["ReportPublication"]] = relationship(
+        back_populates="report", cascade="all, delete-orphan"
+    )
+    template_key: Mapped[ReportTemplateKey] = mapped_column(
+        Enum(ReportTemplateKey, name="report_template_key", native_enum=False),
+        nullable=False,
+        server_default=text("'ENVIRONMENTAL_PREMIUM'"),
+    )
+    theme: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    editorial_config: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+
+class ReportSection(Base):
+    __tablename__ = "report_sections"
+    __table_args__ = (
+        UniqueConstraint("report_id", "section_key", name="uq_report_sections_report_key"),
+        CheckConstraint("sort_order >= 0", name="ck_report_sections_sort_order"),
+        Index("idx_report_sections_report_order", "report_id", "sort_order"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    report_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False
+    )
+    section_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    section_type: Mapped[ReportSectionType] = mapped_column(
+        report_section_type_enum, nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    layout_variant: Mapped[ReportLayoutVariant] = mapped_column(
+        report_layout_variant_enum, nullable=False, server_default=text("'EDITORIAL'")
+    )
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    source_snapshot: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    source_metadata: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    is_custom: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    edit_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+    report: Mapped[Report] = relationship(back_populates="sections")
+    evidences: Mapped[list["ReportEvidence"]] = relationship(back_populates="section")
+
+
+class ReportEvidence(Base):
+    __tablename__ = "report_evidences"
+    __table_args__ = (
+        UniqueConstraint("report_id", "evidence_id", name="uq_report_evidences_report_evidence"),
+        CheckConstraint("sort_order >= 0", name="ck_report_evidences_sort_order"),
+        Index("idx_report_evidences_report_order", "report_id", "sort_order"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    report_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False
+    )
+    section_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("report_sections.id", ondelete="SET NULL")
+    )
+    evidence_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("evidences.id", ondelete="CASCADE"), nullable=False
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    caption: Mapped[str | None] = mapped_column(String(500))
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = created_at_column()
+    report: Mapped[Report] = relationship(back_populates="evidences")
+    section: Mapped[ReportSection | None] = relationship(back_populates="evidences")
+    evidence: Mapped[Evidence] = relationship()
+
+
+class ReportRevision(Base):
+    __tablename__ = "report_revisions"
+    __table_args__ = (
+        UniqueConstraint("report_id", "revision_number", name="uq_report_revisions_number"),
+        Index("idx_report_revisions_report", "report_id"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    report_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False
+    )
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    note: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = created_at_column()
+    report: Mapped[Report] = relationship(back_populates="revisions")
+    creator: Mapped[User | None] = relationship()
+
+
+class ReportPublication(Base):
+    __tablename__ = "report_publications"
+    __table_args__ = (
+        UniqueConstraint("report_id", "publication_number", name="uq_report_publications_number"),
+        UniqueConstraint("report_id", "idempotency_key", name="uq_report_publications_idempotency"),
+        CheckConstraint("publication_number > 0", name="ck_report_publications_number"),
+        CheckConstraint("file_size > 100", name="ck_report_publications_file_size"),
+        CheckConstraint("page_count > 0", name="ck_report_publications_page_count"),
+        Index("idx_report_publications_report", "report_id", "publication_number"),
+        Index("idx_report_publications_status", "status"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    report_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False
+    )
+    revision_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("report_revisions.id", ondelete="SET NULL")
+    )
+    publication_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[ReportPublicationStatus] = mapped_column(
+        Enum(ReportPublicationStatus, name="report_publication_status", native_enum=False),
+        nullable=False,
+        server_default=text("'GENERATED'"),
+    )
+    storage_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    theme_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    generated_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=text("NOW()")
+    )
+    delivered_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = created_at_column()
+    report: Mapped[Report] = relationship(back_populates="publications")
+    revision: Mapped[ReportRevision | None] = relationship()
+    generator: Mapped[User | None] = relationship(foreign_keys=[generated_by])
+    deliverer: Mapped[User | None] = relationship(foreign_keys=[delivered_by])

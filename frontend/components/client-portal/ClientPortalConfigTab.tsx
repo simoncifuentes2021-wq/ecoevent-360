@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/exhaustive-deps -- Reload only when the event identity changes. */
+
 import { useEffect, useMemo, useState } from "react";
 import { Eye, LayoutTemplate, Save } from "lucide-react";
 

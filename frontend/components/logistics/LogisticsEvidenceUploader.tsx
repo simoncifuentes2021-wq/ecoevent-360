@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Upload previews use authenticated object-storage resources. */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, ChevronDown, Eye, FileText, Trash2, Upload } from "lucide-react";
 

@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/exhaustive-deps -- Reload only when the survey identity changes. */
+
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 

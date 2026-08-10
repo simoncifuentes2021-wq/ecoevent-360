@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/exhaustive-deps -- Reload only when the template identity changes. */
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Eye, Plus, Trash2 } from "lucide-react";

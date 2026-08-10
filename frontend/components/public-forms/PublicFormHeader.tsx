@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Public form branding accepts customer-managed URLs outside the Next optimizer. */
+
 import type { PublicEventForm } from "@/types/eventForm";
 
 export function PublicFormHeader({ form }: { form: PublicEventForm }) {
@@ -22,3 +24,4 @@ export function PublicFormHeader({ form }: { form: PublicEventForm }) {
     </header>
   );
 }
+/* eslint-disable @next/next/no-img-element -- Public form branding accepts customer-managed image URLs outside the Next optimizer. */

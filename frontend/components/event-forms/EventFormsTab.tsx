@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Form branding accepts authenticated and customer-managed image URLs outside the Next optimizer. */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, ExternalLink, Eye, Plus, QrCode } from "lucide-react";
 

@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/exhaustive-deps, @next/next/no-img-element -- QR blobs require native object URLs and reload only when their persisted identity changes. */
+
 import { useEffect, useState } from "react";
 import { Download, Trash2 } from "lucide-react";
 

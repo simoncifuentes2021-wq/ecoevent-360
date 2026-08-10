@@ -112,7 +112,9 @@ def client_portal(db: Session, event_id: UUID, user: User) -> dict:
     event = _event_or_404(db, event_id)
     if user.role != UserRole.CLIENT or user.client_id != event.client_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
-    config = _ensure_config(db, event, user.id)
+    # Client reads must remain read-only. Repairing or creating portal definitions
+    # here is rejected by RLS and would turn an otherwise valid portal into a 500.
+    config = _ensure_config(db, event, user.id, allow_mutation=False)
     return _portal_payload(db, event, config, user)
 
 
@@ -182,16 +184,27 @@ def _widget_data(widget_key: str, dashboard: dict) -> dict | list | None:
     return None
 
 
-def _ensure_config(db: Session, event: Event, created_by: UUID | None) -> ClientPortalConfig:
+def _ensure_config(
+    db: Session,
+    event: Event,
+    created_by: UUID | None,
+    *,
+    allow_mutation: bool = True,
+) -> ClientPortalConfig:
     config = db.scalar(
         select(ClientPortalConfig)
         .options(selectinload(ClientPortalConfig.sections), selectinload(ClientPortalConfig.widgets))
         .where(ClientPortalConfig.event_id == event.id, ClientPortalConfig.client_id == event.client_id)
     )
     if config:
-        if _ensure_config_definitions(db, config):
+        if allow_mutation and _ensure_config_definitions(db, config):
             return _load_config(db, config.id)
         return config
+    if not allow_mutation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client portal is not configured for this event",
+        )
     config = ClientPortalConfig(client_id=event.client_id, event_id=event.id, created_by=created_by)
     db.add(config)
     db.flush()

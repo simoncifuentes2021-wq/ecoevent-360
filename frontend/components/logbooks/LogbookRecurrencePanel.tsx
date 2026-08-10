@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/exhaustive-deps -- Reload only when the event identity changes. */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ModalShell } from "@/components/common/ModalShell";

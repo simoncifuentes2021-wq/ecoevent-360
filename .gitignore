@@ -27,5 +27,7 @@ frontend/tsconfig.tsbuildinfo
 
 # Logs and local OS files
 *.log
+.tmp/
+backend/.tmp/
 .DS_Store
 Thumbs.db
