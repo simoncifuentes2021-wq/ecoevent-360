@@ -36,7 +36,7 @@ export function ReportCard({
       <div className="mt-4 flex flex-wrap gap-2">
         <Button onClick={() => onView(report)} size="sm" type="button" variant="secondary"><Eye className="h-4 w-4" />Ver</Button>
         <ReportDownloadButton report={report} />
-        {canDeliver && report.status !== "DELIVERED" ? <Button onClick={() => onDeliver(report)} size="sm" type="button" variant="secondary"><Send className="h-4 w-4" />Entregar</Button> : null}
+        {canDeliver ? <Button onClick={() => onDeliver(report)} size="sm" type="button" variant="secondary"><Send className="h-4 w-4" />Entregar PDF</Button> : null}
         {canDelete ? <Button onClick={() => onDelete(report)} size="sm" type="button" variant="secondary"><Trash2 className="h-4 w-4" />Anular</Button> : null}
       </div>
     </div>

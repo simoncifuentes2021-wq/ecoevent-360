@@ -80,3 +80,22 @@ test("client portal lists only delivered authenticated publications", () => {
   assert.match(source, /downloadReportPublication/);
   assert.doesNotMatch(source, /downloadReport\(/);
 });
+
+test("legacy report list delegates download and delivery to premium publications", () => {
+  const router = read("../backend/app/api/routers/reports.py");
+  const publications = read("../backend/app/services/report_publication_service.py");
+  const table = read("components/reports/ReportTable.tsx");
+  const dialog = read("components/reports/MarkReportDeliveredDialog.tsx");
+
+  for (const pattern of [
+    /latest_publication\(db, report_id, current_user\)/,
+    /deliver_latest/,
+    /read_stored_file\(publication\.storage_key\)/,
+    /"premium": True/,
+  ]) assert.match(router, pattern);
+  assert.match(publications, /def deliver_latest/);
+  assert.match(publications, /item = generate/);
+  assert.match(publications, /return deliver\(db, item\.id, user\)/);
+  assert.match(table, /Entregar PDF premium al cliente/);
+  assert.match(dialog, /Generar y entregar PDF/);
+});

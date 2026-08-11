@@ -168,6 +168,34 @@ def list_publications(db: Session, report_id: UUID, user: User) -> list[ReportPu
     return list(db.scalars(query.order_by(ReportPublication.publication_number.desc())).all())
 
 
+def latest_publication(
+    db: Session, report_id: UUID, user: User
+) -> ReportPublication | None:
+    """Return the newest visible immutable PDF for a report."""
+    publications = list_publications(db, report_id, user)
+    return next(
+        (item for item in publications if item.status != ReportPublicationStatus.ARCHIVED),
+        None,
+    )
+
+
+def deliver_latest(db: Session, report_id: UUID, user: User) -> ReportPublication:
+    """Generate a premium publication when needed and deliver that exact PDF."""
+    _admin(user)
+    report = _report(db, report_id, user)
+    item = latest_publication(db, report.id, user)
+    if item is None:
+        item = generate(
+            db,
+            report.id,
+            user,
+            f"deliver:{report.id}:{report.edit_version}",
+        )
+    if item.status == ReportPublicationStatus.DELIVERED:
+        return item
+    return deliver(db, item.id, user)
+
+
 def get_publication(db: Session, publication_id: UUID, user: User) -> ReportPublication:
     publication = db.scalar(
         select(ReportPublication)
