@@ -42,7 +42,7 @@ export function ReportTable({
         <div className="flex justify-end gap-2">
           <Button onClick={() => onView(report)} size="sm" type="button" variant="secondary"><Eye className="h-4 w-4" /></Button>
           <ReportDownloadButton report={report} />
-          {canDeliver && report.status !== "DELIVERED" ? <Button onClick={() => onDeliver(report)} size="sm" type="button" variant="secondary"><Send className="h-4 w-4" /></Button> : null}
+          {canDeliver ? <Button aria-label="Entregar PDF premium al cliente" onClick={() => onDeliver(report)} size="sm" type="button" variant="secondary"><Send className="h-4 w-4" /></Button> : null}
           {canDelete ? <Button onClick={() => onDelete(report)} size="sm" type="button" variant="secondary"><Trash2 className="h-4 w-4" /></Button> : null}
         </div>
       )}

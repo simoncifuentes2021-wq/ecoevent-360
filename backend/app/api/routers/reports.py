@@ -631,8 +631,14 @@ def download_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    from app.services import file_storage_service, report_publication_service
+
     report = report_service.ensure_can_access_report(db, current_user, report_id)
-    buffer = report_service.build_report_pdf(report)
+    publication = report_publication_service.latest_publication(db, report_id, current_user)
+    if publication:
+        content, _ = file_storage_service.read_stored_file(publication.storage_key)
+    else:
+        content, _, report = report_publication_service.preview(db, report_id, current_user)
     create_audit_log(
         db,
         user=current_user,
@@ -642,11 +648,15 @@ def download_report(
         entity_id=report.id,
         event_id=report.event_id,
         status="SUCCESS",
-        metadata={"filename": f"report-{report.id}.pdf"},
+        metadata={
+            "filename": f"report-{report.id}.pdf",
+            "publication_id": str(publication.id) if publication else None,
+            "premium": True,
+        },
         request=request,
     )
     return StreamingResponse(
-        buffer,
+        iter([content]),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="report-{report.id}.pdf"'},
     )
@@ -659,11 +669,14 @@ def mark_report_delivered(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    from app.services import report_publication_service
+
     before = report_service.ensure_can_access_report(db, current_user, report_id)
     old_data = serialize_model_for_audit(before)
-    report = report_service.mark_report_delivered(
-        db, report_id=report_id, current_user=current_user
+    publication = report_publication_service.deliver_latest(
+        db, report_id=report_id, user=current_user
     )
+    report = publication.report
     create_audit_log(
         db,
         user=current_user,
@@ -674,6 +687,7 @@ def mark_report_delivered(
         event_id=report.event_id,
         old_data=old_data,
         new_data=serialize_model_for_audit(report),
+        metadata={"publication_id": str(publication.id)},
         request=request,
     )
     return report
