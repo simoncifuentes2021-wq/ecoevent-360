@@ -189,9 +189,68 @@ def test_transport_public_and_staff_templates_are_different(db, ctx):
     assert "email" in public_keys
     assert "company" not in public_keys
     assert public_keys["country_residence"].field_type == FormFieldType.SELECT
+    assert public_keys["residence_region"].field_type == FormFieldType.SELECT
+    assert public_keys["residence_region"].is_required is False
+    assert public_keys["residence_commune"].field_type == FormFieldType.SELECT
+    assert public_keys["residence_commune"].is_required is False
     assert "company" in staff_keys
     assert "email" not in staff_keys
     assert staff_keys["country_origin"].field_type == FormFieldType.SELECT
+    assert staff_keys["residence_region"].field_type == FormFieldType.SELECT
+    assert staff_keys["residence_commune"].field_type == FormFieldType.SELECT
+
+
+def test_chile_transport_requires_region_and_metropolitan_commune(db, ctx):
+    form = event_form_service.create_form(
+        db,
+        ctx["event"].id,
+        EventFormCreate(title="Transporte Chile", form_type=EventFormType.TRANSPORT_SURVEY, generate_template=True),
+        ctx["admin"],
+    )
+    form.status = EventFormStatus.ACTIVE
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        event_form_service.submit_public_form(
+            db,
+            form.public_slug,
+            FormResponseCreate(language="es", answers={"transport_mode": "metro", "country_residence": "Chile"}),
+        )
+    assert field_errors(exc.value)["residence_region"] == "Este campo es obligatorio"
+
+    with pytest.raises(HTTPException) as exc:
+        event_form_service.submit_public_form(
+            db,
+            form.public_slug,
+            FormResponseCreate(
+                language="es",
+                answers={
+                    "transport_mode": "metro",
+                    "country_residence": "Chile",
+                    "residence_region": "Metropolitana de Santiago",
+                },
+            ),
+        )
+    assert field_errors(exc.value)["residence_commune"] == "Este campo es obligatorio"
+
+
+def test_non_chile_transport_does_not_require_region_or_commune(db, ctx):
+    form = event_form_service.create_form(
+        db,
+        ctx["event"].id,
+        EventFormCreate(title="Transporte extranjero", form_type=EventFormType.TRANSPORT_SURVEY, generate_template=True),
+        ctx["admin"],
+    )
+    form.status = EventFormStatus.ACTIVE
+    db.commit()
+
+    response, _ = event_form_service.submit_public_form(
+        db,
+        form.public_slug,
+        FormResponseCreate(language="es", answers={"transport_mode": "bus", "country_residence": "Argentina"}),
+    )
+    assert response.raw_data["country_residence"] == "Argentina"
+    assert "residence_region" not in response.raw_data
 
 
 def test_public_draft_and_closed_forms_do_not_open(db, ctx):

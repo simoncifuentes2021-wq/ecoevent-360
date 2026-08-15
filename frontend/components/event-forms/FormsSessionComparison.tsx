@@ -54,6 +54,9 @@ export function FormsSessionComparison({ eventId, compact = false }: { eventId: 
 
   const hasTransport = sessions.some((session) => session.transport_modes.length > 0);
   const hasProblems = sessions.some((session) => session.main_problems.length > 0);
+  const isExperience = filter === "EXPERIENCE_SURVEY";
+  const isTransport = filter === "TRANSPORT_SURVEY" || filter === "STAFF_TRANSPORT_SURVEY";
+  const isBikeZone = filter === "BIKE_ZONE_REGISTRATION";
 
   return (
     <section className="rounded-lg border bg-white p-4 shadow-sm">
@@ -80,7 +83,7 @@ export function FormsSessionComparison({ eventId, compact = false }: { eventId: 
 
       {!loading && !error && sessions.length ? (
         <div className="mt-4 space-y-4">
-          {!compact ? (
+          {!compact && filter !== "" ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {sessions.map((session) => (
                 <article className="rounded-lg border border-slate-200 bg-slate-50 p-4" key={session.session_id}>
@@ -91,18 +94,20 @@ export function FormsSessionComparison({ eventId, compact = false }: { eventId: 
                     </div>
                     <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-slate-600">{session.active_forms}/{session.total_forms} activos</span>
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                  <div className={`mt-4 grid gap-2 text-sm ${isExperience || isBikeZone ? "grid-cols-2" : "grid-cols-1"}`}>
                     <Metric label="Respuestas" value={session.total_responses} />
-                    <Metric label="Nota prom." value={session.average_rating !== null && session.average_rating !== undefined ? session.average_rating.toFixed(1) : "-"} />
-                    <Metric label="Recomienda" value={session.recommendation_rate !== null && session.recommendation_rate !== undefined ? `${Math.round(session.recommendation_rate)}%` : "-"} />
-                    <Metric label="Bike Zone" value={session.bike_zone_total} />
+                    {isExperience ? <Metric label="Nota prom." value={session.average_rating !== null && session.average_rating !== undefined ? session.average_rating.toFixed(1) : "Sin datos"} /> : null}
+                    {isExperience ? <Metric label="Recomienda" value={session.recommendation_rate !== null && session.recommendation_rate !== undefined ? `${Math.round(session.recommendation_rate)}%` : "Sin datos"} /> : null}
+                    {isBikeZone ? <Metric label="Registros Bike Zone" value={session.bike_zone_total} /> : null}
+                    {isBikeZone ? <Metric label="Check-in" value={session.bike_zone_checked_in} /> : null}
+                    {isBikeZone ? <Metric label="Check-out" value={session.bike_zone_checked_out} /> : null}
                   </div>
                 </article>
               ))}
             </div>
           ) : null}
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className={`grid gap-4 ${isExperience ? "xl:grid-cols-2" : ""}`}>
             <ChartBox title="Respuestas por show" empty={!responseData.some((item) => item.respuestas > 0 || item.bikeZone > 0)}>
               <ResponsiveContainer height="100%" width="100%">
                 <BarChart data={responseData}>
@@ -111,12 +116,12 @@ export function FormsSessionComparison({ eventId, compact = false }: { eventId: 
                   <YAxis allowDecimals={false} />
                   <Tooltip />
                   <Bar dataKey="respuestas" fill="#0f766e" name="Respuestas" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="bikeZone" fill="#0369a1" name="Bike Zone" radius={[8, 8, 0, 0]} />
+                  {isBikeZone ? <Bar dataKey="bikeZone" fill="#0369a1" name="Registros Bike Zone" radius={[8, 8, 0, 0]} /> : null}
                 </BarChart>
               </ResponsiveContainer>
             </ChartBox>
 
-            <ChartBox title="Nota promedio por show" empty={!ratingData.length}>
+            {isExperience ? <ChartBox title="Nota promedio por show" empty={!ratingData.length}>
               <ResponsiveContainer height="100%" width="100%">
                 <LineChart data={ratingData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -126,22 +131,22 @@ export function FormsSessionComparison({ eventId, compact = false }: { eventId: 
                   <Line dataKey="nota" name="Nota promedio" stroke="#0f766e" strokeWidth={3} type="monotone" />
                 </LineChart>
               </ResponsiveContainer>
-            </ChartBox>
+            </ChartBox> : null}
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className={`w-full text-left text-sm ${isExperience || isBikeZone ? "min-w-[760px]" : "min-w-[560px]"}`}>
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-3 py-2">Show</th>
                   <th className="px-3 py-2">Fecha</th>
                   <th className="px-3 py-2">Forms</th>
                   <th className="px-3 py-2">Respuestas</th>
-                  <th className="px-3 py-2">Nota</th>
-                  <th className="px-3 py-2">Recomienda</th>
-                  <th className="px-3 py-2">Bike Zone</th>
-                  <th className="px-3 py-2">Check-in</th>
-                  <th className="px-3 py-2">Check-out</th>
+                  {isExperience ? <th className="px-3 py-2">Nota</th> : null}
+                  {isExperience ? <th className="px-3 py-2">Recomienda</th> : null}
+                  {isBikeZone ? <th className="px-3 py-2">Bike Zone</th> : null}
+                  {isBikeZone ? <th className="px-3 py-2">Check-in</th> : null}
+                  {isBikeZone ? <th className="px-3 py-2">Check-out</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -151,21 +156,19 @@ export function FormsSessionComparison({ eventId, compact = false }: { eventId: 
                     <td className="px-3 py-2 text-slate-600">{formatSessionDate(session)}</td>
                     <td className="px-3 py-2">{session.active_forms}/{session.total_forms}</td>
                     <td className="px-3 py-2">{session.total_responses}</td>
-                    <td className="px-3 py-2">{formatNullableNumber(session.average_rating, 1)}</td>
-                    <td className="px-3 py-2">{formatPercent(session.recommendation_rate)}</td>
-                    <td className="px-3 py-2">{session.bike_zone_total}</td>
-                    <td className="px-3 py-2">{session.bike_zone_checked_in}</td>
-                    <td className="px-3 py-2">{session.bike_zone_checked_out}</td>
+                    {isExperience ? <td className="px-3 py-2">{formatNullableNumber(session.average_rating, 1)}</td> : null}
+                    {isExperience ? <td className="px-3 py-2">{formatPercent(session.recommendation_rate)}</td> : null}
+                    {isBikeZone ? <td className="px-3 py-2">{session.bike_zone_total}</td> : null}
+                    {isBikeZone ? <td className="px-3 py-2">{session.bike_zone_checked_in}</td> : null}
+                    {isBikeZone ? <td className="px-3 py-2">{session.bike_zone_checked_out}</td> : null}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Breakdown title="Transporte por show" empty={!hasTransport} sessions={sessions} field="transport_modes" />
-            <Breakdown title="Problemas principales por show" empty={!hasProblems} sessions={sessions} field="main_problems" />
-          </div>
+          {isTransport ? <Breakdown title="Transporte por show" empty={!hasTransport} sessions={sessions} field="transport_modes" /> : null}
+          {isExperience ? <Breakdown title="Problemas principales por show" empty={!hasProblems} sessions={sessions} field="main_problems" /> : null}
         </div>
       ) : null}
     </section>
