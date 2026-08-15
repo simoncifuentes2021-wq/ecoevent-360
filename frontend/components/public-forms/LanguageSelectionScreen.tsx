@@ -12,8 +12,8 @@ const languageMeta: Record<string, { flag: string; label: string; native: string
 export function LanguageSelectionScreen({ form, onSelect }: { form: PublicEventForm; onSelect: (lang: string) => void }) {
   const languages = form.available_languages?.length ? form.available_languages : ["es"];
   return (
-    <main className="-mt-16 px-4 pb-12">
-      <section className="mx-auto max-w-xl rounded-lg bg-white p-5 shadow-2xl md:p-7">
+    <main className="relative z-10 -mt-12 px-4 pb-12 sm:-mt-14">
+      <section className="mx-auto max-w-xl rounded-xl border border-slate-200/80 bg-white p-5 shadow-2xl md:p-7">
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{form.title}</p>
           <h2 className="mt-2 text-2xl font-bold text-slate-950">Elige tu idioma para continuar</h2>

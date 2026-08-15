@@ -90,6 +90,18 @@ CHILE_REGION_OPTIONS = [
     "Aysén",
     "Magallanes",
 ]
+METROPOLITAN_COMMUNE_OPTIONS = [
+    "Alhué", "Buin", "Calera de Tango", "Cerrillos", "Cerro Navia", "Colina",
+    "Conchalí", "Curacaví", "El Bosque", "El Monte", "Estación Central",
+    "Huechuraba", "Independencia", "Isla de Maipo", "La Cisterna", "La Florida",
+    "La Granja", "La Pintana", "La Reina", "Lampa", "Las Condes", "Lo Barnechea",
+    "Lo Espejo", "Lo Prado", "Macul", "Maipú", "María Pinto", "Melipilla",
+    "Ñuñoa", "Padre Hurtado", "Paine", "Pedro Aguirre Cerda", "Peñaflor",
+    "Peñalolén", "Pirque", "Providencia", "Pudahuel", "Puente Alto", "Quilicura",
+    "Quinta Normal", "Recoleta", "Renca", "San Bernardo", "San Joaquín",
+    "San José de Maipo", "San Miguel", "San Pedro", "San Ramón", "Santiago",
+    "Talagante", "Tiltil", "Vitacura",
+]
 
 
 def _event_or_404(db: Session, event_id: UUID) -> Event:
@@ -367,6 +379,13 @@ def submit_public_form(db: Session, slug: str, payload: FormResponseCreate) -> t
         if not normalized["empty"]:
             normalized_answers.append((field, normalized))
             raw_data[field.field_key] = normalized["raw"]
+    country = str(raw_data.get("country_residence") or raw_data.get("country_origin") or "").strip()
+    region = str(raw_data.get("residence_region") or "").strip()
+    commune = str(raw_data.get("residence_commune") or "").strip()
+    if country == "Chile" and "residence_region" in field_by_key and not region:
+        errors.append({"field_key": "residence_region", "message": "Este campo es obligatorio"})
+    if region == "Metropolitana de Santiago" and "residence_commune" in field_by_key and not commune:
+        errors.append({"field_key": "residence_commune", "message": "Este campo es obligatorio"})
     if errors:
         _raise_field_errors(errors)
 
@@ -831,6 +850,9 @@ DEFAULT_FIELD_TRANSLATIONS = {
         "full_name": {"es": "Nombre completo", "en": "Full name", "pt": "Nome completo", "ko": "성명"},
         "company": {"es": "Empresa", "en": "Company", "pt": "Empresa", "ko": "회사"},
         "country_origin": {"es": "País de origen", "en": "Country of origin", "pt": "País de origem", "ko": "출신 국가"},
+        "country_residence": {"es": "País de residencia", "en": "Country of residence", "pt": "País de residência", "ko": "거주 국가"},
+        "residence_region": {"es": "Región de residencia", "en": "Region of residence", "pt": "Região de residência", "ko": "거주 지역"},
+        "residence_commune": {"es": "Comuna de residencia", "en": "Commune of residence", "pt": "Comuna de residência", "ko": "거주 코뮌"},
         "transport_mode": {"es": "Tipo de transporte utilizado para llegar", "en": "Type of transport used to arrive", "pt": "Tipo de transporte utilizado para chegar", "ko": "이용한 교통수단"},
     },
     EventFormType.BIKE_ZONE_REGISTRATION: {
@@ -897,6 +919,8 @@ def _public_transport_template(form: EventForm) -> list[dict]:
             options=["auto", "metro", "bus", "bicicleta", "caminando", "app_transporte", "otro"],
         ),
         _field("País de residencia", "country_residence", FormFieldType.SELECT, True, 5, analytics_key="country", options=COUNTRY_OPTIONS),
+        _field("Región de residencia", "residence_region", FormFieldType.SELECT, False, 6, analytics_key="residence_region", options=CHILE_REGION_OPTIONS),
+        _field("Comuna de residencia", "residence_commune", FormFieldType.SELECT, False, 7, analytics_key="residence_commune", options=METROPOLITAN_COMMUNE_OPTIONS),
     ]
 
 
@@ -909,12 +933,14 @@ def _staff_transport_template(form: EventForm) -> list[dict]:
         _field("Nombre completo", "full_name", FormFieldType.TEXT, False, 2),
         _field("Empresa", "company", FormFieldType.TEXT, False, 3),
         _field("País de origen", "country_origin", FormFieldType.SELECT, True, 4, analytics_key="country_origin", options=COUNTRY_OPTIONS),
+        _field("Región", "residence_region", FormFieldType.SELECT, False, 5, analytics_key="residence_region", options=CHILE_REGION_OPTIONS),
+        _field("Comuna", "residence_commune", FormFieldType.SELECT, False, 6, analytics_key="residence_commune", options=METROPOLITAN_COMMUNE_OPTIONS),
         _field(
             "Tipo de transporte utilizado para llegar",
             "transport_mode",
             FormFieldType.SELECT,
             True,
-            5,
+            7,
             analytics_key="transport_mode",
             options=["auto", "metro", "bus", "bicicleta", "caminando", "app_transporte", "otro"],
         ),
@@ -958,6 +984,9 @@ def _field(label, key, field_type, required, order, *, analytics_key=None, optio
     if key == "residence_region":
         field_type = FormFieldType.SELECT
         options = options or CHILE_REGION_OPTIONS
+    if key == "residence_commune":
+        field_type = FormFieldType.SELECT
+        options = options or METROPOLITAN_COMMUNE_OPTIONS
     data = {
         "label": label,
         "field_key": key,

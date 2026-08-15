@@ -18,7 +18,17 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
   const [result, setResult] = useState<FormSubmitResult | null>(null);
 
   function update(key: string, value: unknown) {
-    setAnswers((current) => ({ ...current, [key]: value }));
+    setAnswers((current) => {
+      const next = { ...current, [key]: value };
+      if ((key === "country_residence" || key === "country_origin") && value !== "Chile") {
+        delete next.residence_region;
+        delete next.residence_commune;
+      }
+      if (key === "residence_region" && value !== "Metropolitana de Santiago") {
+        delete next.residence_commune;
+      }
+      return next;
+    });
     setFieldErrors((current) => {
       if (!current[key]) return current;
       const next = { ...current };
@@ -74,8 +84,8 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
       <section className="mx-auto max-w-2xl rounded-lg bg-white p-5 shadow-2xl md:p-7">
         {form.description ? <p className="mb-5 text-sm text-slate-600">{form.description}</p> : null}
         <div className="space-y-4">
-          {form.fields.map((field) => (
-            <FieldControl key={field.field_key} error={fieldErrors[field.field_key]} field={field} value={answers[field.field_key]} onChange={(value) => update(field.field_key, value)} />
+          {form.fields.filter((field) => isFieldVisible(field, answers, form.fields)).map((field) => (
+            <FieldControl key={field.field_key} conditionallyRequired={isFieldConditionallyRequired(field, answers, form.fields)} error={fieldErrors[field.field_key]} field={field} value={answers[field.field_key]} onChange={(value) => update(field.field_key, value)} />
           ))}
         </div>
         {error ? <p className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p> : null}
@@ -87,8 +97,8 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
   );
 }
 
-function FieldControl({ field, value, error, onChange }: { field: PublicFormField; value: unknown; error?: string; onChange: (value: unknown) => void }) {
-  const required = field.is_required ? <span className="text-rose-600"> *</span> : null;
+function FieldControl({ field, value, error, conditionallyRequired = false, onChange }: { field: PublicFormField; value: unknown; error?: string; conditionallyRequired?: boolean; onChange: (value: unknown) => void }) {
+  const required = field.is_required || conditionallyRequired ? <span className="text-rose-600"> *</span> : null;
   return (
     <label className="block text-sm font-semibold text-slate-800">
       {field.label}{required}
@@ -97,6 +107,21 @@ function FieldControl({ field, value, error, onChange }: { field: PublicFormFiel
       {error ? <span className="mt-1 block text-xs font-semibold text-rose-700">{error}</span> : null}
     </label>
   );
+}
+
+function isFieldVisible(field: PublicFormField, answers: Record<string, unknown>, fields: PublicFormField[]) {
+  if (!fields.some((item) => item.field_key === "country_residence" || item.field_key === "country_origin")) return true;
+  const country = answers.country_residence ?? answers.country_origin;
+  if (field.field_key === "residence_region") return country === "Chile";
+  if (field.field_key === "residence_commune") return country === "Chile" && answers.residence_region === "Metropolitana de Santiago";
+  return true;
+}
+
+function isFieldConditionallyRequired(field: PublicFormField, answers: Record<string, unknown>, fields: PublicFormField[]) {
+  if (!fields.some((item) => item.field_key === "country_residence" || item.field_key === "country_origin")) return false;
+  const country = answers.country_residence ?? answers.country_origin;
+  return (field.field_key === "residence_region" && country === "Chile")
+    || (field.field_key === "residence_commune" && answers.residence_region === "Metropolitana de Santiago");
 }
 
 function Control({ field, value, error, onChange }: { field: PublicFormField; value: unknown; error?: string; onChange: (value: unknown) => void }) {
