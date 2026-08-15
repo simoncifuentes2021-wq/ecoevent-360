@@ -10,6 +10,7 @@ import { LoadingState } from "@/components/common/LoadingState";
 import { useToast } from "@/components/common/ToastProvider";
 import { LogbookDialog } from "@/components/logbooks/LogbookDialog";
 import { LogbookEvidencePreview } from "@/components/logbooks/LogbookEvidencePreview";
+import { DailyContributionList } from "@/components/logbooks/DailyContributionList";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api";
@@ -211,7 +212,7 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
 
       {!instanceEditable ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">{data.status === "SCHEDULED" ? "Esta bitácora está programada. Podrás responder cuando llegue su hora de apertura." : "Esta bitácora está en modo de solo lectura por su estado actual."}</p> : null}
 
-      {data.version.sections.map((section) => (
+      {data.import_batch_id ? <DailyContributionList disabled={!instanceEditable} instanceId={data.id} userId={user?.id || ""}/> : data.version.sections.map((section) => (
         <section className="rounded-2xl border bg-white p-4" key={section.id}>
           <h2 className="text-lg font-semibold">{section.title}</h2>
           <div className="mt-4 space-y-5">

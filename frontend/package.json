@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "npm run test:logbooks",
     "test:logbooks": "node tests/logbook-clear.test.cjs && node tests/logbook-validation.test.cjs && node tests/logbook-ui-contract.test.cjs && node tests/logbook-lifecycle.test.cjs && node tests/logbook-recurrence.test.cjs",
     "test:show-operations": "node tests/show-operations.test.cjs",
     "test:reports": "node tests/report-builder.test.cjs",

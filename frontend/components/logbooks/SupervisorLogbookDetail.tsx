@@ -9,6 +9,7 @@ import { LoadingState } from "@/components/common/LoadingState";
 import { useToast } from "@/components/common/ToastProvider";
 import { LogbookDialog } from "@/components/logbooks/LogbookDialog";
 import { LogbookEvidencePreview } from "@/components/logbooks/LogbookEvidencePreview";
+import { DailyContributionList } from "@/components/logbooks/DailyContributionList";
 import { Button } from "@/components/ui/button";
 import {
   addLogbookParticipants,
@@ -127,7 +128,7 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
         </Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
+      {data.import_batch_id ? <DailyContributionList disabled instanceId={data.id} management userId=""/> : <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
         <aside className="rounded-2xl border bg-white p-3">
           <select className="mb-3 w-full rounded-lg border p-2" onChange={(event) => setFilter(event.target.value)} value={filter}>
             <option value="ALL">Todos</option>
@@ -181,7 +182,7 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
             {assignment.history.length ? <History assignment={assignment} /> : null}
           </main>
         ) : <div className="rounded-xl border bg-white p-6">No hay entregas para el filtro.</div>}
-      </div>
+      </div>}
 
       <LogbookDialog
         busy={busy}

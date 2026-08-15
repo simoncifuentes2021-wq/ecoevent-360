@@ -12,8 +12,72 @@ from app.schemas.incident_schema import IncidentRead
 from app.schemas.task_schema import TaskRead
 from app.services import logbook_service as service
 from app.services import logbook_recurrence_service as recurrence
+from app.services import logbook_excel_service as excel_import
+from app.services import logbook_contribution_service as contributions
 
 router = APIRouter(tags=["logbooks"])
+
+
+@router.post("/events/{event_id}/logbooks/import-xlsx/preview", response_model=dict)
+async def preview_logbook_xlsx(
+    event_id: UUID, file: UploadFile = File(...), db: Session = Depends(get_db),
+    current: User = Depends(get_current_active_user),
+):
+    content = await file.read(excel_import.MAX_FILE_SIZE + 1)
+    return excel_import.preview(db, event_id, content, file.filename or "", current)
+
+
+@router.post("/events/{event_id}/logbooks/import-xlsx", response_model=dict, status_code=201)
+async def confirm_logbook_xlsx(
+    event_id: UUID, configuration: str = Form(...), file: UploadFile = File(...),
+    db: Session = Depends(get_db), current: User = Depends(get_current_active_user),
+):
+    config = LogbookImportConfig.model_validate_json(configuration)
+    content = await file.read(excel_import.MAX_FILE_SIZE + 1)
+    return excel_import.import_xlsx(db, event_id, content, file.filename or "", config, current)
+
+
+@router.get("/logbook-instances/{instance_id}/materialized-items", response_model=list[InstanceItemRead])
+def materialized_logbook_items(instance_id: UUID, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return contributions.list_items(db, instance_id, current)
+
+
+@router.get("/logbook-instances/{instance_id}/daily-metrics", response_model=DailyMetricsRead)
+def daily_logbook_metrics(instance_id: UUID, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return contributions.metrics(db, instance_id, current)
+
+
+@router.put("/logbook-instance-items/{item_id}/my-contribution", response_model=ContributionRead)
+def save_my_contribution(item_id: UUID, payload: ContributionIn, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return contributions.save(db, item_id, payload, current)
+
+
+@router.delete("/logbook-contributions/{contribution_id}", status_code=204)
+def delete_my_contribution(contribution_id: UUID, version: int = Query(..., ge=1), db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    contributions.remove(db, contribution_id, version, current)
+    return Response(status_code=204)
+
+
+@router.post("/logbook-contributions/{contribution_id}/evidences", response_model=ContributionEvidenceRead, status_code=201)
+def upload_contribution_evidence(contribution_id: UUID, file: UploadFile = File(...), db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return contributions.upload_evidence(db, contribution_id, file, current)
+
+
+@router.get("/logbook-contribution-evidences/{evidence_id}/access", response_model=EvidenceAccess)
+def contribution_evidence_access(evidence_id: UUID, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return contributions.evidence_access(db, evidence_id, current)
+
+
+@router.get("/logbook-contribution-evidences/{evidence_id}/content")
+def contribution_evidence_content(evidence_id: UUID, token: str, db: Session = Depends(get_db)):
+    content, content_type, filename = contributions.evidence_content(db, evidence_id, token)
+    return Response(content=content, media_type=content_type, headers={"Content-Disposition": f'inline; filename="{filename}"', "Cache-Control": "private, no-store"})
+
+
+@router.delete("/logbook-contribution-evidences/{evidence_id}", status_code=204)
+def delete_contribution_evidence(evidence_id: UUID, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    contributions.delete_evidence(db, evidence_id, current)
+    return Response(status_code=204)
 
 
 @router.post("/logbook-recurrences/preview", response_model=RecurrencePreviewRead)

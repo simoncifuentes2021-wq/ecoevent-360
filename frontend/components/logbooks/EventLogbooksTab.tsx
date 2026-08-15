@@ -13,6 +13,7 @@ import { ModalShell } from "@/components/common/ModalShell";
 import { useToast } from "@/components/common/ToastProvider";
 import { LogbookDialog } from "@/components/logbooks/LogbookDialog";
 import { LogbookRecurrencePanel } from "@/components/logbooks/LogbookRecurrencePanel";
+import { LogbookExcelImport } from "@/components/logbooks/LogbookExcelImport";
 import { Button } from "@/components/ui/button";
 import {
   cancelLogbookInstance, createEventLogbook, getEventLogbooks, getLogbookInstance,
@@ -63,6 +64,7 @@ export function EventLogbooksTab({ eventId, role }: { eventId: string; role?: st
       <select className="rounded-xl border p-2" onChange={(event) => setTemplateFilter(event.target.value)} value={templateFilter}><option value="ALL">Todas las plantillas</option>{Array.from(new Map(items.map((item) => [item.template_id,item.name])).entries()).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
       <select className="rounded-xl border p-2" onChange={(event) => setStageFilter(event.target.value)} value={stageFilter}><option value="ALL">Todas las etapas</option>{Object.entries(logbookStageLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
       {role !== "CLIENT" ? <Button onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4"/>Asignar una vez</Button> : null}
+      {role !== "CLIENT" ? <LogbookExcelImport eventId={eventId} onDone={load}/> : null}
       {role === "ADMIN" || role === "SUPER_ADMIN" ? <Button disabled={processing} onClick={async () => {
         if (processing) return;
         setProcessing(true);

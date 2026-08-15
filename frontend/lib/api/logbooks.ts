@@ -1,6 +1,7 @@
 import {api} from "@/lib/api";
 import type {ListResponse} from "@/types/common";
 import type {ClientLogbookSummary,LogbookAssignment,LogbookInstance,LogbookInstanceDetail,LogbookRecurrencePayload,LogbookRecurrenceSeries,LogbookResponse,LogbookEvidence,LogbookTemplate,LogbookTemplateCreate,LogbookTemplateDetail,LogbookVersion,LogbookVersionDetail} from "@/types/logbook";
+import type {DailyLogbookMetrics,LogbookContributionEvidence,LogbookImportPreview,LogbookInstanceItem,LogbookContribution} from "@/types/logbook";
 export const getLogbookTemplates=(status?:string)=>api.get<ListResponse<LogbookTemplate>>(`/logbook-templates${status?`?status=${status}`:""}`);
 export const createLogbookTemplate=(data:LogbookTemplateCreate)=>api.post<LogbookTemplate>("/logbook-templates",data);
 export const getLogbookTemplate=(id:string)=>api.get<LogbookTemplateDetail>(`/logbook-templates/${id}`);
@@ -39,3 +40,11 @@ export const finishLogbookRecurrence=(id:string)=>api.post<LogbookRecurrenceSeri
 export const getLogbookRecurrenceOccurrences=(id:string)=>api.get<LogbookInstance[]>(`/logbook-recurrences/${id}/occurrences`);
 export const skipLogbookRecurrenceOccurrence=(id:string,occurrenceDate:string,reason:string)=>api.post<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}/skip`,{occurrence_date:occurrenceDate,reason});
 export const rescheduleLogbookRecurrenceOccurrence=(id:string,occurrenceDate:string,replacementDate:string,reason?:string)=>api.post<LogbookInstance>(`/logbook-recurrences/${id}/reschedule`,{occurrence_date:occurrenceDate,replacement_date:replacementDate,reason});
+export const previewLogbookXlsx=(eventId:string,file:File)=>{const body=new FormData();body.append("file",file);return api.post<LogbookImportPreview>(`/events/${eventId}/logbooks/import-xlsx/preview`,body)};
+export const importLogbookXlsx=(eventId:string,file:File,configuration:Record<string,unknown>)=>{const body=new FormData();body.append("file",file);body.append("configuration",JSON.stringify(configuration));return api.post<{batch_id:string;instances_created:number;instance_ids:string[]}>(`/events/${eventId}/logbooks/import-xlsx`,body)};
+export const getMaterializedLogbookItems=(instanceId:string)=>api.get<LogbookInstanceItem[]>(`/logbook-instances/${instanceId}/materialized-items`);
+export const saveMyLogbookContribution=(itemId:string,description:string,version?:number)=>api.put<LogbookContribution>(`/logbook-instance-items/${itemId}/my-contribution`,{description,version});
+export const getDailyLogbookMetrics=(instanceId:string)=>api.get<DailyLogbookMetrics>(`/logbook-instances/${instanceId}/daily-metrics`);
+export const uploadContributionEvidence=(contributionId:string,file:File)=>{const body=new FormData();body.append("file",file);return api.post<LogbookContributionEvidence>(`/logbook-contributions/${contributionId}/evidences`,body)};
+export const getContributionEvidenceAccess=(id:string)=>api.get<{url:string;expires_in:number}>(`/logbook-contribution-evidences/${id}/access`);
+export const deleteContributionEvidence=(id:string)=>api.delete<void>(`/logbook-contribution-evidences/${id}`);
