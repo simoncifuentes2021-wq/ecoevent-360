@@ -23,7 +23,7 @@ type EventTableProps = {
 };
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" }).format(new Date(value));
+  return new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium" }).format(new Date(value));
 }
 
 export function EventTable(props: EventTableProps) {

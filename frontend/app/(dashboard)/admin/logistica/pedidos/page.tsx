@@ -565,7 +565,7 @@ function getValidationMessage(form: QuickOrderFormState, duplicateProductId: str
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("es-CL");
+  return new Date(value).toLocaleDateString("es-CL", { timeZone: "America/Santiago" });
 }
 
 function isPositiveInteger(value: string | number) {

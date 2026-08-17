@@ -1,5 +1,6 @@
 import { API_URL } from "@/lib/constants";
 import { clearSession, getStoredToken } from "@/lib/auth";
+import { chileLocalToIso } from "@/lib/chile-time";
 
 export class ApiError extends Error {
   status: number;
@@ -18,6 +19,30 @@ export class ApiError extends Error {
 type ApiOptions = RequestInit & {
   auth?: boolean;
 };
+
+export function sanitizeChileDateTimes(value: unknown): unknown {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(value)) {
+    return chileLocalToIso(value);
+  }
+  if (Array.isArray(value)) return value.map(sanitizeChileDateTimes);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, sanitizeChileDateTimes(entry)]));
+  }
+  return value;
+}
+
+export function normalizeApiDateTimes(value: unknown): unknown {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)) {
+    return `${value}Z`;
+  }
+  if (Array.isArray(value)) return value.map(normalizeApiDateTimes);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, normalizeApiDateTimes(entry)]));
+  }
+  return value;
+}
+
+const jsonBody = (body: unknown) => JSON.stringify(sanitizeChileDateTimes(body ?? {}));
 
 async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const token = options.auth === false ? null : getStoredToken();
@@ -62,7 +87,7 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
   }
 
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  return normalizeApiDateTimes(await response.json()) as T;
 }
 
 export const api = {
@@ -71,19 +96,19 @@ export const api = {
     request<T>(path, {
       ...options,
       method: "POST",
-      body: body instanceof FormData ? body : JSON.stringify(body ?? {})
+      body: body instanceof FormData ? body : jsonBody(body)
     }),
   patch: <T>(path: string, body?: unknown, options?: ApiOptions) =>
     request<T>(path, {
       ...options,
       method: "PATCH",
-      body: body instanceof FormData ? body : JSON.stringify(body ?? {})
+      body: body instanceof FormData ? body : jsonBody(body)
     }),
   put: <T>(path: string, body?: unknown, options?: ApiOptions) =>
     request<T>(path, {
       ...options,
       method: "PUT",
-      body: body instanceof FormData ? body : JSON.stringify(body ?? {})
+      body: body instanceof FormData ? body : jsonBody(body)
     }),
   delete: <T>(path: string, options?: ApiOptions) =>
     request<T>(path, { ...options, method: "DELETE" })

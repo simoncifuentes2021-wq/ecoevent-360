@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { buildAuditDescription, formatAuditAction } from "@/lib/audit/formatAuditLog";
 import { exportAuditLogs, getAuditLogs } from "@/lib/api/auditLogs";
+import { chileToday } from "@/lib/chile-time";
 import type { AuditLog, AuditLogFilters, AuditLogSummary } from "@/types/auditLog";
 
 const limit = 20;
@@ -49,7 +50,7 @@ export default function AdminAuditPage() {
   }, [load]);
 
   const summary = useMemo<AuditLogSummary>(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = chileToday();
     const moduleCounts = items.reduce<Record<string, number>>((acc, item) => {
       acc[item.module] = (acc[item.module] || 0) + 1;
       return acc;
@@ -60,7 +61,7 @@ export default function AdminAuditPage() {
       today: items.filter((item) => item.created_at.startsWith(today)).length,
       failedOrDenied: items.filter((item) => ["FAILED", "DENIED"].includes(item.status)).length,
       topModule,
-      lastMovement: items[0] ? new Date(items[0].created_at).toLocaleString("es-CL") : "-"
+      lastMovement: items[0] ? new Date(items[0].created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : "-"
     };
   }, [items, total]);
 
@@ -195,7 +196,7 @@ function AuditKpi({ label, value }: { label: string; value: string }) {
 }
 
 const columns: DataTableColumn<AuditLog>[] = [
-  { key: "created_at", header: "Fecha/hora", cell: (row) => new Date(row.created_at).toLocaleString("es-CL") },
+  { key: "created_at", header: "Fecha/hora", cell: (row) => new Date(row.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" }) },
   {
     key: "user",
     header: "Usuario",

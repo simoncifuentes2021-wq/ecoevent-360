@@ -1,4 +1,5 @@
 # ruff: noqa: F405
+from datetime import date
 from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
@@ -27,6 +28,21 @@ async def preview_logbook_xlsx(
     return excel_import.preview(db, event_id, content, file.filename or "", current)
 
 
+@router.get("/events/{event_id}/logbooks/import-xlsx/template")
+def download_logbook_xlsx_template(
+    event_id: UUID, start_date: date = Query(...), end_date: date = Query(...),
+    db: Session = Depends(get_db), current: User = Depends(get_current_active_user),
+):
+    content, filename = excel_import.generate_template(
+        db, event_id, start_date, end_date, current
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/events/{event_id}/logbooks/import-xlsx", response_model=dict, status_code=201)
 async def confirm_logbook_xlsx(
     event_id: UUID, configuration: str = Form(...), file: UploadFile = File(...),
@@ -35,6 +51,50 @@ async def confirm_logbook_xlsx(
     config = LogbookImportConfig.model_validate_json(configuration)
     content = await file.read(excel_import.MAX_FILE_SIZE + 1)
     return excel_import.import_xlsx(db, event_id, content, file.filename or "", config, current)
+
+
+@router.post(
+    "/logbook-import-batches/{batch_id}/participants/preview",
+    response_model=LogbookImportBulkParticipantsRead,
+)
+def preview_import_participants_bulk(
+    batch_id: UUID, payload: LogbookImportBulkParticipantsIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_active_user),
+):
+    return excel_import.bulk_participants(db, batch_id, payload, current, apply=False)
+
+
+@router.patch(
+    "/logbook-import-batches/{batch_id}/participants",
+    response_model=LogbookImportBulkParticipantsRead,
+)
+def update_import_participants_bulk(
+    batch_id: UUID, payload: LogbookImportBulkParticipantsIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_active_user),
+):
+    return excel_import.bulk_participants(db, batch_id, payload, current, apply=True)
+
+
+@router.post(
+    "/logbook-import-batches/{batch_id}/supervisor/preview",
+    response_model=LogbookImportBulkSupervisorRead,
+)
+def preview_import_supervisor_bulk(
+    batch_id: UUID, payload: LogbookImportBulkSupervisorIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_active_user),
+):
+    return excel_import.bulk_supervisor(db, batch_id, payload, current, apply=False)
+
+
+@router.patch(
+    "/logbook-import-batches/{batch_id}/supervisor",
+    response_model=LogbookImportBulkSupervisorRead,
+)
+def update_import_supervisor_bulk(
+    batch_id: UUID, payload: LogbookImportBulkSupervisorIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_active_user),
+):
+    return excel_import.bulk_supervisor(db, batch_id, payload, current, apply=True)
 
 
 @router.get("/logbook-instances/{instance_id}/materialized-items", response_model=list[InstanceItemRead])
@@ -47,7 +107,17 @@ def daily_logbook_metrics(instance_id: UUID, db: Session = Depends(get_db), curr
     return contributions.metrics(db, instance_id, current)
 
 
-@router.put("/logbook-instance-items/{item_id}/my-contribution", response_model=ContributionRead)
+@router.post("/logbook-instance-items/{item_id}/my-contributions", response_model=ContributionRead, status_code=201)
+def create_my_contribution(item_id: UUID, payload: ContributionIn, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return contributions.create(db, item_id, payload, current)
+
+
+@router.patch("/logbook-contributions/{contribution_id}", response_model=ContributionRead)
+def update_my_contribution(contribution_id: UUID, payload: ContributionIn, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
+    return contributions.update(db, contribution_id, payload, current)
+
+
+@router.put("/logbook-instance-items/{item_id}/my-contribution", response_model=ContributionRead, deprecated=True)
 def save_my_contribution(item_id: UUID, payload: ContributionIn, db: Session = Depends(get_db), current: User = Depends(get_current_active_user)):
     return contributions.save(db, item_id, payload, current)
 
@@ -245,7 +315,7 @@ def create_instance(
     return service.create_instance(db, event_id, payload, current)
 
 
-@router.get("/me/logbooks", response_model=list[AssignmentRead])
+@router.get("/me/logbooks", response_model=list[MyAssignmentRead])
 def my_logbooks(
     status_filter: LogbookAssignmentStatus | None = Query(None, alias="status"),
     db: Session = Depends(get_db),
@@ -387,6 +457,28 @@ def add_participants(
     current: User = Depends(get_current_active_user),
 ):
     return service.add_participants(db, instance_id, payload.user_ids, current)
+
+
+@router.post(
+    "/logbook-instances/{instance_id}/configuration/preview",
+    response_model=InstanceConfigurationRead,
+)
+def preview_instance_configuration(
+    instance_id: UUID, payload: InstanceConfigurationIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_active_user),
+):
+    return service.configure_instance(db, instance_id, payload, current, apply=False)
+
+
+@router.patch(
+    "/logbook-instances/{instance_id}/configuration",
+    response_model=InstanceConfigurationRead,
+)
+def update_instance_configuration(
+    instance_id: UUID, payload: InstanceConfigurationIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_active_user),
+):
+    return service.configure_instance(db, instance_id, payload, current, apply=True)
 
 
 @router.delete("/logbook-instances/{instance_id}/participants/{assignment_id}", status_code=204)

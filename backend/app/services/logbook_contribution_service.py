@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import logging
 from pathlib import Path
 from uuid import UUID
 
@@ -11,13 +12,15 @@ from app.core.permissions import can_access_event, can_manage_event
 from app.core.security import create_access_token, decode_access_token
 from app.db.session import set_rls_context
 from app.models.core import User
-from app.models.enums import UserRole
+from app.models.enums import LogbookAssignmentStatus, UserRole
 from app.models.logbook import (
     LogbookAssignment, LogbookContributionEvidence,
     LogbookInstanceItem, LogbookItemContribution,
 )
 from app.services.file_storage_service import read_stored_file, save_bytes_file
 from app.services.logbook_service import audit, ensure_logbook_editable, validate_image_content
+
+logger = logging.getLogger(__name__)
 
 
 def _context(db: Session, item_id: UUID, current):
@@ -44,7 +47,7 @@ def list_items(db: Session, instance_id: UUID, current):
     contributions = list(db.scalars(select(LogbookItemContribution).join(LogbookInstanceItem).where(
         LogbookInstanceItem.instance_id == instance_id,
         LogbookItemContribution.deleted_at.is_(None),
-    )).all())
+    ).order_by(LogbookItemContribution.created_at)).all())
     by_item = {}
     author_names = dict(db.execute(select(User.id, User.full_name).where(
         User.id.in_({c.author_id for c in contributions})
@@ -77,7 +80,9 @@ def metrics(db: Session, instance_id: UUID, current):
     participant_ids = {c["author_id"] for item in items for c in item["contributions"]}
     evidence_count = sum(len(c["evidences"]) for item in items for c in item["contributions"])
     assigned = db.scalar(select(func.count(LogbookAssignment.id)).where(
-        LogbookAssignment.logbook_instance_id == instance_id)) or 0
+        LogbookAssignment.logbook_instance_id == instance_id,
+        LogbookAssignment.status != LogbookAssignmentStatus.CANCELLED,
+    )) or 0
     return {"total_activities": len(items), "activities_without_contributions": len(items) - with_activity,
             "activities_with_contributions": with_activity, "contributions_count": contribution_count,
             "participants_assigned": assigned, "participants_contributed": len(participant_ids),
@@ -85,36 +90,54 @@ def metrics(db: Session, instance_id: UUID, current):
             "completion_percentage": round(with_activity * 100 / len(items), 2) if items else 0.0}
 
 
-def save(db: Session, item_id: UUID, payload, current):
+def create(db: Session, item_id: UUID, payload, current):
     item, assignment, _ = _context(db, item_id, current)
     if not assignment:
         raise HTTPException(403, "Solo participantes pueden registrar aportes")
     ensure_logbook_editable(item.instance, assignment)
-    contribution = db.scalar(select(LogbookItemContribution).where(
-        LogbookItemContribution.instance_item_id == item.id,
-        LogbookItemContribution.assignment_id == assignment.id,
-    ).with_for_update())
-    if contribution and payload.version != contribution.version:
-        raise HTTPException(409, "El aporte fue modificado; recargue e intente nuevamente")
-    if not contribution:
-        contribution = LogbookItemContribution(instance_item_id=item.id, assignment_id=assignment.id,
-                                                instance_id=item.instance_id,
-                                                author_id=current.id, description=payload.description.strip())
-        db.add(contribution)
-        action = "LOGBOOK_CONTRIBUTION_CREATED"
-    else:
-        contribution.description = payload.description.strip()
-        contribution.version += 1
-        contribution.deleted_at = None
-        action = "LOGBOOK_CONTRIBUTION_UPDATED"
+    contribution = LogbookItemContribution(instance_item_id=item.id, assignment_id=assignment.id,
+                                            instance_id=item.instance_id,
+                                            author_id=current.id, description=payload.description.strip())
+    db.add(contribution)
     if assignment.status.value == "PENDING":
         assignment.status = type(assignment.status).IN_PROGRESS
         assignment.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     db.refresh(contribution)
-    audit(db, current, action, "LogbookItemContribution", contribution.id,
+    audit(db, current, "LOGBOOK_CONTRIBUTION_CREATED", "LogbookItemContribution", contribution.id,
           event_id=item.instance.event_id, new={"version": contribution.version})
     return contribution
+
+
+def update(db: Session, contribution_id: UUID, payload, current):
+    contribution, item, assignment = _own_contribution(db, contribution_id, current, editable=True)
+    if payload.version != contribution.version:
+        raise HTTPException(409, "El aporte fue modificado; recargue e intente nuevamente")
+    contribution.description = payload.description.strip()
+    contribution.version += 1
+    db.commit()
+    db.refresh(contribution)
+    audit(db, current, "LOGBOOK_CONTRIBUTION_UPDATED", "LogbookItemContribution", contribution.id,
+          event_id=item.instance.event_id, new={"version": contribution.version})
+    return contribution
+
+
+def save(db: Session, item_id: UUID, payload, current):
+    """Compatibility for clients predating the contribution timeline API."""
+    if payload.version is None:
+        return create(db, item_id, payload, current)
+    item, assignment, _ = _context(db, item_id, current)
+    if not assignment:
+        raise HTTPException(403, "Solo participantes pueden registrar aportes")
+    contribution = db.scalar(select(LogbookItemContribution).where(
+        LogbookItemContribution.instance_item_id == item.id,
+        LogbookItemContribution.assignment_id == assignment.id,
+        LogbookItemContribution.deleted_at.is_(None),
+        LogbookItemContribution.version == payload.version,
+    ).order_by(LogbookItemContribution.created_at.desc()).limit(1))
+    if not contribution:
+        raise HTTPException(409, "El aporte fue modificado; recargue e intente nuevamente")
+    return update(db, contribution.id, payload, current)
 
 
 def remove(db: Session, contribution_id: UUID, version: int, current):
@@ -163,8 +186,12 @@ def upload_evidence(db: Session, contribution_id: UUID, file: UploadFile, curren
     validate_image_content(content, mime)
     extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[mime]
     original = Path(file.filename or f"evidence{extension}").name[:255]
-    storage_key = save_bytes_file("logbook-contributions", content, content_type=mime,
-                                  allowed_content_types={mime: extension}, original_filename=original)
+    try:
+        storage_key = save_bytes_file("logbook-contributions", content, content_type=mime,
+                                      allowed_content_types={mime: extension}, original_filename=original)
+    except Exception as exc:
+        logger.exception("Contribution evidence storage failed contribution_id=%s", contribution.id)
+        raise HTTPException(503, "No se pudo almacenar la fotografía. Inténtalo nuevamente.") from exc
     evidence = LogbookContributionEvidence(
         contribution_id=contribution.id, event_id=item.instance.event_id,
         instance_id=item.instance_id, instance_item_id=item.id, assignment_id=assignment.id,
@@ -184,11 +211,12 @@ def evidence_access(db: Session, evidence_id: UUID, current):
     if not evidence or evidence.deleted_at is not None:
         raise HTTPException(404, "Evidencia no encontrada")
     contribution, item, assignment = _own_contribution(db, evidence.contribution_id, current)
-    if current.role == UserRole.CLIENT or not can_access_event(current, item.instance.event_id, db):
+    if current.role == UserRole.CLIENT:
         raise HTTPException(403, "Evidencia privada")
-    if current.role in {UserRole.WORKER, UserRole.LOGISTICS_OPERATOR} and (
-        not assignment or contribution.assignment_id != assignment.id
-    ):
+    if current.role in {UserRole.WORKER, UserRole.LOGISTICS_OPERATOR}:
+        if not assignment or contribution.assignment_id != assignment.id:
+            raise HTTPException(403, "Evidencia privada")
+    elif not can_access_event(current, item.instance.event_id, db):
         raise HTTPException(403, "Evidencia privada")
     token = create_access_token({"scope": "logbook_contribution_evidence", "evidence_id": str(evidence.id),
                                  "actor_id": str(current.id), "actor_role": current.role.value,

@@ -27,7 +27,7 @@ function eventHref(event: Event, role?: string | null) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" }).format(new Date(value));
+  return new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium" }).format(new Date(value));
 }
 
 function isToday(event: Event) {

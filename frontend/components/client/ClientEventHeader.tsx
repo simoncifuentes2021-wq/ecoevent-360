@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { Event } from "@/types/event";
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 export function ClientEventHeader({ event }: { event: Event }) {

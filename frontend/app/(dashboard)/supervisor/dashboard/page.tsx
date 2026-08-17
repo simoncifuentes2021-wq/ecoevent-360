@@ -44,7 +44,7 @@ const logisticsStatusLabels: Record<LogisticsOrderStatus, string> = {
 };
 
 function date(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" }).format(new Date(value)) : "Sin fecha";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium" }).format(new Date(value)) : "Sin fecha";
 }
 
 function MetricCard({ label, value, icon }: { label: string; value: number; icon: ReactNode }) {

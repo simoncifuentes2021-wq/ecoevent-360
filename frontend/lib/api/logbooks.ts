@@ -1,7 +1,10 @@
 import {api} from "@/lib/api";
+import {ApiError} from "@/lib/api";
+import {getStoredToken} from "@/lib/auth";
+import {API_URL} from "@/lib/constants";
 import type {ListResponse} from "@/types/common";
 import type {ClientLogbookSummary,LogbookAssignment,LogbookInstance,LogbookInstanceDetail,LogbookRecurrencePayload,LogbookRecurrenceSeries,LogbookResponse,LogbookEvidence,LogbookTemplate,LogbookTemplateCreate,LogbookTemplateDetail,LogbookVersion,LogbookVersionDetail} from "@/types/logbook";
-import type {DailyLogbookMetrics,LogbookContributionEvidence,LogbookImportPreview,LogbookInstanceItem,LogbookContribution} from "@/types/logbook";
+import type {DailyLogbookMetrics,LogbookBulkParticipantsPayload,LogbookBulkParticipantsPreview,LogbookContributionEvidence,LogbookImportPreview,LogbookInstanceItem,LogbookContribution} from "@/types/logbook";
 export const getLogbookTemplates=(status?:string)=>api.get<ListResponse<LogbookTemplate>>(`/logbook-templates${status?`?status=${status}`:""}`);
 export const createLogbookTemplate=(data:LogbookTemplateCreate)=>api.post<LogbookTemplate>("/logbook-templates",data);
 export const getLogbookTemplate=(id:string)=>api.get<LogbookTemplateDetail>(`/logbook-templates/${id}`);
@@ -30,10 +33,12 @@ export const getLogbookEvidenceAccess=(id:string)=>api.get<{url:string;expires_i
 export const deleteLogbookEvidence=(id:string)=>api.delete<void>(`/logbook-evidences/${id}`);
 export const addLogbookParticipants=(id:string,userIds:string[])=>api.post<LogbookAssignment[]>(`/logbook-instances/${id}/participants`,{user_ids:userIds});
 export const removeLogbookParticipant=(instanceId:string,assignmentId:string)=>api.delete<void>(`/logbook-instances/${instanceId}/participants/${assignmentId}`);
+export const previewLogbookResponsibilities=(id:string,data:import("@/types/logbook").LogbookResponsibilityPayload)=>api.post<import("@/types/logbook").LogbookResponsibilityPreview>(`/logbook-instances/${id}/configuration/preview`,data);
+export const updateLogbookResponsibilities=(id:string,data:import("@/types/logbook").LogbookResponsibilityPayload)=>api.patch<import("@/types/logbook").LogbookResponsibilityPreview>(`/logbook-instances/${id}/configuration`,data);
 export const previewLogbookRecurrence=(data:Omit<LogbookRecurrencePayload,"template_version_id"|"name"|"zone_id"|"assignment_mode"|"participant_ids"|"supervisor_id"|"client_visibility">&{limit?:number})=>api.post<{dates:string[];truncated:boolean;monthly_rule:string}>("/logbook-recurrences/preview",data);
 export const createLogbookRecurrence=(eventId:string,data:LogbookRecurrencePayload)=>api.post<LogbookRecurrenceSeries>(`/events/${eventId}/logbook-recurrences`,data);
 export const getLogbookRecurrences=(eventId:string)=>api.get<LogbookRecurrenceSeries[]>(`/events/${eventId}/logbook-recurrences`);
-export const updateLogbookRecurrence=(id:string,data:{participant_ids:string[];revision:number})=>api.patch<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}`,data);
+export const updateLogbookRecurrence=(id:string,data:{participant_ids?:string[];supervisor_id?:string|null;revision:number})=>api.patch<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}`,data);
 export const pauseLogbookRecurrence=(id:string)=>api.post<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}/pause`,{});
 export const resumeLogbookRecurrence=(id:string)=>api.post<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}/resume`,{});
 export const finishLogbookRecurrence=(id:string)=>api.post<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}/finish`,{});
@@ -41,9 +46,23 @@ export const getLogbookRecurrenceOccurrences=(id:string)=>api.get<LogbookInstanc
 export const skipLogbookRecurrenceOccurrence=(id:string,occurrenceDate:string,reason:string)=>api.post<LogbookRecurrenceSeries>(`/logbook-recurrences/${id}/skip`,{occurrence_date:occurrenceDate,reason});
 export const rescheduleLogbookRecurrenceOccurrence=(id:string,occurrenceDate:string,replacementDate:string,reason?:string)=>api.post<LogbookInstance>(`/logbook-recurrences/${id}/reschedule`,{occurrence_date:occurrenceDate,replacement_date:replacementDate,reason});
 export const previewLogbookXlsx=(eventId:string,file:File)=>{const body=new FormData();body.append("file",file);return api.post<LogbookImportPreview>(`/events/${eventId}/logbooks/import-xlsx/preview`,body)};
+export async function downloadLogbookXlsxTemplate(eventId:string,startDate:string,endDate:string){
+  const query=new URLSearchParams({start_date:startDate,end_date:endDate});
+  const token=getStoredToken();
+  const response=await fetch(`${API_URL}/events/${eventId}/logbooks/import-xlsx/template?${query}`,{headers:token?{Authorization:`Bearer ${token}`}:{}});
+  if(!response.ok){let detail="No se pudo generar la plantilla.";try{const data=await response.json() as {detail?:string};detail=data.detail||detail;}catch{}throw new ApiError(response.status,detail);}
+  const disposition=response.headers.get("content-disposition");
+  return {blob:await response.blob(),filename:disposition?.match(/filename="?([^";]+)"?/i)?.[1]||"plantilla-bitacoras.xlsx"};
+}
 export const importLogbookXlsx=(eventId:string,file:File,configuration:Record<string,unknown>)=>{const body=new FormData();body.append("file",file);body.append("configuration",JSON.stringify(configuration));return api.post<{batch_id:string;instances_created:number;instance_ids:string[]}>(`/events/${eventId}/logbooks/import-xlsx`,body)};
+export const previewImportBatchParticipants=(batchId:string,data:LogbookBulkParticipantsPayload)=>api.post<LogbookBulkParticipantsPreview>(`/logbook-import-batches/${batchId}/participants/preview`,data);
+export const updateImportBatchParticipants=(batchId:string,data:LogbookBulkParticipantsPayload)=>api.patch<LogbookBulkParticipantsPreview>(`/logbook-import-batches/${batchId}/participants`,data);
+export const previewImportBatchSupervisor=(batchId:string,data:import("@/types/logbook").LogbookBulkSupervisorPayload)=>api.post<import("@/types/logbook").LogbookBulkSupervisorPreview>(`/logbook-import-batches/${batchId}/supervisor/preview`,data);
+export const updateImportBatchSupervisor=(batchId:string,data:import("@/types/logbook").LogbookBulkSupervisorPayload)=>api.patch<import("@/types/logbook").LogbookBulkSupervisorPreview>(`/logbook-import-batches/${batchId}/supervisor`,data);
 export const getMaterializedLogbookItems=(instanceId:string)=>api.get<LogbookInstanceItem[]>(`/logbook-instances/${instanceId}/materialized-items`);
-export const saveMyLogbookContribution=(itemId:string,description:string,version?:number)=>api.put<LogbookContribution>(`/logbook-instance-items/${itemId}/my-contribution`,{description,version});
+export const createMyLogbookContribution=(itemId:string,description:string)=>api.post<LogbookContribution>(`/logbook-instance-items/${itemId}/my-contributions`,{description});
+export const updateMyLogbookContribution=(contributionId:string,description:string,version:number)=>api.patch<LogbookContribution>(`/logbook-contributions/${contributionId}`,{description,version});
+export const deleteMyLogbookContribution=(contributionId:string,version:number)=>api.delete<void>(`/logbook-contributions/${contributionId}?version=${version}`);
 export const getDailyLogbookMetrics=(instanceId:string)=>api.get<DailyLogbookMetrics>(`/logbook-instances/${instanceId}/daily-metrics`);
 export const uploadContributionEvidence=(contributionId:string,file:File)=>{const body=new FormData();body.append("file",file);return api.post<LogbookContributionEvidence>(`/logbook-contributions/${contributionId}/evidences`,body)};
 export const getContributionEvidenceAccess=(id:string)=>api.get<{url:string;expires_in:number}>(`/logbook-contribution-evidences/${id}/access`);

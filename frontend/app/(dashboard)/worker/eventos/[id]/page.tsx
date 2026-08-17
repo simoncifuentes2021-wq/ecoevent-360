@@ -17,7 +17,7 @@ import type { Zone } from "@/types/zone";
 
 function shortDate(value?: string | null) {
   if (!value) return "Sin fecha";
-  return new Intl.DateTimeFormat("es-CL", { dateStyle: "full" }).format(new Date(value));
+  return new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "full" }).format(new Date(value));
 }
 
 export default function WorkerEventDetailPage({ params }: { params: { id: string } }) {

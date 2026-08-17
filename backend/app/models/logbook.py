@@ -228,6 +228,9 @@ class LogbookInstance(Base):
     supervisor_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
+    configuration_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
     status: Mapped[LogbookInstanceStatus] = mapped_column(
         enum(LogbookInstanceStatus, "logbook_instance_status"), nullable=False
     )
@@ -455,7 +458,6 @@ class LogbookInstanceItem(Base):
 class LogbookItemContribution(Base):
     __tablename__ = "logbook_item_contributions"
     __table_args__ = (
-        UniqueConstraint("instance_item_id", "assignment_id", name="uq_logbook_contribution_author"),
         UniqueConstraint("id", "instance_id", "instance_item_id", "assignment_id", name="uq_logbook_contribution_scope"),
         ForeignKeyConstraint(["instance_item_id", "instance_id"], ["logbook_instance_items.id", "logbook_instance_items.instance_id"], name="fk_logbook_contribution_item_instance", ondelete="CASCADE"),
         ForeignKeyConstraint(["assignment_id", "instance_id"], ["logbook_assignments.id", "logbook_assignments.logbook_instance_id"], name="fk_logbook_contribution_assignment_instance", ondelete="CASCADE"),

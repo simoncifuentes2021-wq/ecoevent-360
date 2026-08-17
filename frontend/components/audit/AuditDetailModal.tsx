@@ -41,7 +41,7 @@ export function AuditDetailModal({ log, onClose }: { log: AuditLog | null; onClo
             <Info label="Usuario" value={log.user_name || "Sistema"} />
             <Info label="Email" value={log.user_email || "-"} />
             <Info label="Rol" value={log.user_role || "-"} />
-            <Info label="Fecha" value={new Date(log.created_at).toLocaleString("es-CL")} />
+            <Info label="Fecha" value={new Date(log.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })} />
             <Info label="Modulo" value={<AuditModuleBadge module={log.module} />} />
             <Info label="Estado" value={<AuditStatusBadge status={log.status} />} />
             <Info label="Evento" value={log.event_name || "-"} />

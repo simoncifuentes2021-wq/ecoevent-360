@@ -18,7 +18,8 @@ test("gestión usa diálogos internos y acciones accesibles", () => {
   assert.match(panel, /LogbookDialog/);
   assert.doesNotMatch(panel, /window\.(alert|confirm|prompt)/);
   for (const action of ["Pausar", "Reanudar", "Finalizar"]) assert.match(panel, new RegExp(action));
-  assert.match(panel, /Editar participantes futuros/);
+  assert.match(panel, /Editar responsables futuros/);
+  assert.match(panel, /supervisor_id:supervisor\|\|null/);
   assert.match(panel, /updateLogbookRecurrence/);
   assert.match(panel, /revision:item\.revision/);
 });

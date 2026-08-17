@@ -104,7 +104,7 @@ export default function AdminPurchasesPage() {
   );
 
   const columns: DataTableColumn<PurchaseRequest>[] = [
-    { key: "requested_at", header: "Fecha", cell: (row) => new Date(row.requested_at).toLocaleDateString("es-CL") },
+    { key: "requested_at", header: "Fecha", cell: (row) => new Date(row.requested_at).toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) },
     { key: "title", header: "Titulo", cell: (row) => <span className="font-semibold">{row.title}</span> },
     { key: "event", header: "Evento", cell: (row) => row.event?.name || "-" },
     { key: "order", header: "Pedido", cell: (row) => row.logistics_order?.title || "-" },

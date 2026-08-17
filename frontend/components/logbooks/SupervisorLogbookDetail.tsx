@@ -19,9 +19,12 @@ import {
   getLogbookInstance,
   removeLogbookParticipant,
   requestLogbookChanges,
+  previewLogbookResponsibilities,
+  updateLogbookResponsibilities,
 } from "@/lib/api/logbooks";
 import { getEventStaff } from "@/lib/api/staff";
 import { logbookError } from "@/lib/logbook-errors";
+import { chileLocalToIso } from "@/lib/chile-time";
 import { SingleFlight } from "@/lib/logbook-clear";
 import { validateLogbook } from "@/lib/logbook-validation";
 import { logbookLabel, logbookModeLabels, logbookStageLabels, logbookStatusLabels } from "@/lib/logbook-labels";
@@ -29,7 +32,7 @@ import type { EventStaff } from "@/types/staff";
 import type { LogbookEvidence, LogbookInstanceDetail, LogbookItem, LogbookResponse } from "@/types/logbook";
 
 type Assignment = LogbookInstanceDetail["assignments"][number];
-type MainDialog = "add" | "remove" | "approve" | "changes" | null;
+type MainDialog = "add" | "remove" | "configure" | "approve" | "changes" | null;
 
 export function SupervisorLogbookDetail({ id }: { id: string }) {
   const { toast } = useToast();
@@ -39,6 +42,8 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [dialog, setDialog] = useState<MainDialog>(null);
   const [participantIds, setParticipantIds] = useState<string[]>([]);
+  const [supervisorId, setSupervisorId] = useState("");
+  const [configurationImpact, setConfigurationImpact] = useState("");
   const [removeTarget, setRemoveTarget] = useState<Assignment | null>(null);
   const [comment, setComment] = useState("");
   const [pageError, setPageError] = useState("");
@@ -66,6 +71,7 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
 
   if (pageError) return <ErrorState message={pageError} onRetry={load} />;
   if (!data) return <LoadingState />;
+  const detail = data;
   const assignment = data.assignments.find((item) => item.id === selected) || assignments[0];
   const reviewResponses = new Map(
     (data.assignment_mode === "SHARED"
@@ -87,8 +93,31 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
   function openDialog(next: MainDialog) {
     setDialogError("");
     setComment("");
-    setParticipantIds([]);
+    setParticipantIds(next === "configure"
+      ? detail.assignments.filter((item) => item.status !== "CANCELLED").map((item) => item.user_id)
+      : []);
+    setSupervisorId(next === "configure" ? detail.supervisor_id || "" : "");
+    setConfigurationImpact("");
     setDialog(next);
+  }
+
+  const operationalStaff = staff.filter((member) =>
+    !["CLIENT", "ADMIN", "SUPER_ADMIN"].includes(member.user?.role || ""),
+  );
+  const supervisors = staff.filter((member) => member.user?.role === "SUPERVISOR");
+  const configurationLocked = !["DRAFT", "SCHEDULED", "OPEN", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(detail.status);
+
+  async function reviewConfiguration() {
+    setBusy(true); setDialogError("");
+    try {
+      const result = await previewLogbookResponsibilities(id, {
+        supervisor_id: supervisorId || null,
+        participant_ids: participantIds,
+        revision: detail.configuration_revision,
+      });
+      setConfigurationImpact(`${result.participants_to_add.length} por agregar · ${result.participants_to_remove.length} por retirar${result.historical_assignments_preserved ? ` · ${result.historical_assignments_preserved} con historial conservado` : ""}`);
+    } catch (reason) { setDialogError(logbookError(reason)); }
+    finally { setBusy(false); }
   }
 
   async function run(action: () => Promise<unknown>, success: string) {
@@ -123,9 +152,11 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
           <Metric label="Participación" value={data.metrics.participation_percentage} />
           <Metric label="Aprobación" value={data.metrics.approval_percentage} />
         </div>
-        <Button className="mt-3" disabled={busy || available.length === 0} onClick={() => openDialog("add")} size="sm" variant="secondary">
-          Agregar participante
-        </Button>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm">
+          <div><strong>Supervisor:</strong> {data.supervisor_name || "Sin supervisor"}<br/><span className="text-slate-500">Participantes activos: {data.assignments.filter((item) => item.status !== "CANCELLED").length}</span></div>
+          <Button disabled={busy || configurationLocked} onClick={() => openDialog("configure")} size="sm" variant="secondary">Configurar responsables</Button>
+        </div>
+        {configurationLocked ? <p className="mt-2 text-xs text-amber-700">Los responsables están bloqueados por el estado actual de la bitácora.</p> : null}
       </div>
 
       {data.import_batch_id ? <DailyContributionList disabled instanceId={data.id} management userId=""/> : <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
@@ -183,6 +214,31 @@ export function SupervisorLogbookDetail({ id }: { id: string }) {
           </main>
         ) : <div className="rounded-xl border bg-white p-6">No hay entregas para el filtro.</div>}
       </div>}
+
+      <LogbookDialog
+        busy={busy}
+        confirmDisabled={participantIds.length === 0}
+        confirmLabel={configurationImpact ? "Guardar configuración" : "Revisar cambios"}
+        description="El supervisor y los participantes se actualizarán juntos. Los registros anteriores nunca se eliminan."
+        error={dialogError}
+        onClose={() => setDialog(null)}
+        onConfirm={() => configurationImpact
+          ? void run(() => updateLogbookResponsibilities(id, {supervisor_id: supervisorId || null, participant_ids: participantIds, revision: data.configuration_revision}), "Responsables actualizados")
+          : void reviewConfiguration()}
+        open={dialog === "configure"}
+        title="Configurar responsables"
+      >
+        <label className="grid gap-1 text-sm font-medium">Supervisor
+          <select className="rounded-xl border p-3" onChange={(event) => {setSupervisorId(event.target.value);setConfigurationImpact("");}} value={supervisorId}>
+            <option value="">Sin supervisor</option>
+            {supervisors.map((member) => <option key={member.user_id} value={member.user_id}>{member.user?.full_name || member.user_id}</option>)}
+          </select>
+        </label>
+        <fieldset className="mt-3 space-y-2"><legend className="text-sm font-semibold">Participantes (mínimo uno)</legend>
+          {operationalStaff.map((member) => <label className="flex min-h-11 items-center gap-2 rounded-xl border p-3 text-sm" key={member.user_id}><input checked={participantIds.includes(member.user_id)} onChange={(event) => {setConfigurationImpact("");setParticipantIds((current) => event.target.checked ? [...current, member.user_id] : current.filter((value) => value !== member.user_id));}} type="checkbox" /><span>{member.user?.full_name || member.user_id}<small className="ml-2 text-slate-500">{member.user?.role === "SUPERVISOR" ? "Supervisor (también participante)" : member.user?.role}</small></span></label>)}
+        </fieldset>
+        {configurationImpact ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>Impacto:</strong> {configurationImpact}</p> : null}
+      </LogbookDialog>
 
       <LogbookDialog
         busy={busy}
@@ -279,7 +335,7 @@ function ResponseCard({ assignment, item, response, busy, staff, onDone }: { ass
       setProcessing(true); setError("");
       try {
         if (kind === "incident") await createLogbookIncident(response.id, { title, description: response.comment || item.description, incident_type: "OTHER", priority, evidence_ids: evidenceIds });
-        if (kind === "task") await createCorrectiveTask(response.id, { title, description: response.comment || item.description, assigned_to: assignee, scheduled_at: scheduled ? new Date(scheduled).toISOString() : null, priority, evidence_ids: evidenceIds });
+        if (kind === "task") await createCorrectiveTask(response.id, { title, description: response.comment || item.description, assigned_to: assignee, scheduled_at: scheduled ? chileLocalToIso(scheduled) : null, priority, evidence_ids: evidenceIds });
         await onDone(); setKind(null);
         toast({ title: kind === "incident" ? "Incidencia creada" : "Tarea correctiva creada", tone: "success" });
       } catch (reason) { setError(logbookError(reason)); }
@@ -315,4 +371,4 @@ function ApprovalRequirements({ summary }: { summary: ReturnType<typeof validate
   ] as const;
   return <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>No se puede aprobar todavía:</strong>{groups.filter(([, items]) => items.length).map(([label, items]) => <div className="mt-2" key={label}><p className="font-medium">{label}</p><ul className="list-disc pl-5">{items.map((item) => <li key={`${label}-${item.itemId}`}>{item.sectionTitle}: {item.itemTitle}</li>)}</ul></div>)}</div>;
 }
-function History({ assignment }: { assignment: Assignment }) { return <section className="rounded-2xl border bg-white p-4"><h3 className="font-semibold">Historial</h3>{assignment.history.map((entry) => <div className="mt-2 border-t pt-2 text-sm" key={entry.id}><strong>{entry.action}</strong> · intento {entry.attempt_number}<p className="text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("es-CL")} · {logbookLabel(logbookStatusLabels, entry.previous_status)} → {logbookLabel(logbookStatusLabels, entry.new_status)}</p>{entry.comment ? <p>{entry.comment}</p> : null}</div>)}</section>; }
+function History({ assignment }: { assignment: Assignment }) { return <section className="rounded-2xl border bg-white p-4"><h3 className="font-semibold">Historial</h3>{assignment.history.map((entry) => <div className="mt-2 border-t pt-2 text-sm" key={entry.id}><strong>{entry.action}</strong> · intento {entry.attempt_number}<p className="text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })} · {logbookLabel(logbookStatusLabels, entry.previous_status)} → {logbookLabel(logbookStatusLabels, entry.new_status)}</p>{entry.comment ? <p>{entry.comment}</p> : null}</div>)}</section>; }

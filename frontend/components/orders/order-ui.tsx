@@ -35,7 +35,7 @@ export function numberValue(value?: string | number | null) {
 }
 
 export function dateValue(value?: string | null) {
-  return value ? new Date(value).toLocaleDateString("es-CL") : "Sin fecha";
+  return value ? new Date(value).toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) : "Sin fecha";
 }
 
 export function OrderStatusBadge({ status }: { status: OrderStatus }) {

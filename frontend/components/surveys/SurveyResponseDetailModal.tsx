@@ -9,7 +9,7 @@ export function SurveyResponseDetailModal({ response, onClose }: { response: Sur
   return (
     <ModalShell title="Detalle de respuesta" description="Datos anonimizados importados desde CSV." onClose={onClose}>
       <div className="space-y-3">
-        <p className="text-sm text-slate-600">Fecha: {response.response_date ? new Date(response.response_date).toLocaleString("es-CL") : "Sin fecha"}</p>
+        <p className="text-sm text-slate-600">Fecha: {response.response_date ? new Date(response.response_date).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : "Sin fecha"}</p>
         <p className="text-sm text-slate-600">Comentarios: {response.comments || "Sin comentarios"}</p>
         <div className="rounded-xl bg-slate-50 p-3">
           <h3 className="mb-2 text-sm font-semibold">Datos originales</h3>

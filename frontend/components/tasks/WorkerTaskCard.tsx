@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import type { Task } from "@/types/task";
 
 function dateTime(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "Sin horario";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "Sin horario";
 }
 
 export function WorkerTaskCard({ task, onStart, onComplete }: { task: Task; onStart: (task: Task) => void; onComplete: (task: Task) => void }) {

@@ -18,7 +18,7 @@ function text(response: SurveyResponse, key: keyof SurveyResponse, rawKey: strin
 
 export function SurveyResponsesTable({ responses, loading, error, onView }: { responses: SurveyResponse[]; loading?: boolean; error?: string | null; onView: (response: SurveyResponse) => void }) {
   const columns: DataTableColumn<SurveyResponse>[] = [
-    { key: "date", header: "Fecha", cell: (row) => row.response_date ? new Date(row.response_date).toLocaleString("es-CL") : "Sin fecha" },
+    { key: "date", header: "Fecha", cell: (row) => row.response_date ? new Date(row.response_date).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : "Sin fecha" },
     { key: "zone", header: "Zona", cell: (row) => row.zone?.name ?? text(row, "zone_id", "zona") },
     { key: "transport", header: "Transporte", cell: (row) => text(row, "transport_mode", "transporte") },
     { key: "clean", header: "Limpieza", cell: (row) => text(row, "cleanliness_rating", "limpieza") },

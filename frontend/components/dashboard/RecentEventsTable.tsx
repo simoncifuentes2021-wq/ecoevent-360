@@ -33,7 +33,7 @@ export function RecentEventsTable({ events }: { events: Event[] }) {
                     <td className="py-3 pr-4 font-semibold">{event.name}</td>
                     <td className="py-3 pr-4 text-muted-foreground">{event.event_type ?? "Sin tipo"}</td>
                     <td className="py-3 pr-4 text-muted-foreground">
-                      {new Date(event.start_date).toLocaleDateString("es-CL")}
+                      {new Date(event.start_date).toLocaleDateString("es-CL", { timeZone: "America/Santiago" })}
                     </td>
                     <td className="py-3 pr-4 text-muted-foreground">
                       {event.real_attendees ?? event.estimated_attendees ?? 0}

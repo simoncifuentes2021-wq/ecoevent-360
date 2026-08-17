@@ -23,7 +23,7 @@ import { getEventZones } from "@/lib/api/zones";
 import type { Task } from "@/types/task";
 
 function dateTime(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Sin fecha";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Sin fecha";
 }
 
 export default function WorkerTaskDetailPage({ params }: { params: { id: string } }) {

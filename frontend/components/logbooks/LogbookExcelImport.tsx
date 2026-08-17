@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
 import { ModalShell } from "@/components/common/ModalShell";
+import { LogbookXlsxTemplateGenerator } from "@/components/logbooks/LogbookXlsxTemplateGenerator";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/common/ToastProvider";
 import { getEventStaff } from "@/lib/api/staff";
@@ -21,6 +22,8 @@ export function LogbookExcelImport({eventId,onDone}:{eventId:string;onDone:()=>P
   async function analyze(){if(!file)return;setPhase("parsing");setError("");try{const result=await previewLogbookXlsx(eventId,file);setPreview(result);setPhase("preview");}catch(cause){setError(logbookError(cause,"No se pudo analizar el Excel."));setPhase("idle");}}
   async function confirm(){if(!file||!preview||preview.errors.length||!versionId||!participants.length)return;setPhase("importing");setError("");try{const result=await importLogbookXlsx(eventId,file,{file_sha256:preview.file_sha256,template_version_id:versionId,participant_ids:participants,supervisor_id:supervisor||null,opens_at_local:opens,due_at_local:due,timezone:"America/Santiago",client_visibility:visible,base_name:"Bitácora diaria"});setPhase("success");toast({title:`${result.instances_created} bitácoras creadas correctamente`,tone:"success"});await onDone();}catch(cause){setError(logbookError(cause,"No se pudo importar la planificación."));setPhase("preview");}}
   return <><Button onClick={()=>setOpen(true)} variant="secondary"><FileSpreadsheet className="mr-1 h-4 w-4"/>Importar planificación Excel</Button>{open?<ModalShell title="Importar planificación Excel" description="Analiza primero el archivo; ninguna bitácora se crea hasta confirmar." onClose={()=>{if(phase!=="importing")setOpen(false)}}><div className="max-h-[75vh] space-y-4 overflow-y-auto">
+    <LogbookXlsxTemplateGenerator eventId={eventId}/>
+    <div className="border-t pt-4"><p className="mb-2 text-sm font-medium">Cargar planificación completada</p>
     <input accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={phase==="parsing"||phase==="importing"} onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null);setPhase("idle")}} type="file"/>
     {!preview?<Button disabled={!file||phase==="parsing"} onClick={()=>void analyze()}>{phase==="parsing"?"Analizando…":"Analizar"}</Button>:<><div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-sm"><p>Actividades<br/><strong>{preview.activities_count}</strong></p><p>Fechas<br/><strong>{preview.dates_count}</strong></p><p>X encontradas<br/><strong>{preview.scheduled_items_count}</strong></p><p>Bitácoras<br/><strong>{preview.instances_to_create}</strong></p></div>
     {[...preview.errors,...preview.warnings].map((issue,index)=><p className={preview.errors.includes(issue)?"rounded bg-red-50 p-2 text-sm text-red-700":"rounded bg-amber-50 p-2 text-sm text-amber-800"} key={`${issue.code}-${index}`}>{issue.message}{issue.row?` · fila ${issue.row}`:""}{issue.column?` · columna ${issue.column}`:""}{issue.value?` · “${issue.value}”`:""}</p>)}
@@ -29,6 +32,6 @@ export function LogbookExcelImport({eventId,onDone}:{eventId:string;onDone:()=>P
     <label className="grid gap-1 text-sm">Supervisor<select className="rounded-xl border p-2" value={supervisor} onChange={e=>setSupervisor(e.target.value)}><option value="">Sin supervisor</option>{staff.filter(m=>m.user?.role==="SUPERVISOR").map(m=><option key={m.user_id} value={m.user_id}>{m.user?.full_name}</option>)}</select></label>
     <div className="grid grid-cols-2 gap-2"><label className="text-sm">Apertura<input className="block w-full rounded-xl border p-2" type="time" value={opens} onChange={e=>setOpens(e.target.value)}/></label><label className="text-sm">Vencimiento<input className="block w-full rounded-xl border p-2" type="time" value={due} onChange={e=>setDue(e.target.value)}/></label></div><label className="flex gap-2 text-sm"><input checked={visible} onChange={e=>setVisible(e.target.checked)} type="checkbox"/>Visible para cliente</label>
     <Button disabled={!participants.length||!versionId||phase==="importing"||phase==="success"} onClick={()=>void confirm()}>{phase==="importing"?"Importando…":phase==="success"?"Importación completada":"Confirmar importación"}</Button></>:null}</>}
-    {error?<p className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>:null}<Button onClick={()=>setOpen(false)} variant="secondary">Cerrar</Button>
+    {error?<p className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>:null}</div><Button onClick={()=>setOpen(false)} variant="secondary">Cerrar</Button>
   </div></ModalShell>:null}</>;
 }

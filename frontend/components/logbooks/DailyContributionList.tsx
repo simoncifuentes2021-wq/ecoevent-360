@@ -1,76 +1,44 @@
 "use client";
 /* eslint-disable react-hooks/exhaustive-deps -- Reload is keyed by instance identity. */
-/* eslint-disable @next/next/no-img-element -- Private signed URLs are short-lived and cannot use the image optimizer. */
+/* eslint-disable @next/next/no-img-element -- Private signed URLs cannot use the optimizer. */
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  deleteContributionEvidence, getContributionEvidenceAccess, getDailyLogbookMetrics,
-  getMaterializedLogbookItems, saveMyLogbookContribution, uploadContributionEvidence,
-} from "@/lib/api/logbooks";
+import { createMyLogbookContribution, deleteContributionEvidence, deleteMyLogbookContribution, getContributionEvidenceAccess, getDailyLogbookMetrics, getMaterializedLogbookItems, updateMyLogbookContribution, uploadContributionEvidence } from "@/lib/api/logbooks";
 import { logbookError } from "@/lib/logbook-errors";
-import type { DailyLogbookMetrics, LogbookContributionEvidence, LogbookInstanceItem } from "@/types/logbook";
+import { API_ORIGIN } from "@/lib/constants";
+import type { DailyLogbookMetrics, LogbookContribution, LogbookContributionEvidence, LogbookInstanceItem } from "@/types/logbook";
 
 type Filter = "ALL" | "EMPTY" | "WITH" | "MINE" | "EVIDENCE";
 
-export function DailyContributionList({ instanceId, userId, disabled, management = false }: {
-  instanceId: string; userId: string; disabled: boolean; management?: boolean;
-}) {
-  const [items, setItems] = useState<LogbookInstanceItem[]>([]);
-  const [metrics, setMetrics] = useState<DailyLogbookMetrics | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const [filter, setFilter] = useState<Filter>("ALL");
-  const [preview, setPreview] = useState<string | null>(null);
-
-  async function load() {
-    try {
-      const [nextItems, nextMetrics] = await Promise.all([
-        getMaterializedLogbookItems(instanceId), getDailyLogbookMetrics(instanceId),
-      ]);
-      setItems(nextItems); setMetrics(nextMetrics);
-    } catch (cause) { setError(logbookError(cause)); }
-  }
-  useEffect(() => { void load(); }, [instanceId]);
-  const shown = useMemo(() => items.filter((item) =>
-    filter === "ALL"
-    || (filter === "EMPTY" && !item.contributions.length)
-    || (filter === "WITH" && item.contributions.length > 0)
-    || (filter === "MINE" && item.contributions.some((entry) => entry.author_id === userId))
-    || (filter === "EVIDENCE" && item.contributions.some((entry) => entry.evidences.length)),
-  ), [filter, items, userId]);
-
-  async function showEvidence(evidence: LogbookContributionEvidence) {
-    try { setPreview((await getContributionEvidenceAccess(evidence.id)).url); }
-    catch (cause) { setError(logbookError(cause, "No se pudo abrir la fotografía.")); }
-  }
-
+export function DailyContributionList({ instanceId, userId, disabled, management = false }: { instanceId:string; userId:string; disabled:boolean; management?:boolean }) {
+  const [items,setItems]=useState<LogbookInstanceItem[]>([]), [metrics,setMetrics]=useState<DailyLogbookMetrics|null>(null);
+  const [drafts,setDrafts]=useState<Record<string,string>>({}), [editing,setEditing]=useState<string|null>(null), [editText,setEditText]=useState("");
+  const [saving,setSaving]=useState<string|null>(null), [error,setError]=useState(""), [filter,setFilter]=useState<Filter>("ALL"), [preview,setPreview]=useState<string|null>(null);
+  async function load(){try{const [nextItems,nextMetrics]=await Promise.all([getMaterializedLogbookItems(instanceId),getDailyLogbookMetrics(instanceId)]);setItems(nextItems);setMetrics(nextMetrics);setError("");}catch(cause){setError(logbookError(cause));}}
+  useEffect(()=>{void load();},[instanceId]);
+  const shown=useMemo(()=>items.filter(item=>filter==="ALL"||(filter==="EMPTY"&&!item.contributions.length)||(filter==="WITH"&&item.contributions.length>0)||(filter==="MINE"&&item.contributions.some(entry=>entry.author_id===userId))||(filter==="EVIDENCE"&&item.contributions.some(entry=>entry.evidences.length))),[filter,items,userId]);
+  async function run(id:string,action:()=>Promise<unknown>){setSaving(id);setError("");try{await action();await load();}catch(cause){setError(logbookError(cause));}finally{setSaving(null);}}
+  async function showEvidence(evidence:LogbookContributionEvidence){try{setPreview(`${API_ORIGIN}${(await getContributionEvidenceAccess(evidence.id)).url}`);}catch(cause){setError(logbookError(cause,"No se pudo abrir la fotografía."));}}
   return <section className="space-y-4">
-    <div><h2 className="text-lg font-semibold">Actividades programadas</h2><p className="text-sm text-slate-500">Una actividad cuenta como completada cuando existe al menos un aporte válido.</p></div>
-    {metrics ? <MetricGrid metrics={metrics} /> : null}
-    <div className="flex flex-wrap gap-2">{([[
-      "ALL", "Todas"], ["EMPTY", "Sin actividad"], ["WITH", "Con aportes"],
-      ["MINE", "Mis aportes"], ["EVIDENCE", "Con evidencia"],
-    ] as Array<[Filter, string]>).map(([value, label]) => <Button key={value} onClick={() => setFilter(value)} size="sm" variant={filter === value ? "primary" : "secondary"}>{label}</Button>)}</div>
-    {error ? <p className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p> : null}
-    {shown.map((item) => {
-      const mine = item.contributions.find((entry) => entry.author_id === userId);
-      return <article className="rounded-2xl border bg-white p-4" key={item.id}>
-        <h3 className="font-semibold">{item.title}</h3>
-        {!item.contributions.length ? <p className="mt-2 text-sm text-slate-500">Aún no hay aportes para esta actividad</p> : <div className="mt-2 space-y-2">{item.contributions.map((entry) => <div className={entry.author_id === userId ? "rounded-lg bg-emerald-50 p-3 text-sm" : "rounded-lg bg-slate-50 p-3 text-sm"} key={entry.id}>
-          <strong>{entry.author_id === userId ? "Mi aporte" : entry.author_name || "Aporte del equipo"}</strong><p>{entry.description}</p><time className="text-xs text-slate-500">{new Date(entry.updated_at).toLocaleString("es-CL")}</time>
-          <div className="mt-2 flex flex-wrap gap-2">{entry.evidences.map((evidence) => <span className="rounded border bg-white p-2 text-xs" key={evidence.id}><button className="text-emerald-700" onClick={() => void showEvidence(evidence)} type="button">Ver {evidence.original_filename}</button>{entry.author_id === userId && !disabled ? <button className="ml-2 text-red-600" onClick={async () => { try { await deleteContributionEvidence(evidence.id); await load(); } catch (cause) { setError(logbookError(cause)); } }} type="button">Eliminar</button> : null}</span>)}</div>
-        </div>)}</div>}
-        {!management ? <><label className="mt-3 block text-sm font-medium">¿Qué hiciste en esta actividad?<textarea className="mt-1 min-h-24 w-full rounded-xl border p-3" disabled={disabled || saving === item.id} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))} value={drafts[item.id] ?? mine?.description ?? ""}/></label>
-          <Button className="mt-2" disabled={disabled || saving === item.id || !(drafts[item.id] ?? mine?.description ?? "").trim()} onClick={async () => { setSaving(item.id); setError(""); try { await saveMyLogbookContribution(item.id, (drafts[item.id] ?? mine?.description ?? "").trim(), mine?.version); await load(); } catch (cause) { setError(logbookError(cause)); } finally { setSaving(null); } }}>{saving === item.id ? "Guardando…" : mine ? "Actualizar mi aporte" : "Guardar mi aporte"}</Button>
-          {mine ? <label className="mt-2 block rounded-xl border border-dashed p-3 text-sm">Evidencia fotográfica<input accept="image/jpeg,image/png,image/webp" capture="environment" className="mt-2 block w-full" disabled={disabled} onChange={async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setSaving(item.id); try { await uploadContributionEvidence(mine.id, file); await load(); } catch (cause) { setError(logbookError(cause)); } finally { setSaving(null); } }} type="file"/></label> : null}</> : null}
-      </article>;
-    })}
-    {preview ? <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onClick={() => setPreview(null)} role="presentation"><div className="max-h-[90vh] max-w-3xl rounded-xl bg-white p-3" onClick={(event) => event.stopPropagation()} role="presentation"><img alt="Evidencia del aporte" className="max-h-[75vh] w-auto rounded object-contain" src={preview}/><Button className="mt-3 w-full" onClick={() => setPreview(null)}>Cerrar</Button></div></div> : null}
+    <div><h2 className="text-lg font-semibold">Actividades programadas</h2><p className="text-sm text-slate-500">Registra cada ejecución por separado. Cada actualización conserva su autor, fecha, hora y fotografías.</p></div>
+    {metrics?<MetricGrid metrics={metrics}/>:null}
+    <div className="flex flex-wrap gap-2">{([["ALL","Todas"],["EMPTY","Sin actividad"],["WITH","Con registros"],["MINE","Mis registros"],["EVIDENCE","Con evidencia"]] as Array<[Filter,string]>).map(([value,label])=><Button key={value} onClick={()=>setFilter(value)} size="sm" variant={filter===value?"primary":"secondary"}>{label}</Button>)}</div>
+    {error?<p className="rounded bg-red-50 p-2 text-sm text-red-700" role="alert">{error}</p>:null}
+    {shown.map(item=><article className="rounded-2xl border bg-white p-4" key={item.id}>
+      <h3 className="font-semibold">{item.title}</h3>
+      {!item.contributions.length?<p className="mt-2 text-sm text-slate-500">Aún no hay registros para esta actividad</p>:<div className="mt-3 space-y-3">{item.contributions.map((entry,index)=><ContributionCard key={entry.id} entry={entry} index={index} mine={entry.author_id===userId} disabled={disabled} management={management} editing={editing===entry.id} editText={editText} saving={saving===entry.id} onEdit={()=>{setEditing(entry.id);setEditText(entry.description);}} onCancelEdit={()=>setEditing(null)} onEditText={setEditText} onSaveEdit={()=>void run(entry.id,async()=>{await updateMyLogbookContribution(entry.id,editText.trim(),entry.version);setEditing(null);})} onDelete={()=>void run(entry.id,()=>deleteMyLogbookContribution(entry.id,entry.version))} onEvidence={showEvidence} onDeleteEvidence={evidence=>void run(entry.id,()=>deleteContributionEvidence(evidence.id))} onUpload={file=>void run(entry.id,()=>uploadContributionEvidence(entry.id,file))}/>)}</div>}
+      {!management?<div className="mt-4 rounded-xl border border-dashed p-3"><label className="block text-sm font-medium">Agregar una nueva actualización<textarea className="mt-1 min-h-24 w-full rounded-xl border p-3" disabled={disabled||saving===item.id} maxLength={4000} placeholder="Ej.: 13:30, se realizó la segunda limpieza del sector…" onChange={event=>setDrafts(current=>({...current,[item.id]:event.target.value}))} value={drafts[item.id]||""}/></label><Button className="mt-2" disabled={disabled||saving===item.id||!drafts[item.id]?.trim()} onClick={()=>void run(item.id,async()=>{await createMyLogbookContribution(item.id,drafts[item.id].trim());setDrafts(current=>({...current,[item.id]:""}));})}>{saving===item.id?"Guardando…":"Agregar registro"}</Button></div>:null}
+    </article>)}
+    {preview?<div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onClick={()=>setPreview(null)} role="presentation"><div className="max-h-[90vh] max-w-3xl rounded-xl bg-white p-3" onClick={event=>event.stopPropagation()} role="presentation"><img alt="Evidencia del registro" className="max-h-[75vh] w-auto rounded object-contain" src={preview}/><Button className="mt-3 w-full" onClick={()=>setPreview(null)}>Cerrar</Button></div></div>:null}
   </section>;
 }
 
-function MetricGrid({ metrics }: { metrics: DailyLogbookMetrics }) {
-  const values = [["Actividades", metrics.total_activities], ["Con aportes", metrics.activities_with_contributions], ["Sin actividad", metrics.activities_without_contributions], ["Aportes", metrics.contributions_count], ["Participantes", metrics.participants_assigned], ["Han aportado", metrics.participants_contributed], ["Fotografías", metrics.evidences_count], ["Avance", `${metrics.completion_percentage}%`]];
-  return <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{values.map(([label, value]) => <div className="rounded-xl bg-slate-50 p-3 text-center text-sm" key={label}><strong>{value}</strong><p className="text-xs text-slate-500">{label}</p></div>)}</div>;
-}
+type CardProps={entry:LogbookContribution;index:number;mine:boolean;disabled:boolean;management:boolean;editing:boolean;editText:string;saving:boolean;onEdit:()=>void;onCancelEdit:()=>void;onEditText:(value:string)=>void;onSaveEdit:()=>void;onDelete:()=>void;onEvidence:(evidence:LogbookContributionEvidence)=>void;onDeleteEvidence:(evidence:LogbookContributionEvidence)=>void;onUpload:(file:File)=>void};
+function ContributionCard({entry,index,mine,disabled,management,editing,editText,saving,onEdit,onCancelEdit,onEditText,onSaveEdit,onDelete,onEvidence,onDeleteEvidence,onUpload}:CardProps){return <div className={mine?"rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm":"rounded-xl bg-slate-50 p-3 text-sm"}>
+  <div className="flex flex-wrap items-start justify-between gap-2"><div><strong>{mine?`Mi registro ${index+1}`:entry.author_name||"Registro del equipo"}</strong><time className="ml-2 text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}{entry.updated_at!==entry.created_at?" · editado":""}</time></div>{mine&&!disabled&&!management&&!editing?<div className="flex gap-2"><button className="text-emerald-800 underline" onClick={onEdit} type="button">Editar</button><button className="text-red-700 underline" onClick={onDelete} type="button">Eliminar</button></div>:null}</div>
+  {editing?<div className="mt-2"><textarea autoFocus className="min-h-20 w-full rounded-lg border p-2" disabled={saving} maxLength={4000} onChange={event=>onEditText(event.target.value)} value={editText}/><div className="mt-2 flex gap-2"><Button disabled={saving||!editText.trim()} onClick={onSaveEdit} size="sm">Guardar cambio</Button><Button disabled={saving} onClick={onCancelEdit} size="sm" variant="secondary">Cancelar</Button></div></div>:<p className="mt-1 whitespace-pre-wrap">{entry.description}</p>}
+  <div className="mt-2 flex flex-wrap gap-2">{entry.evidences.map(evidence=><span className="rounded border bg-white p-2 text-xs" key={evidence.id}><button className="text-emerald-700" onClick={()=>onEvidence(evidence)} type="button">Ver {evidence.original_filename}</button>{mine&&!disabled&&!management?<button className="ml-2 text-red-600" onClick={()=>onDeleteEvidence(evidence)} type="button">Eliminar</button>:null}</span>)}</div>
+  {mine&&!disabled&&!management&&entry.evidences.length<5?<label className="mt-2 block rounded-lg border border-dashed bg-white p-2 text-xs">Agregar fotografía ({entry.evidences.length}/5)<input accept="image/jpeg,image/png,image/webp" capture="environment" className="mt-1 block w-full" disabled={saving} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)onUpload(file);}} type="file"/></label>:null}
+  </div>;}
+
+function MetricGrid({metrics}:{metrics:DailyLogbookMetrics}){const values=[["Actividades",metrics.total_activities],["Con registros",metrics.activities_with_contributions],["Sin actividad",metrics.activities_without_contributions],["Registros",metrics.contributions_count],["Participantes",metrics.participants_assigned],["Han registrado",metrics.participants_contributed],["Fotografías",metrics.evidences_count],["Avance",`${metrics.completion_percentage}%`]];return <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{values.map(([label,value])=><div className="rounded-xl bg-slate-50 p-3 text-center text-sm" key={label}><strong>{value}</strong><p className="text-xs text-slate-500">{label}</p></div>)}</div>;}

@@ -3,7 +3,7 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import type { FuelRecord } from "@/types/operations";
 export function FuelRecordTable({ records }: { records: FuelRecord[] }) {
   const columns: DataTableColumn<FuelRecord>[] = [
-    { key: "date", header: "Fecha", cell: (r) => r.recorded_at ? new Date(r.recorded_at).toLocaleDateString("es-CL") : "-" },
+    { key: "date", header: "Fecha", cell: (r) => r.recorded_at ? new Date(r.recorded_at).toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) : "-" },
     { key: "type", header: "Combustible", cell: (r) => r.fuel_type },
     { key: "qty", header: "Cantidad", cell: (r) => `${r.quantity} ${r.unit}` },
     { key: "equipment", header: "Equipo", cell: (r) => r.vehicle_or_equipment || "-" },

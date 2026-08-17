@@ -28,3 +28,24 @@ test("Bitácoras no usa ventanas nativas ni muestra e.message", () => {
   assert.doesNotMatch(source, /window\.(?:alert|confirm|prompt)/);
   assert.doesNotMatch(source, /\be\.message\b/);
 });
+
+test("lista del trabajador muestra fecha y disponibilidad operativa", () => {
+  const source = read("MyLogbooksPage.tsx");
+  assert.match(source, /instance\?\.occurrence_date/);
+  assert.match(source, /Disponible para trabajar/);
+  assert.match(source, /Aún no disponible/);
+  assert.match(source, /Plazo vencido/);
+  assert.match(source, /Entrar a trabajar/);
+  assert.match(source, /Ver programación/);
+  assert.match(source, /America\/Santiago/);
+});
+
+test("supervisor configura responsables de forma atómica y revisa impacto", () => {
+  const source = read("SupervisorLogbookDetail.tsx");
+  assert.match(source, /Configurar responsables/);
+  assert.match(source, /previewLogbookResponsibilities/);
+  assert.match(source, /updateLogbookResponsibilities/);
+  assert.match(source, /configuration_revision/);
+  assert.match(source, /historial conservado/);
+  assert.match(source, /Participantes \(mínimo uno\)/);
+});

@@ -107,7 +107,7 @@ export function EventAuditTab({ eventId }: { eventId: string }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <AuditModuleBadge module={log.module} />
                     <AuditStatusBadge status={log.status} />
-                    <span className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString("es-CL")}</span>
+                    <span className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}</span>
                   </div>
                   <p className="mt-2 font-semibold">{buildAuditDescription(log)}</p>
                   <p className="mt-1 text-sm text-muted-foreground">

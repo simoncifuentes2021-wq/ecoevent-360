@@ -7,7 +7,7 @@ import { usePrivateFileUrl } from "@/hooks/usePrivateFileUrl";
 import type { Evidence } from "@/types/evidence";
 
 function date(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
 }
 
 export function EvidenceCard({ evidence, canDelete, onPreview, onDelete }: { evidence: Evidence; canDelete: boolean; onPreview: (item: Evidence) => void; onDelete: (item: Evidence) => void }) {

@@ -4,23 +4,29 @@ import hashlib
 import io
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import PurePath
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
+from openpyxl.comments import Comment
+from openpyxl.styles import Alignment, Font, PatternFill, Protection
+from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils.datetime import from_excel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.core import Event, EventStaff, User
-from app.models.enums import LogbookAssignmentMode, LogbookInstanceStatus, LogbookVersionStatus, UserRole
+from app.models.enums import (
+    LogbookAssignmentMode, LogbookAssignmentStatus, LogbookInstanceStatus,
+    LogbookVersionStatus, UserRole,
+)
 from app.models.logbook import (
     LogbookAssignment, LogbookImportBatch, LogbookInstance, LogbookInstanceItem,
-    LogbookTemplateVersion,
+    LogbookItemContribution, LogbookTemplateVersion,
 )
 from app.models.enums import LogbookTemplateStatus
 from app.services.logbook_service import audit
@@ -30,6 +36,7 @@ MAX_FILE_SIZE = 5 * 1024 * 1024
 MAX_ROWS = 1000
 MAX_DATES = 366
 MAX_CELLS = 200_000
+MAX_TEMPLATE_ACTIVITY_ROWS = 997
 HEADER = "actividad"
 MONTHS = {"ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
           "jul": 7, "ago": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dic": 12}
@@ -118,9 +125,14 @@ def parse_xlsx(content: bytes, filename: str, event: Event) -> dict:
         if sheet.max_row > MAX_ROWS or sheet.max_column - activity_col > MAX_DATES or sheet.max_row * sheet.max_column > MAX_CELLS:
             errors.append(_issue("limits_exceeded", "La hoja excede los límites permitidos"))
             return _result(safe_name, digest, sheet.title, [], [], errors, warnings)
+        rows = list(sheet.iter_rows(
+            min_row=header_row, max_row=sheet.max_row,
+            min_col=activity_col, max_col=sheet.max_column, values_only=True,
+        ))
+        header_values = rows[0]
         dates, seen_dates = [], {}
         for col in range(activity_col + 1, sheet.max_column + 1):
-            raw = sheet.cell(header_row, col).value
+            raw = header_values[col - activity_col]
             if raw is None or str(raw).strip() == "":
                 continue
             parsed, reason = _infer_date(raw, event, workbook.epoch)
@@ -135,9 +147,12 @@ def parse_xlsx(content: bytes, filename: str, event: Event) -> dict:
             if not (event.start_date.date() <= parsed <= event.end_date.date()):
                 errors.append(_issue("date_outside_event", "Fecha fuera del evento", row=header_row, column=col, value=parsed.isoformat()))
         activities, seen_titles, days = [], {}, {day: [] for day, _ in dates}
-        for row in range(header_row + 1, sheet.max_row + 1):
-            title_raw = sheet.cell(row, activity_col).value
-            values = [(day, col, sheet.cell(row, col).value) for day, col in dates]
+        for row, row_values in enumerate(rows[1:], header_row + 1):
+            title_raw = row_values[0]
+            values = [
+                (day, col, row_values[col - activity_col])
+                for day, col in dates
+            ]
             marked = any(str(value or "").strip().casefold() == "x" for _, _, value in values)
             title = str(title_raw or "").strip()
             if not title:
@@ -191,6 +206,94 @@ def preview(db: Session, event_id: UUID, content: bytes, filename: str, current)
     return parse_xlsx(content, filename, event)
 
 
+def generate_template(db: Session, event_id: UUID, start: date, end: date, current):
+    if not can_manage_event(current, event_id, db):
+        raise HTTPException(403, "Insufficient role")
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(404, "Event not found")
+    if start > end:
+        raise HTTPException(422, "La fecha inicial debe ser anterior o igual a la fecha final")
+    event_start, event_end = event.start_date.date(), event.end_date.date()
+    if start < event_start or end > event_end:
+        raise HTTPException(
+            422,
+            f"El rango debe estar dentro del evento ({event_start:%d/%m/%Y}–{event_end:%d/%m/%Y})",
+        )
+    day_count = (end - start).days + 1
+    if day_count > MAX_DATES:
+        raise HTTPException(422, f"El rango no puede superar {MAX_DATES} días")
+    dates = [start + timedelta(days=offset) for offset in range(day_count)]
+    activity_rows = min(MAX_TEMPLATE_ACTIVITY_ROWS, (MAX_CELLS // (day_count + 1)) - 3)
+    if activity_rows < 1:
+        raise HTTPException(422, "El rango genera una plantilla demasiado grande")
+
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "Planificación"
+    sheet["A1"] = event.name
+    sheet["A2"] = f"Rango: {start:%d/%m/%Y} al {end:%d/%m/%Y}"
+    sheet.cell(3, 1, "Actividad")
+    for index, current_date in enumerate(dates, 2):
+        cell = sheet.cell(3, index, current_date)
+        cell.number_format = "dd/mm/yyyy"
+    header_fill = PatternFill("solid", fgColor="166534")
+    for cell in sheet[3][:day_count + 1]:
+        cell.fill = header_fill
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(horizontal="center")
+    sheet["A1"].font = Font(size=14, bold=True, color="166534")
+    sheet["A3"].comment = Comment("Escribe una actividad por fila.", "EcoEvent 360")
+    sheet.freeze_panes = "B4"
+    sheet.column_dimensions["A"].width = 42
+    for column in range(2, day_count + 2):
+        sheet.column_dimensions[sheet.cell(3, column).column_letter].width = 13
+    last_row = 3 + activity_rows
+    validation = DataValidation(type="list", formula1='"X,x"', allow_blank=True)
+    validation.promptTitle = "Programar actividad"
+    validation.prompt = "Selecciona X cuando la actividad corresponda a esta fecha."
+    validation.error = "Solo se permite X o una celda vacía."
+    validation.errorTitle = "Valor no válido"
+    validation.showErrorMessage = True
+    validation.showInputMessage = True
+    sheet.add_data_validation(validation)
+    validation.add(f"B4:{sheet.cell(3, day_count + 1).column_letter}{last_row}")
+    for row in sheet.iter_rows(min_row=4, max_row=last_row, min_col=1, max_col=day_count + 1):
+        for cell in row:
+            cell.protection = Protection(locked=False)
+    sheet.protection.sheet = True
+    sheet.protection.selectLockedCells = False
+    sheet.protection.selectUnlockedCells = True
+
+    instructions = book.create_sheet("Instrucciones")
+    instructions.column_dimensions["A"].width = 105
+    lines = [
+        "Plantilla oficial EcoEvent 360",
+        "1. Trabaja únicamente en la hoja Planificación.",
+        "2. Escribe una actividad por fila en la columna Actividad.",
+        "3. Marca X en cada fecha donde corresponda ejecutar la actividad.",
+        "4. Deja la celda vacía cuando la actividad no corresponda.",
+        "5. No cambies, borres ni agregues columnas de fechas.",
+        "6. No repitas nombres de actividades.",
+        f"Evento: {event.name}",
+        f"Rango autorizado: {start:%d/%m/%Y} al {end:%d/%m/%Y} ({day_count} días).",
+        f"Capacidad de esta plantilla: {activity_rows} actividades.",
+    ]
+    for row, line in enumerate(lines, 1):
+        instructions.cell(row, 1, line)
+    instructions["A1"].font = Font(size=16, bold=True, color="166534")
+    instructions.protection.sheet = True
+    book.active = 0
+    output = io.BytesIO()
+    book.save(output)
+    safe_event = re.sub(r"[^A-Za-z0-9_-]+", "-", event.name).strip("-")[:80] or "evento"
+    filename = f"plantilla-bitacoras-{safe_event}-{start.isoformat()}-{end.isoformat()}.xlsx"
+    audit(db, current, "LOGBOOK_XLSX_TEMPLATE_DOWNLOADED", "Event", event.id,
+          event_id=event.id, metadata={"start_date": start, "end_date": end, "days": day_count})
+    db.commit()
+    return output.getvalue(), filename
+
+
 def import_xlsx(db: Session, event_id: UUID, content: bytes, filename: str, config, current):
     result = preview(db, event_id, content, filename, current)
     if result["errors"]:
@@ -241,3 +344,140 @@ def import_xlsx(db: Session, event_id: UUID, content: bytes, filename: str, conf
         db.rollback()
         raise
     return {"batch_id": batch.id, "instances_created": len(created), "instance_ids": created}
+
+
+def _bulk_instances(db: Session, batch_id: UUID, payload, current):
+    batch = db.get(LogbookImportBatch, batch_id)
+    if not batch:
+        raise HTTPException(404, "Lote de importación no encontrado")
+    if not can_manage_event(current, batch.event_id, db):
+        raise HTTPException(403, "Insufficient role")
+    query = select(LogbookInstance).where(LogbookInstance.import_batch_id == batch.id)
+    if payload.scope == "FUTURE":
+        query = query.where(LogbookInstance.status == LogbookInstanceStatus.SCHEDULED)
+    elif payload.scope == "DATES":
+        query = query.where(LogbookInstance.occurrence_date.in_(payload.dates))
+    instances = list(db.scalars(query.order_by(LogbookInstance.occurrence_date).with_for_update()).all())
+    if not instances:
+        raise HTTPException(422, "No hay bitácoras que coincidan con el alcance seleccionado")
+    return batch, instances
+
+
+def bulk_participants(db: Session, batch_id: UUID, payload, current, *, apply: bool):
+    batch, instances = _bulk_instances(db, batch_id, payload, current)
+    selected = set(payload.participant_ids)
+    valid_staff = set(db.scalars(
+        select(EventStaff.user_id).join(User).where(
+            EventStaff.event_id == batch.event_id,
+            User.is_active.is_(True),
+            User.role.in_([UserRole.WORKER, UserRole.LOGISTICS_OPERATOR, UserRole.SUPERVISOR]),
+        )
+    ).all())
+    if not selected <= valid_staff:
+        raise HTTPException(422, "Todos los participantes deben ser personal operativo activo del evento")
+    instance_ids = [instance.id for instance in instances]
+    assignments = list(db.scalars(select(LogbookAssignment).where(
+        LogbookAssignment.logbook_instance_id.in_(instance_ids)
+    ).with_for_update()).all())
+    by_instance = {}
+    for assignment in assignments:
+        by_instance.setdefault(assignment.logbook_instance_id, {})[assignment.user_id] = assignment
+    contribution_assignments = set(db.scalars(select(LogbookItemContribution.assignment_id).where(
+        LogbookItemContribution.instance_id.in_(instance_ids)
+    )).all())
+    additions = removals = preserved = historical = 0
+    changes = []
+    for instance in instances:
+        existing = by_instance.get(instance.id, {})
+        active = {uid for uid, assignment in existing.items()
+                  if assignment.status != LogbookAssignmentStatus.CANCELLED}
+        desired = (active | selected if payload.operation == "ADD" else
+                   active - selected if payload.operation == "REMOVE" else selected)
+        if not desired:
+            raise HTTPException(422, f"La bitácora {instance.name} quedaría sin participantes")
+        add_ids, remove_ids = desired - active, active - desired
+        additions += len(add_ids)
+        removals += len(remove_ids)
+        preserved += len(active & desired)
+        for uid in add_ids:
+            changes.append(("add", instance, existing.get(uid), uid))
+        for uid in remove_ids:
+            assignment = existing[uid]
+            has_history = assignment.id in contribution_assignments or bool(assignment.responses)
+            historical += int(has_history)
+            changes.append(("remove", instance, assignment, has_history))
+    result = {
+        "batch_id": batch.id, "operation": payload.operation, "scope": payload.scope,
+        "instances_matched": len(instances), "assignments_to_add": additions,
+        "assignments_to_remove": removals, "assignments_preserved": preserved,
+        "historical_assignments_preserved": historical,
+        "participant_ids": payload.participant_ids, "applied": apply,
+    }
+    if not apply:
+        return result
+    try:
+        for action, instance, assignment, value in changes:
+            if action == "add":
+                if assignment:
+                    assignment.status = (LogbookAssignmentStatus.IN_PROGRESS
+                                         if assignment.id in contribution_assignments or assignment.responses
+                                         else LogbookAssignmentStatus.PENDING)
+                else:
+                    db.add(LogbookAssignment(logbook_instance_id=instance.id, user_id=value))
+            elif value:
+                assignment.status = LogbookAssignmentStatus.CANCELLED
+            else:
+                db.delete(assignment)
+        configuration = dict(batch.configuration or {})
+        configuration["participant_count"] = db.scalar(select(func.count(func.distinct(LogbookAssignment.user_id))).join(
+            LogbookInstance, LogbookInstance.id == LogbookAssignment.logbook_instance_id
+        ).where(LogbookInstance.import_batch_id == batch.id,
+                LogbookAssignment.status != LogbookAssignmentStatus.CANCELLED)) or 0
+        batch.configuration = configuration
+        audit(db, current, "LOGBOOK_IMPORT_PARTICIPANTS_BULK_UPDATED", "LogbookImportBatch",
+              batch.id, event_id=batch.event_id, new=result)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return result
+
+
+def bulk_supervisor(db: Session, batch_id: UUID, payload, current, *, apply: bool):
+    batch, instances = _bulk_instances(db, batch_id, payload, current)
+    if payload.supervisor_id:
+        valid = db.scalar(select(EventStaff.user_id).join(User).where(
+            EventStaff.event_id == batch.event_id,
+            EventStaff.user_id == payload.supervisor_id,
+            User.is_active.is_(True),
+            User.role == UserRole.SUPERVISOR,
+        ))
+        if not valid:
+            raise HTTPException(422, "El supervisor debe estar activo y asignado al evento")
+    mutable_statuses = {
+        LogbookInstanceStatus.DRAFT, LogbookInstanceStatus.SCHEDULED,
+        LogbookInstanceStatus.OPEN, LogbookInstanceStatus.IN_PROGRESS,
+        LogbookInstanceStatus.CHANGES_REQUESTED,
+    }
+    changeable = [item for item in instances if item.status in mutable_statuses]
+    locked = len(instances) - len(changeable)
+    changes = [item for item in changeable if item.supervisor_id != payload.supervisor_id]
+    result = {
+        "batch_id": batch.id, "scope": payload.scope,
+        "supervisor_id": payload.supervisor_id,
+        "instances_matched": len(instances), "instances_to_update": len(changes),
+        "instances_unchanged": len(changeable) - len(changes),
+        "instances_locked": locked, "applied": apply,
+    }
+    if not apply:
+        return result
+    for instance in changes:
+        instance.supervisor_id = payload.supervisor_id
+        instance.configuration_revision += 1
+    configuration = dict(batch.configuration or {})
+    configuration["supervisor_id"] = str(payload.supervisor_id) if payload.supervisor_id else None
+    batch.configuration = configuration
+    audit(db, current, "LOGBOOK_IMPORT_SUPERVISOR_BULK_UPDATED", "LogbookImportBatch",
+          batch.id, event_id=batch.event_id, new=result)
+    db.commit()
+    return result

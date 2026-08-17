@@ -245,7 +245,7 @@ export function WorkerLogbookDetail({ id }: { id: string }) {
           {assignment.history.map((entry) => (
             <div className="mt-2 border-t pt-2 text-sm" key={entry.id}>
               <strong>{entry.action === "SUBMIT" ? (entry.attempt_number > 1 ? "Reenvío" : "Envío") : entry.action}</strong>
-              <p className="text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("es-CL")} · Intento {entry.attempt_number}</p>
+              <p className="text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })} · Intento {entry.attempt_number}</p>
               {entry.comment ? <p>{entry.comment}</p> : null}
             </div>
           ))}
