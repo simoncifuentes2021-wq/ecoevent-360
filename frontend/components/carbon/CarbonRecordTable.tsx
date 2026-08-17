@@ -10,7 +10,7 @@ import { formatKgCO2e } from "@/lib/normalizers/carbon";
 import type { CarbonRecord } from "@/types/carbon";
 
 function date(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "-";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "-";
 }
 export function recordKg(record: CarbonRecord) {
   return Number(record.kg_co2e ?? record.emissions_kgco2e ?? 0);

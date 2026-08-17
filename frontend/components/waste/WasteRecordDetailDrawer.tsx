@@ -10,7 +10,7 @@ import { WasteTypeBadge } from "@/components/waste/WasteTypeBadge";
 import type { WasteRecord } from "@/types/waste";
 
 function date(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
 }
 
 function recorderLabel(record: WasteRecord) {

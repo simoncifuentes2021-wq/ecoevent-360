@@ -210,7 +210,7 @@ export function LogisticsEvidenceUploader({
                       <div className="mt-2 flex items-start justify-between gap-2">
                         <button className="min-w-0 flex-1 text-left" type="button" onClick={() => setPreview(item)}>
                           <p className="line-clamp-2 text-sm font-semibold">{item.notes || item.file_name || "Evidencia"}</p>
-                          <p className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString("es-CL")}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}</p>
                         </button>
                         <div className="flex shrink-0 gap-1">
                           <Button aria-label="Ver evidencia" className="h-9 w-9 p-0" size="sm" type="button" variant="ghost" onClick={() => setPreview(item)}>

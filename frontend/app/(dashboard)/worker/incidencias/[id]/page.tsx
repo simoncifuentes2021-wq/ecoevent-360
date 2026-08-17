@@ -15,7 +15,7 @@ import { getIncident } from "@/lib/api/incidents";
 import type { Incident } from "@/types/incident";
 
 function dateTime(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Sin fecha";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Sin fecha";
 }
 
 export default function WorkerIncidentDetailPage({ params }: { params: { id: string } }) {

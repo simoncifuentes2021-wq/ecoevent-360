@@ -59,7 +59,7 @@ export default function LogisticsMyOrdersPage() {
     { key: "event", header: "Evento", cell: (order) => order.event?.name || "-" },
     { key: "warehouse", header: "Bodega", cell: (order) => order.warehouse?.name || "-" },
     { key: "total", header: "Total estimado", cell: (order) => money(order.total_estimated_amount) },
-    { key: "created_at", header: "Fecha", cell: (order) => new Date(order.created_at).toLocaleDateString("es-CL") },
+    { key: "created_at", header: "Fecha", cell: (order) => new Date(order.created_at).toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) },
     {
       key: "status",
       header: "Estado",

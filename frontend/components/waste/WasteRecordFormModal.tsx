@@ -41,7 +41,7 @@ function currentType(record?: WasteRecord | null) {
 }
 
 function evidenceLabel(item: Evidence) {
-  return item.description || [item.file_type, item.created_at ? new Date(item.created_at).toLocaleString("es-CL") : null].filter(Boolean).join(" · ") || "Evidencia sin descripción";
+  return item.description || [item.file_type, item.created_at ? new Date(item.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : null].filter(Boolean).join(" · ") || "Evidencia sin descripción";
 }
 
 export function WasteRecordFormModal({ record, eventId, zones, evidences, wasteTypes, loading, onClose, onSubmit }: { record?: WasteRecord | null; eventId?: string; zones: Zone[]; evidences: Evidence[]; wasteTypes: WasteType[]; loading?: boolean; onClose: () => void; onSubmit: (data: WasteRecordCreate | WasteRecordUpdate) => Promise<void> }) {

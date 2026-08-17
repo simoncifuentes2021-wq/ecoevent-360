@@ -22,6 +22,7 @@ import type { CatalogItem, EventOrder, EventOrderItem, EventOrderItemCreate, Eve
 import type { EventStaff } from "@/types/staff";
 import type { Zone } from "@/types/zone";
 import { dateValue, ItemStageBadge, money, numberValue, OrderStatusBadge, ProgressLine, stageLabels } from "@/components/orders/order-ui";
+import { isoToChileLocalInput } from "@/lib/chile-time";
 
 const stages: OrderEvidenceStage[] = ["LOAD", "DELIVERY", "RETURN"];
 type ItemFormState = Omit<EventOrderItemCreate, "quantity"> & { quantity: string };
@@ -391,10 +392,7 @@ function Info({ label, value }: { label: string; value: string }) {
 
 function toDateTimeLocal(value?: string | null) {
   if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
+  try { return isoToChileLocalInput(value); } catch { return ""; }
 }
 
 function cleanQuantityInput(value: string) {

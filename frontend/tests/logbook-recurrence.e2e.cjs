@@ -68,7 +68,7 @@ async function run(viewport,label){
   await page.getByRole("button",{name:"Pausar"}).click(); await page.getByRole("button",{name:"Reanudar"}).click();
   await page.getByRole("button",{name:"Reprogramar"}).first().click(); await page.getByLabel("Nueva fecha").fill("2026-08-04"); await page.getByLabel("Motivo").fill("Ajuste E2E"); await page.getByRole("button",{name:"Reprogramar",exact:true}).last().click(); await page.getByText(/04-08-2026/).waitFor();
   await page.getByRole("button",{name:"Omitir"}).first().click(); await page.getByLabel("Motivo").fill("Omisión E2E"); await page.getByRole("button",{name:"Omitir fecha"}).click(); assert.equal(occurrences.length,3);
-  await page.getByRole("button",{name:"Editar participantes futuros"}).click(); await page.getByLabel("Simón E2E").uncheck(); await page.getByRole("button",{name:"Aplicar hacia el futuro"}).click(); assert.deepEqual(series[0].participant_ids,[workerId]);
+  await page.getByRole("button",{name:"Editar responsables futuros"}).click(); await page.getByLabel("Simón E2E").uncheck(); await page.getByRole("button",{name:"Aplicar hacia el futuro"}).click(); assert.deepEqual(series[0].participant_ids,[workerId]);
   await page.getByRole("button",{name:"Finalizar"}).click(); await page.getByText(/Finalizada/).waitFor();
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>document.documentElement.clientWidth); assert.equal(overflow,false,`${label}: overflow horizontal`);
   assert.deepEqual(errors,[],`${label}: errores de página`);

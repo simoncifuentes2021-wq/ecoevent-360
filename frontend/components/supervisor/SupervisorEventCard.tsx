@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { Event } from "@/types/event";
 
 function date(value: string) {
-  return new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" }).format(new Date(value));
+  return new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium" }).format(new Date(value));
 }
 
 export function SupervisorEventCard({ event, pendingTasks = 0 }: { event: Event; pendingTasks?: number }) {

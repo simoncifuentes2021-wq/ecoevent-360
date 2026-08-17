@@ -9,7 +9,7 @@ import { WasteTypeBadge } from "@/components/waste/WasteTypeBadge";
 import type { WasteRecord, WasteType } from "@/types/waste";
 
 function date(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "-";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "-";
 }
 
 function typeLabel(record: WasteRecord, types: WasteType[]) {

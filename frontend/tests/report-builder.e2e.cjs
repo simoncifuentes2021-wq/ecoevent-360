@@ -54,7 +54,18 @@ const editor = () => ({ id: reportId, event_id: "33333333-3333-4333-8333-3333333
   await page.getByTitle("Vista previa exacta del reporte").waitFor();
   const previewFrame = page.getByTitle("Vista previa exacta del reporte").contentFrame();
   await previewFrame.getByText(section.title).waitFor();
-  assert.equal(await previewFrame.getByText("Editado manualmente").count(), 0, "preview no debe mostrar controles internos");
+  let internalControls = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      internalControls = await page.getByTitle("Vista previa exacta del reporte")
+        .contentFrame().getByText("Editado manualmente").count();
+      break;
+    } catch (error) {
+      if (attempt === 2) throw error;
+      await page.waitForTimeout(250);
+    }
+  }
+  assert.equal(internalControls, 0, "preview no debe mostrar controles internos");
   await page.getByRole("button", { name: "Generar PDF" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Generar versión" }).click();
   await page.getByText("v1").waitFor();

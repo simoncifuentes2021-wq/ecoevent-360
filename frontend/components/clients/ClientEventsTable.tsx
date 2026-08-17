@@ -10,8 +10,8 @@ export function ClientEventsTable({ events }: { events: ClientEvent[] }) {
   const columns: DataTableColumn<ClientEvent>[] = [
     { key: "name", header: "Evento", cell: (event) => <span className="font-semibold">{event.name}</span> },
     { key: "type", header: "Tipo", cell: (event) => event.event_type ?? "Sin tipo" },
-    { key: "start", header: "Inicio", cell: (event) => new Date(event.start_date).toLocaleDateString("es-CL") },
-    { key: "end", header: "Termino", cell: (event) => new Date(event.end_date).toLocaleDateString("es-CL") },
+    { key: "start", header: "Inicio", cell: (event) => new Date(event.start_date).toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) },
+    { key: "end", header: "Termino", cell: (event) => new Date(event.end_date).toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) },
     { key: "status", header: "Estado", cell: (event) => <StatusBadge status={event.status} /> }
   ];
 

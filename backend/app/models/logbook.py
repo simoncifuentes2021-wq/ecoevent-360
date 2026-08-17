@@ -228,6 +228,9 @@ class LogbookInstance(Base):
     supervisor_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
+    configuration_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
     status: Mapped[LogbookInstanceStatus] = mapped_column(
         enum(LogbookInstanceStatus, "logbook_instance_status"), nullable=False
     )
@@ -250,6 +253,9 @@ class LogbookInstance(Base):
         Boolean, nullable=False, server_default=text("FALSE")
     )
     original_occurrence_date: Mapped[date | None] = mapped_column(Date)
+    import_batch_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logbook_import_batches.id", ondelete="RESTRICT")
+    )
     version: Mapped[LogbookTemplateVersion] = relationship()
     assignments: Mapped[list["LogbookAssignment"]] = relationship(
         back_populates="instance", cascade="all, delete-orphan"
@@ -374,6 +380,7 @@ class LogbookAssignment(Base):
     __tablename__ = "logbook_assignments"
     __table_args__ = (
         UniqueConstraint("logbook_instance_id", "user_id", name="uq_logbook_assignment_user"),
+        UniqueConstraint("id", "logbook_instance_id", name="uq_logbook_assignment_instance"),
     )
     id: Mapped[UUID] = uuid_pk()
     logbook_instance_id: Mapped[UUID] = mapped_column(
@@ -408,6 +415,88 @@ class LogbookAssignment(Base):
     responses: Mapped[list["LogbookResponse"]] = relationship(
         back_populates="assignment", cascade="all, delete-orphan"
     )
+
+
+class LogbookImportBatch(Base):
+    __tablename__ = "logbook_import_batches"
+    __table_args__ = (
+        UniqueConstraint("event_id", "file_sha256", name="uq_logbook_import_event_sha"),
+        UniqueConstraint("id", "event_id", name="uq_logbook_import_batch_event"),
+        Index("idx_logbook_import_event_created", "event_id", "created_at"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="RESTRICT"), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    sheet_name: Mapped[str] = mapped_column(String(180), nullable=False)
+    activities_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    dates_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    scheduled_items_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    instances_created: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'COMPLETED'"))
+    configuration: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    imported_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = created_at_column()
+
+
+class LogbookInstanceItem(Base):
+    __tablename__ = "logbook_instance_items"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "position", name="uq_logbook_instance_item_position"),
+        UniqueConstraint("id", "instance_id", name="uq_logbook_instance_item_instance"),
+        Index("idx_logbook_instance_items_instance", "instance_id"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    instance_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("logbook_instances.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    source_row: Mapped[int] = mapped_column(Integer, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = created_at_column()
+    instance: Mapped[LogbookInstance] = relationship()
+
+
+class LogbookItemContribution(Base):
+    __tablename__ = "logbook_item_contributions"
+    __table_args__ = (
+        UniqueConstraint("id", "instance_id", "instance_item_id", "assignment_id", name="uq_logbook_contribution_scope"),
+        ForeignKeyConstraint(["instance_item_id", "instance_id"], ["logbook_instance_items.id", "logbook_instance_items.instance_id"], name="fk_logbook_contribution_item_instance", ondelete="CASCADE"),
+        ForeignKeyConstraint(["assignment_id", "instance_id"], ["logbook_assignments.id", "logbook_assignments.logbook_instance_id"], name="fk_logbook_contribution_assignment_instance", ondelete="CASCADE"),
+        Index("idx_logbook_contribution_item", "instance_item_id"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    instance_item_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    assignment_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    instance_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("logbook_instances.id", ondelete="CASCADE"), nullable=False)
+    author_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LogbookContributionEvidence(Base):
+    __tablename__ = "logbook_contribution_evidences"
+    __table_args__ = (
+        Index("idx_logbook_contribution_evidence", "contribution_id"),
+        ForeignKeyConstraint(
+            ["contribution_id", "instance_id", "instance_item_id", "assignment_id"],
+            ["logbook_item_contributions.id", "logbook_item_contributions.instance_id", "logbook_item_contributions.instance_item_id", "logbook_item_contributions.assignment_id"],
+            name="fk_logbook_contribution_evidence_scope", ondelete="CASCADE"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    contribution_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="RESTRICT"), nullable=False)
+    instance_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("logbook_instances.id", ondelete="CASCADE"), nullable=False)
+    instance_item_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("logbook_instance_items.id", ondelete="CASCADE"), nullable=False)
+    assignment_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("logbook_assignments.id", ondelete="CASCADE"), nullable=False)
+    uploaded_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    mime_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_key: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = created_at_column()
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class LogbookResponse(Base):

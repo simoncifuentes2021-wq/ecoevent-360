@@ -131,7 +131,7 @@ export default function LogisticsStockMovementsPage() {
   }
 
   const columns: DataTableColumn<StockMovement>[] = [
-    { key: "created_at", header: "Fecha", cell: (item) => new Date(item.created_at).toLocaleString("es-CL") },
+    { key: "created_at", header: "Fecha", cell: (item) => new Date(item.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" }) },
     { key: "item", header: "Producto", cell: (item) => item.item_name },
     { key: "warehouse", header: "Bodega", cell: (item) => item.warehouse_name },
     {

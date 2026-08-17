@@ -92,7 +92,7 @@ export function ClientReportsPage() {
     { key: "event", header: "Evento", cell: item => item.event_name },
     { key: "scope", header: "Alcance", cell: item => item.scope },
     { key: "status", header: "Estado", cell: item => <ReportStatusBadge status={item.status} /> },
-    { key: "date", header: "Entregado", cell: item => item.delivered_at ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" }).format(new Date(item.delivered_at)) : "-" },
+    { key: "date", header: "Entregado", cell: item => item.delivered_at ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium" }).format(new Date(item.delivered_at)) : "-" },
   ];
 
   return <DataTable

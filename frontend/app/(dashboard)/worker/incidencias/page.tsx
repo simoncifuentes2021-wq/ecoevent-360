@@ -21,7 +21,7 @@ type WorkerIncident = Incident & {
 };
 
 function dateTime(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Sin fecha";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Sin fecha";
 }
 
 export default function WorkerIncidentsPage() {

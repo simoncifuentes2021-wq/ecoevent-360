@@ -75,7 +75,7 @@ export function buildReportSectionChecklist(preview: ReportPreview): ReportSecti
 }
 
 export function formatReportDate(value?: string | null) {
-  return value ? new Date(value).toLocaleString("es-CL") : "Sin fecha";
+  return value ? new Date(value).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : "Sin fecha";
 }
 
 export function getReportFilename(report: Pick<Report, "id" | "title">) {

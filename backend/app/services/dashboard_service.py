@@ -1,4 +1,3 @@
-from datetime import datetime, time
 from decimal import Decimal
 from uuid import UUID
 
@@ -7,6 +6,7 @@ from sqlalchemy import func, inspect, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import can_access_event
+from app.core.time import chile_day_utc_bounds_naive, utc_now_naive
 from app.models.core import (
     Alert,
     CarbonFactor,
@@ -436,9 +436,8 @@ def get_worker_dashboard(db: Session, user: User) -> dict:
         if user.role == UserRole.SUPERVISOR
         else [or_(Incident.assigned_to == user.id, Incident.reported_by == user.id)]
     )
-    today_start = datetime.combine(datetime.utcnow().date(), time.min)
-    today_end = datetime.combine(datetime.utcnow().date(), time.max)
-    now = datetime.utcnow()
+    today_start, today_end = chile_day_utc_bounds_naive()
+    now = utc_now_naive()
     today_tasks = list(
         db.scalars(
             select(Task)

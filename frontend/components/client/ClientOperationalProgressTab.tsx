@@ -12,7 +12,7 @@ import type { Task } from "@/types/task";
 import { CheckCircle, ClipboardList, Clock } from "lucide-react";
 
 function dateTime(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "-";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "-";
 }
 
 export function ClientOperationalProgressTab({ eventId }: { eventId: string }) {

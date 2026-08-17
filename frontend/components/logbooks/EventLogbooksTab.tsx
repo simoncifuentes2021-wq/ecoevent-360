@@ -13,6 +13,8 @@ import { ModalShell } from "@/components/common/ModalShell";
 import { useToast } from "@/components/common/ToastProvider";
 import { LogbookDialog } from "@/components/logbooks/LogbookDialog";
 import { LogbookRecurrencePanel } from "@/components/logbooks/LogbookRecurrencePanel";
+import { LogbookExcelImport } from "@/components/logbooks/LogbookExcelImport";
+import { LogbookImportBatchEditor } from "@/components/logbooks/LogbookImportBatchEditor";
 import { Button } from "@/components/ui/button";
 import {
   cancelLogbookInstance, createEventLogbook, getEventLogbooks, getLogbookInstance,
@@ -21,6 +23,7 @@ import {
 import { getEventStaff } from "@/lib/api/staff";
 import { getEventZones } from "@/lib/api/zones";
 import { logbookError } from "@/lib/logbook-errors";
+import { chileLocalToIso } from "@/lib/chile-time";
 import { logbookLabel, logbookModeLabels, logbookStageLabels, logbookStatusLabels } from "@/lib/logbook-labels";
 import type { EventStaff } from "@/types/staff";
 import type { LogbookInstance, LogbookInstanceDetail, LogbookTemplateDetail } from "@/types/logbook";
@@ -55,6 +58,7 @@ export function EventLogbooksTab({ eventId, role }: { eventId: string; role?: st
     (filter === "ALL" || item.status === filter)
     && (templateFilter === "ALL" || item.template_id === templateFilter)
     && (stageFilter === "ALL" || item.operational_stage === stageFilter));
+  const importedBatches = Array.from(new Set(items.map(item=>item.import_batch_id).filter((value):value is string=>Boolean(value))));
 
   return <div className="space-y-4">
     {role !== "CLIENT" ? <LogbookRecurrencePanel eventId={eventId} onChanged={load}/> : null}
@@ -63,6 +67,7 @@ export function EventLogbooksTab({ eventId, role }: { eventId: string; role?: st
       <select className="rounded-xl border p-2" onChange={(event) => setTemplateFilter(event.target.value)} value={templateFilter}><option value="ALL">Todas las plantillas</option>{Array.from(new Map(items.map((item) => [item.template_id,item.name])).entries()).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
       <select className="rounded-xl border p-2" onChange={(event) => setStageFilter(event.target.value)} value={stageFilter}><option value="ALL">Todas las etapas</option>{Object.entries(logbookStageLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
       {role !== "CLIENT" ? <Button onClick={() => setOpen(true)}><Plus className="mr-1 h-4 w-4"/>Asignar una vez</Button> : null}
+      {role !== "CLIENT" ? <LogbookExcelImport eventId={eventId} onDone={load}/> : null}
       {role === "ADMIN" || role === "SUPER_ADMIN" ? <Button disabled={processing} onClick={async () => {
         if (processing) return;
         setProcessing(true);
@@ -74,11 +79,12 @@ export function EventLogbooksTab({ eventId, role }: { eventId: string; role?: st
         finally { setProcessing(false); }
       }}>{processing ? "Procesando…" : "Actualizar estados"}</Button> : null}
     </div>
+    {role !== "CLIENT" && importedBatches.length ? <div className="flex flex-wrap gap-2">{importedBatches.map((batchId,index)=><LogbookImportBatchEditor batchId={batchId} dates={items.filter(item=>item.import_batch_id===batchId&&item.occurrence_date).map(item=>item.occurrence_date as string)} eventId={eventId} key={batchId} onDone={load}/>)}</div> : null}
     {loading ? <LoadingState/> : error ? <ErrorState message={error} onRetry={load}/> : shown.length === 0 ? <EmptyState title="Sin bitácoras" description="Aún no hay ejecuciones para este evento."/> : <div className="grid gap-3">{shown.map((item) => <article className="rounded-xl border bg-white p-4" key={item.id}>
       <div className="flex flex-wrap items-start justify-between gap-2"><div><Link className="font-semibold hover:text-emerald-700" href={role === "ADMIN" || role === "SUPER_ADMIN" ? `/admin/bitacoras/ejecuciones/${item.id}` : `/supervisor/bitacoras/${item.id}`}>{item.name}</Link><p className="text-xs text-slate-500">{logbookLabel(logbookStageLabels,item.operational_stage)} · {logbookLabel(logbookModeLabels,item.assignment_mode)} · {logbookLabel(logbookStatusLabels,item.status)}</p></div><div className="flex flex-wrap gap-2"><Link className="inline-flex h-9 items-center justify-center rounded-xl bg-emerald-700 px-3 text-sm font-medium text-white hover:bg-emerald-800" href={role === "ADMIN" || role === "SUPER_ADMIN" ? `/admin/bitacoras/ejecuciones/${item.id}` : `/supervisor/bitacoras/${item.id}`}>{role === "ADMIN" || role === "SUPER_ADMIN" ? "Administrar bitácora" : "Revisar bitácora"}</Link><InstanceActions item={item} done={load}/></div></div>
       {item.detail ? <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm"><Metric label="Cumplimiento" value={item.detail.metrics.completion_percentage}/><Metric label="Participación" value={item.detail.metrics.participation_percentage}/><Metric label="Aprobación" value={item.detail.metrics.approval_percentage}/></div> : null}
       <p className={item.status === "OVERDUE" ? "mt-3 text-xs font-semibold text-red-700" : "mt-3 text-xs text-slate-500"}>Apertura: {formatLifecycleDate(item.opens_at,"Inmediata")} · Vence: {formatLifecycleDate(item.due_at,"Sin vencimiento")} · America/Santiago</p>
-      {item.occurrence_date ? <p className="mt-1 text-xs font-medium text-emerald-700">Ocurrencia {new Date(`${item.occurrence_date}T12:00:00`).toLocaleDateString("es-CL")}{item.original_occurrence_date ? ` · reprogramada desde ${new Date(`${item.original_occurrence_date}T12:00:00`).toLocaleDateString("es-CL")}` : ""}</p> : null}
+      {item.occurrence_date ? <p className="mt-1 text-xs font-medium text-emerald-700">Ocurrencia {new Date(`${item.occurrence_date}T12:00:00`).toLocaleDateString("es-CL", { timeZone: "America/Santiago" })}{item.original_occurrence_date ? ` · reprogramada desde ${new Date(`${item.original_occurrence_date}T12:00:00`).toLocaleDateString("es-CL", { timeZone: "America/Santiago" })}` : ""}</p> : null}
     </article>)}</div>}
     {open ? <AssignLogbook eventId={eventId} close={() => setOpen(false)} done={() => { setOpen(false); void load(); }}/> : null}
   </div>;
@@ -144,7 +150,7 @@ function AssignLogbook({ eventId, close, done }: { eventId: string; close: () =>
     if (saving || requestInFlight.current || !canReview) return;
     requestInFlight.current = true; setSaving(true); setError("");
     try {
-      await createEventLogbook(eventId,{ template_version_id:versionId,assignment_mode:mode,participant_ids:participants,supervisor_id:supervisor || null,zone_id:zone || null,opens_at:opens ? new Date(opens).toISOString() : null,due_at:due ? new Date(due).toISOString() : null,client_visibility:clientVisible });
+      await createEventLogbook(eventId,{ template_version_id:versionId,assignment_mode:mode,participant_ids:participants,supervisor_id:supervisor || null,zone_id:zone || null,opens_at:opens ? chileLocalToIso(opens) : null,due_at:due ? chileLocalToIso(due) : null,client_visibility:clientVisible });
       toast({ title: "Bitácora asignada", tone: "success" });
       setReviewing(false); done();
     } catch (cause) { setError(logbookError(cause, "No se pudo asignar la bitácora.")); }
@@ -173,8 +179,8 @@ function AssignLogbook({ eventId, close, done }: { eventId: string; close: () =>
         <Summary label="Supervisor" value={supervisorName}/>
         <Summary label="Participantes" value={`${participants.length}: ${participantNames.join(", ")}`}/>
         <Summary label="Zona" value={zoneName}/>
-        <Summary label="Apertura" value={opens ? new Date(opens).toLocaleString("es-CL") : "Inmediata"}/>
-        <Summary label="Vencimiento" value={due ? new Date(due).toLocaleString("es-CL") : "Sin vencimiento"}/>
+        <Summary label="Apertura" value={opens ? new Date(opens).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : "Inmediata"}/>
+        <Summary label="Vencimiento" value={due ? new Date(due).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : "Sin vencimiento"}/>
         <Summary label="Visibilidad cliente" value={clientVisible ? "Visible" : "No visible"}/>
       </dl>
       <p className="mt-3 text-sm text-slate-600">Al confirmar se creará la ejecución y se notificará la actualización en la lista del evento.</p>

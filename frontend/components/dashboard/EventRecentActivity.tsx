@@ -7,7 +7,7 @@ import type { EventDashboard } from "@/types/dashboard";
 export function EventRecentActivity({ dashboard }: { dashboard: EventDashboard }) {
   const items = [
     ...dashboard.recommendations.map((item, index) => ({ id: `rec-${index}`, title: item, description: "Recomendacion operacional" })),
-    ...dashboard.evidences.recent.map((item) => ({ id: item.id, title: item.description || "Evidencia reciente", description: item.created_at ? new Date(item.created_at).toLocaleString("es-CL") : "" }))
+    ...dashboard.evidences.recent.map((item) => ({ id: item.id, title: item.description || "Evidencia reciente", description: item.created_at ? new Date(item.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : "" }))
   ];
 
   return (

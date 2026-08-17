@@ -380,6 +380,7 @@ def my_assignments(db, current, status_filter=None):
     return list(
         db.scalars(
             select(LogbookAssignment)
+            .options(selectinload(LogbookAssignment.instance))
             .where(*filters)
             .order_by(LogbookAssignment.created_at.desc())
         ).all()
@@ -950,6 +951,39 @@ def calculate_metrics(instance):
     }
 
 
+def calculate_instance_metrics(db, instance):
+    metrics = calculate_metrics(instance)
+    if not instance.import_batch_id:
+        return metrics
+    total_items = db.scalar(select(func.count(LogbookInstanceItem.id)).where(
+        LogbookInstanceItem.instance_id == instance.id
+    )) or 0
+    completed_items = db.scalar(select(func.count(func.distinct(
+        LogbookItemContribution.instance_item_id
+    ))).where(
+        LogbookItemContribution.instance_id == instance.id,
+        LogbookItemContribution.deleted_at.is_(None),
+    )) or 0
+    contributors = db.scalar(select(func.count(func.distinct(
+        LogbookItemContribution.author_id
+    ))).where(
+        LogbookItemContribution.instance_id == instance.id,
+        LogbookItemContribution.deleted_at.is_(None),
+    )) or 0
+    total_participants = metrics["total_participants"]
+    metrics.update({
+        "completion_percentage": round(100 * completed_items / total_items, 2)
+        if total_items else 0,
+        "participation_percentage": round(100 * contributors / total_participants, 2)
+        if total_participants else 0,
+        "total_required_items": total_items,
+        "completed_items": completed_items,
+        "failed_items": 0,
+        "collaborating_participants": contributors,
+    })
+    return metrics
+
+
 def get_instance_detail(db, instance_id, current):
     from app.services.logbook_lifecycle_service import refresh_instance_lifecycle
 
@@ -957,9 +991,6 @@ def get_instance_detail(db, instance_id, current):
     instance = _load_instance(db, instance_id)
     if current.role == UserRole.CLIENT:
         fail(403, "Use the client logbook summary endpoint")
-    if not can_access_event(current, instance.event_id, db):
-        fail(403, "Insufficient role")
-    metrics = calculate_metrics(instance)
     visible_assignments = list(instance.assignments)
     if current.role in {UserRole.WORKER, UserRole.LOGISTICS_OPERATOR}:
         visible_assignments = [
@@ -967,9 +998,14 @@ def get_instance_detail(db, instance_id, current):
         ]
         if not visible_assignments:
             fail(403, "Not assigned to this logbook")
+    elif not can_access_event(current, instance.event_id, db):
+        fail(403, "Insufficient role")
+    metrics = calculate_instance_metrics(db, instance)
     data = InstanceRead.model_validate(instance).model_dump()
     event = db.get(Event, instance.event_id)
     data["event_name"] = event.name if event else ""
+    supervisor = db.get(User, instance.supervisor_id) if instance.supervisor_id else None
+    data["supervisor_name"] = supervisor.full_name if supervisor else None
     data["version"] = VersionDetail.model_validate(instance.version).model_dump()
     assignments_data = []
     shared_participant_view = (
@@ -1075,6 +1111,8 @@ def add_participants(db, instance_id, user_ids, current):
     instance = _load_instance(db, instance_id)
     if not can_manage_event(current, instance.event_id, db):
         fail(403, "Insufficient role")
+    if instance.status not in CONFIGURABLE_INSTANCE_STATUSES:
+        fail(409, "Responsibility configuration is locked in the current logbook status")
     existing = {a.user_id for a in instance.assignments}
     if existing & set(user_ids):
         fail(409, "Participant is already assigned")
@@ -1102,13 +1140,150 @@ def add_participants(db, instance_id, user_ids, current):
     return _load_instance(db, instance_id).assignments
 
 
+CONFIGURABLE_INSTANCE_STATUSES = {
+    LogbookInstanceStatus.DRAFT,
+    LogbookInstanceStatus.SCHEDULED,
+    LogbookInstanceStatus.OPEN,
+    LogbookInstanceStatus.IN_PROGRESS,
+    LogbookInstanceStatus.CHANGES_REQUESTED,
+}
+PARTICIPANT_ROLES = {
+    UserRole.WORKER,
+    UserRole.LOGISTICS_OPERATOR,
+    UserRole.SUPERVISOR,
+}
+
+
+def configure_instance(db, instance_id, payload, current, *, apply: bool):
+    instance = db.scalar(
+        select(LogbookInstance)
+        .where(LogbookInstance.id == instance_id)
+        .with_for_update()
+        .options(selectinload(LogbookInstance.assignments).selectinload(LogbookAssignment.responses))
+    )
+    if not instance:
+        fail(404, "Logbook instance not found")
+    if not can_manage_event(current, instance.event_id, db):
+        fail(403, "Insufficient role")
+    if instance.status not in CONFIGURABLE_INSTANCE_STATUSES:
+        fail(409, "Responsibility configuration is locked in the current logbook status")
+    if payload.revision != instance.configuration_revision:
+        fail(409, "The logbook configuration changed; reload before saving")
+
+    participant_ids = set(payload.participant_ids)
+    staff_rows = list(db.execute(
+        select(EventStaff.user_id, User.role)
+        .join(User, User.id == EventStaff.user_id)
+        .where(
+            EventStaff.event_id == instance.event_id,
+            EventStaff.user_id.in_(participant_ids),
+            User.is_active.is_(True),
+        )
+    ).all())
+    valid_participants = {user_id for user_id, role in staff_rows if role in PARTICIPANT_ROLES}
+    if valid_participants != participant_ids:
+        fail(422, "Participants must be active operational event staff")
+    if payload.supervisor_id:
+        valid_supervisor = db.scalar(
+            select(EventStaff.user_id)
+            .join(User, User.id == EventStaff.user_id)
+            .where(
+                EventStaff.event_id == instance.event_id,
+                EventStaff.user_id == payload.supervisor_id,
+                User.is_active.is_(True),
+                User.role == UserRole.SUPERVISOR,
+            )
+        )
+        if not valid_supervisor:
+            fail(422, "Supervisor must be an active supervisor assigned to the event")
+
+    active = {
+        assignment.user_id: assignment
+        for assignment in instance.assignments
+        if assignment.status != LogbookAssignmentStatus.CANCELLED
+    }
+    all_assignments = {assignment.user_id: assignment for assignment in instance.assignments}
+    to_add = participant_ids - set(active)
+    to_remove = set(active) - participant_ids
+    historical = 0
+    for user_id in to_remove:
+        assignment = active[user_id]
+        has_contributions = bool(db.scalar(select(func.count()).select_from(
+            LogbookItemContribution
+        ).where(
+            LogbookItemContribution.assignment_id == assignment.id,
+            LogbookItemContribution.deleted_at.is_(None),
+        )))
+        historical += int(bool(assignment.responses) or has_contributions)
+
+    result = {
+        "instance_id": instance.id,
+        "supervisor_id": payload.supervisor_id,
+        "participant_ids": sorted(participant_ids, key=str),
+        "participants_to_add": sorted(to_add, key=str),
+        "participants_to_remove": sorted(to_remove, key=str),
+        "historical_assignments_preserved": historical,
+        "revision": instance.configuration_revision + (1 if apply else 0),
+        "applied": apply,
+    }
+    if not apply:
+        return result
+
+    old_supervisor = instance.supervisor_id
+    old_participants = sorted(active, key=str)
+    instance.supervisor_id = payload.supervisor_id
+    for user_id in to_remove:
+        # Always retain the assignment row: it is part of the responsibility audit trail.
+        active[user_id].status = LogbookAssignmentStatus.CANCELLED
+    for user_id in to_add:
+        assignment = all_assignments.get(user_id)
+        if assignment:
+            has_activity = bool(assignment.responses) or bool(db.scalar(
+                select(func.count()).select_from(LogbookItemContribution).where(
+                    LogbookItemContribution.assignment_id == assignment.id,
+                    LogbookItemContribution.deleted_at.is_(None),
+                )
+            ))
+            assignment.status = (
+                LogbookAssignmentStatus.IN_PROGRESS if has_activity
+                else LogbookAssignmentStatus.PENDING
+            )
+        else:
+            db.add(LogbookAssignment(logbook_instance_id=instance.id, user_id=user_id))
+    instance.configuration_revision += 1
+    db.commit()
+    audit(
+        db,
+        current,
+        "LOGBOOK_RESPONSIBILITIES_UPDATED",
+        "LogbookInstance",
+        instance.id,
+        event_id=instance.event_id,
+        old={"supervisor_id": old_supervisor, "participant_ids": old_participants},
+        new={
+            "supervisor_id": payload.supervisor_id,
+            "participant_ids": sorted(participant_ids, key=str),
+            "configuration_revision": instance.configuration_revision,
+        },
+        metadata={"historical_assignments_preserved": historical},
+    )
+    return result
+
+
 def remove_participant(db, instance_id, assignment_id, current):
     instance = _load_instance(db, instance_id)
     if not can_manage_event(current, instance.event_id, db):
         fail(403, "Insufficient role")
+    if instance.status not in CONFIGURABLE_INSTANCE_STATUSES:
+        fail(409, "Responsibility configuration is locked in the current logbook status")
     assignment = next((a for a in instance.assignments if a.id == assignment_id), None)
     if not assignment:
         fail(404, "Participant not found")
+    active_count = sum(
+        item.status != LogbookAssignmentStatus.CANCELLED for item in instance.assignments
+    )
+    if assignment.status != LogbookAssignmentStatus.CANCELLED and active_count <= 1:
+        fail(422, "A logbook must keep at least one active participant")
     had_responses = bool(assignment.responses)
     if had_responses:
         assignment.status = LogbookAssignmentStatus.CANCELLED
@@ -1446,7 +1621,7 @@ def client_summary(db, instance_id, current):
     event = db.get(Event, instance.event_id)
     if not instance.client_visibility or current.client_id != event.client_id:
         fail(404, "Logbook summary not found")
-    metrics = calculate_metrics(instance)
+    metrics = calculate_instance_metrics(db, instance)
     public = [
         e
         for a in instance.assignments

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import type { Incident } from "@/types/incident";
 
 function date(value?: string | null) {
-  return value ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
+  return value ? new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
 }
 
 export function IncidentDetailDrawer({ incident, canResolve, canClose, onClose, onResolve, onCloseIncident }: { incident: Incident; canResolve: boolean; canClose: boolean; onClose: () => void; onResolve: () => void; onCloseIncident: () => void }) {

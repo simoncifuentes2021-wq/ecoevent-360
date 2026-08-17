@@ -137,7 +137,7 @@ export function LogisticsEvidenceGallery({
                         <div>
                           <Badge tone="neutral">{stageLabels[item.evidence_stage]}</Badge>
                           <p className="mt-2 text-sm font-semibold">{source}</p>
-                          <p className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString("es-CL")}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}</p>
                         </div>
                         <Button size="sm" type="button" variant="secondary" onClick={() => setPreview(item)}>
                           <Eye className="h-4 w-4" />

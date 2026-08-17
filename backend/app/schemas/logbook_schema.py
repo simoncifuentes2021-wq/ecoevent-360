@@ -2,6 +2,7 @@
 from datetime import date, datetime, time
 from decimal import Decimal
 from uuid import UUID
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.models.enums import *  # noqa: F403
 
@@ -154,6 +155,134 @@ class LifecycleProcessIn(BaseModel):
     dry_run: bool = False
 
 
+class LogbookImportConfig(BaseModel):
+    file_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    template_version_id: UUID
+    participant_ids: list[UUID] = Field(min_length=1)
+    supervisor_id: UUID | None = None
+    opens_at_local: time
+    due_at_local: time
+    timezone: Literal["America/Santiago"] = "America/Santiago"
+    client_visibility: bool = False
+    base_name: str = Field(default="Bitácora diaria", min_length=1, max_length=140)
+
+    @model_validator(mode="after")
+    def validate_import(self):
+        if len(set(self.participant_ids)) != len(self.participant_ids):
+            raise ValueError("Duplicate participants")
+        return self
+
+
+class LogbookImportBulkParticipantsIn(BaseModel):
+    operation: str = Field(pattern=r"^(ADD|REMOVE|REPLACE)$")
+    scope: str = Field(default="ALL", pattern=r"^(ALL|FUTURE|DATES)$")
+    participant_ids: list[UUID] = Field(min_length=1)
+    dates: list[date] = []
+
+    @model_validator(mode="after")
+    def validate_bulk_participants(self):
+        if len(set(self.participant_ids)) != len(self.participant_ids):
+            raise ValueError("Duplicate participants")
+        if self.scope == "DATES" and not self.dates:
+            raise ValueError("At least one date is required for DATES scope")
+        if self.scope != "DATES" and self.dates:
+            raise ValueError("Dates are only valid with DATES scope")
+        if len(set(self.dates)) != len(self.dates):
+            raise ValueError("Duplicate dates")
+        return self
+
+
+class LogbookImportBulkParticipantsRead(BaseModel):
+    batch_id: UUID
+    operation: str
+    scope: str
+    instances_matched: int
+    assignments_to_add: int
+    assignments_to_remove: int
+    assignments_preserved: int
+    historical_assignments_preserved: int
+    participant_ids: list[UUID]
+    applied: bool
+
+
+class LogbookImportBulkSupervisorIn(BaseModel):
+    supervisor_id: UUID | None = None
+    scope: str = Field(default="ALL", pattern=r"^(ALL|FUTURE|DATES)$")
+    dates: list[date] = []
+
+    @model_validator(mode="after")
+    def validate_scope(self):
+        if self.scope == "DATES" and not self.dates:
+            raise ValueError("At least one date is required for DATES scope")
+        if self.scope != "DATES" and self.dates:
+            raise ValueError("Dates are only valid with DATES scope")
+        if len(set(self.dates)) != len(self.dates):
+            raise ValueError("Duplicate dates")
+        return self
+
+
+class LogbookImportBulkSupervisorRead(BaseModel):
+    batch_id: UUID
+    scope: str
+    supervisor_id: UUID | None
+    instances_matched: int
+    instances_to_update: int
+    instances_unchanged: int
+    instances_locked: int
+    applied: bool
+
+
+class ContributionIn(BaseModel):
+    description: str = Field(min_length=1, max_length=4000)
+    version: int | None = Field(default=None, ge=1)
+
+
+class ContributionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    instance_item_id: UUID
+    assignment_id: UUID
+    author_id: UUID
+    author_name: str | None = None
+    description: str
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    evidences: list["ContributionEvidenceRead"] = []
+
+
+class ContributionEvidenceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    contribution_id: UUID
+    uploaded_by: UUID | None
+    mime_type: str
+    file_size: int
+    original_filename: str
+    created_at: datetime
+    deleted_at: datetime | None
+
+
+class DailyMetricsRead(BaseModel):
+    total_activities: int
+    activities_without_contributions: int
+    activities_with_contributions: int
+    contributions_count: int
+    participants_assigned: int
+    participants_contributed: int
+    evidences_count: int
+    completion_percentage: float
+
+
+class InstanceItemRead(BaseModel):
+    id: UUID
+    instance_id: UUID
+    title: str
+    source_row: int
+    position: int
+    contributions: list[ContributionRead] = []
+
+
 class LifecycleProcessRead(BaseModel):
     run_id: UUID
     started_at: datetime
@@ -175,6 +304,7 @@ class InstanceRead(BaseModel):
     event_id: UUID
     template_id: UUID
     template_version_id: UUID
+    import_batch_id: UUID | None = None
     name: str
     operational_stage: LogbookOperationalStage
     zone_id: UUID | None
@@ -182,6 +312,7 @@ class InstanceRead(BaseModel):
     opens_at: datetime | None
     due_at: datetime | None
     supervisor_id: UUID | None
+    configuration_revision: int = 1
     status: LogbookInstanceStatus
     client_visibility: bool
     created_at: datetime
@@ -202,7 +333,7 @@ class RecurrenceRule(BaseModel):
     max_occurrences: int | None = Field(None, ge=1, le=500)
     opens_at_local: time
     due_at_local: time
-    timezone: str = Field("America/Santiago", min_length=1, max_length=64)
+    timezone: Literal["America/Santiago"] = "America/Santiago"
 
     @model_validator(mode="after")
     def recurrence_is_consistent(self):
@@ -317,6 +448,10 @@ class AssignmentRead(BaseModel):
     approved_at: datetime | None
     review_comment: str | None
     attempt_number: int
+
+
+class MyAssignmentRead(AssignmentRead):
+    instance: InstanceRead
 
 
 class ResponseSave(BaseModel):
@@ -455,6 +590,7 @@ class MetricsRead(BaseModel):
 
 class InstanceDetail(InstanceRead):
     event_name: str
+    supervisor_name: str | None = None
     version: VersionDetail
     assignments: list[AssignmentDetail]
     metrics: MetricsRead
@@ -479,6 +615,29 @@ class ParticipantsIn(BaseModel):
         if len(set(self.user_ids)) != len(self.user_ids):
             raise ValueError("Duplicate participants")
         return self
+
+
+class InstanceConfigurationIn(BaseModel):
+    supervisor_id: UUID | None = None
+    participant_ids: list[UUID] = Field(min_length=1)
+    revision: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def unique_participants(self):
+        if len(set(self.participant_ids)) != len(self.participant_ids):
+            raise ValueError("Duplicate participants")
+        return self
+
+
+class InstanceConfigurationRead(BaseModel):
+    instance_id: UUID
+    supervisor_id: UUID | None
+    participant_ids: list[UUID]
+    participants_to_add: list[UUID]
+    participants_to_remove: list[UUID]
+    historical_assignments_preserved: int
+    revision: int
+    applied: bool
 
 
 class EvidenceAccess(BaseModel):

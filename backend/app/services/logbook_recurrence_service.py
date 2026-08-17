@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.permissions import can_access_event, can_manage_event
+from app.core.time import chile_today
 from app.models.audit_log import AuditLog
 from app.models.core import Event, EventStaff, EventZone, User
 from app.models.enums import (
@@ -236,7 +237,7 @@ def generate_series_window(db: Session, series_id: UUID, *, actor=None, through:
         return {"generated": 0, "skipped": 0}
     all_dates, truncated = _series_dates(series)
     bounded = not truncated and len(all_dates) <= PREGENERATE_LIMIT
-    horizon = through or (all_dates[-1] if bounded and all_dates else date.today() + timedelta(weeks=WINDOW_WEEKS))
+    horizon = through or (all_dates[-1] if bounded and all_dates else chile_today() + timedelta(weeks=WINDOW_WEEKS))
     existing = set(db.scalars(select(LogbookInstance.occurrence_date).where(
         LogbookInstance.recurrence_series_id == series.id
     )).all())
@@ -355,7 +356,7 @@ def update_future(db, series_id, payload, current):
             ))
     future = db.scalars(select(LogbookInstance).where(
         LogbookInstance.recurrence_series_id == series.id,
-        LogbookInstance.occurrence_date >= date.today(),
+        LogbookInstance.occurrence_date >= chile_today(),
         LogbookInstance.status.in_([LogbookInstanceStatus.SCHEDULED, LogbookInstanceStatus.OPEN]),
     ).options(selectinload(LogbookInstance.assignments))).all()
     changed_occurrences = 0
@@ -465,7 +466,7 @@ def list_occurrences(db, series_id, current):
 def process_active_series(db: Session, *, actor=None, batch_size=100):
     ids = list(db.scalars(select(LogbookRecurrenceSeries.id).where(
         LogbookRecurrenceSeries.status == LogbookRecurrenceStatus.ACTIVE,
-        LogbookRecurrenceSeries.next_occurrence_date <= date.today() + timedelta(weeks=WINDOW_WEEKS),
+        LogbookRecurrenceSeries.next_occurrence_date <= chile_today() + timedelta(weeks=WINDOW_WEEKS),
     ).order_by(LogbookRecurrenceSeries.next_occurrence_date).limit(batch_size)).all())
     summary = {"series_inspected": len(ids), "occurrences_generated": 0, "series_failed": 0}
     for series_id in ids:

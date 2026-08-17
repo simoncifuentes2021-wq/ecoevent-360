@@ -211,7 +211,7 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
                   <tbody>
                     {responses.map((response) => (
                       <tr className="border-t align-top" key={response.id}>
-                        <td className="px-3 py-2">{response.submitted_at ? new Date(response.submitted_at).toLocaleString("es-CL") : "-"}</td>
+                        <td className="px-3 py-2">{response.submitted_at ? new Date(response.submitted_at).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : "-"}</td>
                         <td className="px-3 py-2 font-semibold">{response.language}</td>
                         <td className="px-3 py-2">{response.respondent_name || "-"}</td>
                         <td className="px-3 py-2">{response.respondent_email || "-"}</td>
