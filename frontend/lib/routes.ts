@@ -46,6 +46,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/servicios", label: "Servicios", icon: Settings },
     { href: "/admin/residuos/tipos", label: "Residuos", icon: Recycle },
     { href: "/admin/huella/factores", label: "Factores", icon: Leaf },
+    { href: "/admin/impacto-ambiental", label: "Impacto ambiental", icon: Leaf },
     { href: "/admin/auditoria", label: "Auditoria", icon: ShieldCheck },
     { href: "/reports", label: "Reportes", icon: FileText },
     { href: "/settings", label: "Configuracion", icon: ShieldCheck }
@@ -65,6 +66,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/servicios", label: "Servicios", icon: Settings },
     { href: "/admin/residuos/tipos", label: "Residuos", icon: Recycle },
     { href: "/admin/huella/factores", label: "Factores", icon: Leaf },
+    { href: "/admin/impacto-ambiental", label: "Impacto ambiental", icon: Leaf },
     { href: "/admin/auditoria", label: "Auditoria", icon: ShieldCheck },
     { href: "/reports", label: "Reportes", icon: FileText },
     { href: "/settings", label: "Configuracion", icon: ShieldCheck }

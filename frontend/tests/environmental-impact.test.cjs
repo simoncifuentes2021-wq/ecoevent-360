@@ -7,6 +7,8 @@ const tab = fs.readFileSync(path.join(root, "components/environmental-impact/Env
 const form = fs.readFileSync(path.join(root, "components/environmental-impact/EnvironmentalActionForm.tsx"), "utf8");
 const api = fs.readFileSync(path.join(root, "lib/api/environmental.ts"), "utf8");
 const eventTabs = fs.readFileSync(path.join(root, "components/events/EventTabs.tsx"), "utf8");
+const catalog = fs.readFileSync(path.join(root, "app/(dashboard)/admin/impacto-ambiental/page.tsx"), "utf8");
+const routes = fs.readFileSync(path.join(root, "lib/routes.ts"), "utf8");
 
 assert.match(eventTabs, /Impacto Ambiental/);
 assert.match(tab, /No calculado/);
@@ -23,4 +25,14 @@ assert.match(form, /scope === "SHOW"/);
 assert.match(form, /Potencia promedio por equipo/);
 assert.match(api, /environmental-impact\/summary/);
 assert.match(api, /environmental-actions/);
+assert.match(routes, /\/admin\/impacto-ambiental/);
+assert.match(catalog, /RoleGuard roles=\{\["SUPER_ADMIN", "ADMIN"\]\}/);
+assert.match(catalog, /Factores/);
+assert.match(catalog, /Metodolog/);
+assert.match(catalog, /Equivalencias/);
+assert.match(catalog, /no constituyen compensaciones/);
+assert.doesNotMatch(catalog, /window\.(alert|confirm)/);
+assert.match(api, /createEnvironmentalFactor/);
+assert.match(api, /updateEnvironmentalMethodology/);
+assert.match(api, /createEnvironmentalEquivalence/);
 console.log("environmental impact UI contract passed");

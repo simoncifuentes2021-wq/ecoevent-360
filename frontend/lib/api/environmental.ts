@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
 import { toQuery } from "@/lib/api/query";
-import type { EnvironmentalAction, EnvironmentalActionInput, EnvironmentalMethodology, EnvironmentalSummary } from "@/types/environmental";
+import type { EcoEquivalence, EcoEquivalenceInput, EnvironmentalAction, EnvironmentalActionInput, EnvironmentalFactor, EnvironmentalFactorInput, EnvironmentalMethodology, EnvironmentalSummary } from "@/types/environmental";
 
 export const getEnvironmentalSummary = (eventId: string, sessionId?: string) => api.get<EnvironmentalSummary>(`/events/${eventId}/environmental-impact/summary${toQuery({ session_id: sessionId })}`);
 export const getEnvironmentalActions = (eventId: string, sessionId?: string) => api.get<{items: EnvironmentalAction[]; total: number}>(`/events/${eventId}/environmental-actions${toQuery({ session_id: sessionId })}`);
@@ -9,4 +9,11 @@ export const updateEnvironmentalAction = (eventId: string, actionId: string, dat
 export const deleteEnvironmentalAction = (eventId: string, actionId: string) => api.delete<void>(`/events/${eventId}/environmental-actions/${actionId}`);
 export const calculateEnvironmentalAction = (eventId: string, actionId: string) => api.post<EnvironmentalAction>(`/events/${eventId}/environmental-actions/${actionId}/calculate`, {});
 export const getEnvironmentalMethodologies = () => api.get<EnvironmentalMethodology[]>("/environmental-impact/methodologies");
-export const getEnvironmentalEquivalences = () => api.get<Array<{id: string; name: string; metric_source: string; factor: string; unit: string; source: string; year: number; is_active: boolean}>>("/environmental-impact/equivalences");
+export const getEnvironmentalFactors = () => api.get<EnvironmentalFactor[]>("/environmental-impact/factors");
+export const createEnvironmentalFactor = (data: EnvironmentalFactorInput) => api.post<EnvironmentalFactor>("/environmental-impact/factors", data);
+export const updateEnvironmentalFactor = (id: string, data: Partial<Pick<EnvironmentalFactor, "factor_value" | "source" | "methodology" | "is_active">>) => api.patch<EnvironmentalFactor>(`/environmental-impact/factors/${id}`, data);
+export const createEnvironmentalMethodology = (data: Omit<EnvironmentalMethodology, "id" | "is_active" | "created_at" | "updated_at">) => api.post<EnvironmentalMethodology>("/environmental-impact/methodologies", data);
+export const updateEnvironmentalMethodology = (id: string, data: Partial<Pick<EnvironmentalMethodology, "name" | "description" | "parameters" | "is_active">>) => api.patch<EnvironmentalMethodology>(`/environmental-impact/methodologies/${id}`, data);
+export const getEnvironmentalEquivalences = () => api.get<EcoEquivalence[]>("/environmental-impact/equivalences");
+export const createEnvironmentalEquivalence = (data: EcoEquivalenceInput) => api.post<EcoEquivalence>("/environmental-impact/equivalences", data);
+export const updateEnvironmentalEquivalence = (id: string, data: Partial<Pick<EcoEquivalence, "name" | "factor" | "unit" | "source" | "year" | "is_active">>) => api.patch<EcoEquivalence>(`/environmental-impact/equivalences/${id}`, data);
