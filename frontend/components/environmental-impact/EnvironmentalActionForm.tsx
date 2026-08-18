@@ -9,12 +9,13 @@ import type { EventSession } from "@/types/eventSession";
 
 const TYPES: Array<[EnvironmentalActionType, string]> = [["ELECTRIC_LIGHTING_TOWER", "Torre de iluminación eléctrica"], ["ELECTRIC_MOTORCYCLE", "Moto eléctrica"], ["ELECTRIC_CART", "Carrito eléctrico"], ["SOLAR_ENERGY", "Energía solar"], ["ELECTRIC_VEHICLE", "Vehículo eléctrico"], ["BIKE_MOBILITY", "Movilidad en bicicleta"], ["PUBLIC_TRANSPORT", "Transporte público"], ["OTHER", "Otra solución"]];
 const fieldClass = "h-10 w-full rounded-md border bg-white px-3 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100";
+const normalizedDecimal = (value?: string | null, fallback = "") => value == null ? fallback : value.replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1");
 
 export function EnvironmentalActionForm({ action, sessions, methodologies, saving, onClose, onSave }: { action?: EnvironmentalAction | null; sessions: EventSession[]; methodologies: EnvironmentalMethodology[]; saving: boolean; onClose: () => void; onSave: (value: EnvironmentalActionInput) => Promise<void> }) {
   const [type, setType] = useState<EnvironmentalActionType>(action?.action_type ?? "ELECTRIC_LIGHTING_TOWER");
   const [scope, setScope] = useState<"EVENT" | "SHOW">(action?.session_id ? "SHOW" : "EVENT");
   const [sessionId, setSessionId] = useState(action?.session_id ?? ""); const [methodologyId, setMethodologyId] = useState(action?.methodology_id ?? "");
-  const [name, setName] = useState(action?.name ?? ""); const [quantity, setQuantity] = useState(action?.quantity_used ?? "1"); const [hours, setHours] = useState(action?.hours_used ?? ""); const [distance, setDistance] = useState(action?.distance_km ?? ""); const [energy, setEnergy] = useState(action?.energy_kwh ?? ""); const [power, setPower] = useState(action?.power_kw ?? ""); const [notes, setNotes] = useState(action?.notes ?? ""); const [error, setError] = useState("");
+  const [name, setName] = useState(action?.name ?? ""); const [quantity, setQuantity] = useState(normalizedDecimal(action?.quantity_used, "1")); const [hours, setHours] = useState(normalizedDecimal(action?.hours_used)); const [distance, setDistance] = useState(normalizedDecimal(action?.distance_km)); const [energy, setEnergy] = useState(normalizedDecimal(action?.energy_kwh)); const [power, setPower] = useState(normalizedDecimal(action?.power_kw)); const [notes, setNotes] = useState(action?.notes ?? ""); const [error, setError] = useState("");
   const options = useMemo(() => methodologies.filter((item) => item.action_type === type && item.is_active), [methodologies, type]);
   const needsHours = type === "ELECTRIC_LIGHTING_TOWER" || type === "ELECTRIC_CART";
   const needsDistance = ["ELECTRIC_MOTORCYCLE", "ELECTRIC_CART", "ELECTRIC_VEHICLE", "BIKE_MOBILITY", "PUBLIC_TRANSPORT"].includes(type);

@@ -26,6 +26,8 @@ assert.match(form, /ELECTRIC_LIGHTING_TOWER/);
 assert.match(form, /ELECTRIC_MOTORCYCLE/);
 assert.match(form, /scope === "SHOW"/);
 assert.match(form, /Potencia promedio por equipo/);
+assert.match(form, /normalizedDecimal/);
+assert.match(form, /replace\(\/\(\\\.\\d\*\?\[1-9\]\)0\+\$\|\\\.0\+\$\//);
 assert.match(api, /environmental-impact\/summary/);
 assert.match(api, /environmental-actions/);
 assert.match(routes, /\/admin\/impacto-ambiental/);
