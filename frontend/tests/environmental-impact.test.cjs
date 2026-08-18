@@ -14,6 +14,8 @@ assert.match(tab, /Factor o metodología pendiente/);
 assert.match(tab, /LoadingState/);
 assert.match(tab, /ErrorState/);
 assert.match(tab, /ConfirmDialog/);
+assert.match(tab, /updateEnvironmentalAction/);
+assert.match(tab, /setFormAction\(item\)/);
 assert.doesNotMatch(tab + form, /window\.(alert|confirm)/);
 assert.match(form, /ELECTRIC_LIGHTING_TOWER/);
 assert.match(form, /ELECTRIC_MOTORCYCLE/);
