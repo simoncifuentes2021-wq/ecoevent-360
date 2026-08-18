@@ -1,4 +1,11 @@
 from app.models.audit_log import AuditLog
+from app.models.environmental import (  # noqa: F401
+    EcoEquivalenceFactor,
+    EnvironmentalAction,
+    EnvironmentalActionMetric,
+    EnvironmentalFactor,
+    EnvironmentalMethodology,
+)
 from app.models.logbook import *  # noqa: F403
 from app.models.core import (
     Alert,

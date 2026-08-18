@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { BarChart3, CalendarDays, Camera, ClipboardCheck, ClipboardList, FileText, FileInput, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, UserCog, Users } from "lucide-react";
+import { BarChart3, CalendarDays, Camera, ClipboardCheck, ClipboardList, FileText, FileInput, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, Sprout, UserCog, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertsTab } from "@/components/alerts/AlertsTab";
@@ -13,6 +13,7 @@ import { EventDashboardTab } from "@/components/dashboard/EventDashboardTab";
 import { EvidencesTab } from "@/components/evidences/EvidencesTab";
 import { EventServicesTab } from "@/components/event-services/EventServicesTab";
 import { EventFormsTab } from "@/components/event-forms/EventFormsTab";
+import { EnvironmentalImpactTab } from "@/components/environmental-impact/EnvironmentalImpactTab";
 import { EventSessionsTab } from "@/components/event-sessions/EventSessionsTab";
 import { LogisticsOrdersTab } from "@/components/logistics/LogisticsOrdersTab";
 import { EventLogbooksTab } from "@/components/logbooks/EventLogbooksTab";
@@ -41,6 +42,7 @@ const adminTabs = [
   { key: "evidencias", label: "Evidencias", icon: Camera, description: "Fotografias, documentos y respaldos del servicio." },
   { key: "residuos", label: "Residuos", icon: Recycle, description: "Registro, destino y recuperacion de residuos." },
   { key: "huella", label: "Huella", icon: Leaf, description: "Emisiones, consumos y factores ambientales." },
+  { key: "impacto_ambiental", label: "Impacto Ambiental", icon: Sprout, description: "Impacto evitado frente a lineas base documentadas." },
   { key: "auditoria", label: "Auditoria", icon: ShieldCheck, description: "Trazabilidad interna del evento y acciones relevantes." },
   { key: "alertas", label: "Alertas", icon: ShieldAlert, description: "Avisos y riesgos operativos." },
   { key: "reportes", label: "Reportes", icon: FileText, description: "Informe final y entregables profesionales para cliente." }
@@ -59,6 +61,7 @@ const supervisorTabs = [
   { key: "evidencias", label: "Evidencias", icon: Camera, description: "Respaldo visual y documental." },
   { key: "residuos", label: "Residuos", icon: Recycle, description: "Registro ambiental del evento." },
   { key: "huella", label: "Huella", icon: Leaf, description: "Emisiones y consumos operativos." },
+  { key: "impacto_ambiental", label: "Impacto Ambiental", icon: Sprout, description: "Soluciones sostenibles y resultados evitados." },
   { key: "alertas", label: "Alertas", icon: ShieldAlert, description: "Avisos y riesgos operativos." },
   { key: "reportes", label: "Reportes", icon: FileText, description: "Informes y entregables del evento." }
 ];
@@ -132,6 +135,7 @@ function TabContent({ active, eventId, event, role, title, description, icon }: 
   if (active === "evidencias") return <EvidencesTab eventId={eventId} role={role} />;
   if (active === "residuos") return <WasteTab eventId={eventId} role={role} />;
   if (active === "huella") return <CarbonTab eventId={eventId} role={role} />;
+  if (active === "impacto_ambiental") return <EnvironmentalImpactTab eventId={eventId} role={role} />;
   if (active === "auditoria") return <EventAuditTab eventId={eventId} />;
   if (active === "alertas") return <AlertsTab eventId={eventId} role={role} />;
   if (active === "reportes") return <ReportsTab eventId={eventId} role={role} />;

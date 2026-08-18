@@ -47,6 +47,10 @@ app = FastAPI(
         {"name": "waste", "description": "Registros de residuos y destino."},
         {"name": "carbon factors", "description": "Factores para calculo de CO2e."},
         {"name": "carbon records", "description": "Registros de huella de carbono."},
+        {
+            "name": "environmental impact",
+            "description": "Impacto evitado mediante soluciones sostenibles y lineas base trazables.",
+        },
         {"name": "surveys", "description": "Importacion CSV desde Google Forms/Sheets."},
         {"name": "dashboard", "description": "Indicadores resumidos por evento."},
         {"name": "reports", "description": "Generacion de reportes PDF para clientes."},

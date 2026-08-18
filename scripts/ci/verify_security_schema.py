@@ -14,6 +14,8 @@ critical_tables = {
     "logistics_orders", "logistics_evidences", "purchase_requests", "event_forms",
     "form_responses", "client_portal_configs", "logbook_instances", "logbook_evidences",
     "audit_logs", "reports", "event_session_staff",
+    "environmental_actions", "environmental_action_metrics", "environmental_factors",
+    "environmental_methodologies", "eco_equivalence_factors",
 }
 critical_enums = {"user_role", "event_status", "task_status", "logistics_order_status",
                   "event_form_type", "logbook_instance_status"}
@@ -47,6 +49,9 @@ with engine.connect() as connection:
     sensitive = {"users", "clients", "events", "tasks", "evidences", "logistics_orders",
                  "logistics_evidences", "form_responses", "logbook_evidences", "reports",
                  "event_session_staff"}
+    sensitive.update({"environmental_actions", "environmental_action_metrics",
+                      "environmental_factors", "environmental_methodologies",
+                      "eco_equivalence_factors"})
     without_rls = sorted(name for name in sensitive if not rls.get(name, False))
     assert not without_rls, f"Sensitive tables without RLS: {without_rls}"
     fk_count = connection.scalar(text(
