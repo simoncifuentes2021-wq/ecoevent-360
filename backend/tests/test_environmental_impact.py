@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine, delete, text
+from sqlalchemy import create_engine, delete, select, text
 from sqlalchemy.exc import DBAPIError
 
 from app.db.session import SessionLocal, set_rls_context
@@ -234,6 +234,39 @@ def test_baseline_actual_snapshot_precision_summary_and_factor_history(context):
         summary.pm25_avoided_kg is None
         and EnvironmentalMetricKey.PM25_AVOIDED_KG in summary.unavailable_metrics
     )
+
+
+def test_seeded_lighting_methodology_calculates_all_documented_metrics(context):
+    db, event, _, _, _, admin, *_rest = context
+    methodology = db.scalar(
+        select(EnvironmentalMethodology).where(
+            EnvironmentalMethodology.name
+            == "Torre diésel vs torre eléctrica (energía medida)"
+        )
+    )
+    assert methodology is not None
+    action = service.create_action(
+        db,
+        event.id,
+        EnvironmentalActionCreate(
+            action_type=EnvironmentalActionType.ELECTRIC_LIGHTING_TOWER,
+            methodology_id=methodology.id,
+            name="Torre eléctrica verificación catálogo",
+            quantity_used=Decimal("1"),
+            energy_kwh=Decimal("30"),
+            energy_source="MEASURED",
+        ),
+        admin,
+    )
+    calculated = service.calculate(db, event.id, action.id, admin)
+    values = {metric.metric_key: metric.value for metric in calculated.metrics}
+    assert values[EnvironmentalMetricKey.CO2E_BASELINE_KG] == Decimal("27.10000000")
+    assert values[EnvironmentalMetricKey.CO2E_ACTUAL_KG] == Decimal("6.06300000")
+    assert values[EnvironmentalMetricKey.CO2E_AVOIDED_KG] == Decimal("21.03700000")
+    assert values[EnvironmentalMetricKey.FUEL_AVOIDED_L] == Decimal("10.00000000")
+    assert values[EnvironmentalMetricKey.PM25_AVOIDED_KG] == Decimal("0.04023000")
+    assert values[EnvironmentalMetricKey.PM10_AVOIDED_KG] == Decimal("0.04023000")
+    assert values[EnvironmentalMetricKey.NOX_AVOIDED_KG] == Decimal("0.56724000")
 
 
 def test_permissions_missing_methodology_update_delete_and_override(context):
