@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.permissions import can_access_event, can_manage_event
 from app.models.core import Event, EventSession, User
 from app.models.environmental import (
+    EcoEquivalenceFactor,
     EnvironmentalAction,
     EnvironmentalActionMetric,
     EnvironmentalFactor,
@@ -401,6 +402,27 @@ def summary(
         .group_by(EnvironmentalActionMetric.metric_key)
     ).all()
     values = {key: value for key, value in rows}
+    equivalence_factors = db.scalars(
+        select(EcoEquivalenceFactor)
+        .where(EcoEquivalenceFactor.is_active.is_(True))
+        .order_by(EcoEquivalenceFactor.name)
+    ).all()
+    equivalences = [
+        {
+            "id": item.id,
+            "key": item.key,
+            "name": item.name,
+            "metric_source": item.metric_source,
+            "source_value": values[item.metric_source],
+            "factor": item.factor,
+            "value": values[item.metric_source] * item.factor,
+            "unit": item.unit,
+            "source": item.source,
+            "year": item.year,
+        }
+        for item in equivalence_factors
+        if item.metric_source in values
+    ]
     targets = [
         EnvironmentalMetricKey.ENERGY_KWH,
         EnvironmentalMetricKey.FUEL_AVOIDED_L,
@@ -420,4 +442,5 @@ def summary(
         pm10_avoided_kg=values.get(targets[4]),
         nox_avoided_kg=values.get(targets[5]),
         unavailable_metrics=[key for key in targets if key not in values],
+        equivalences=equivalences,
     )

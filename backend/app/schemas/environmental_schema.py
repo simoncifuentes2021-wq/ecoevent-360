@@ -202,6 +202,19 @@ class MetricOverride(BaseModel):
         return value
 
 
+class EnvironmentalEquivalenceResult(BaseModel):
+    id: UUID
+    key: str
+    name: str
+    metric_source: EnvironmentalMetricKey
+    source_value: Decimal
+    factor: Decimal
+    value: Decimal
+    unit: str
+    source: str
+    year: int
+
+
 class EnvironmentalSummary(BaseModel):
     event_id: UUID
     session_id: UUID | None
@@ -213,3 +226,4 @@ class EnvironmentalSummary(BaseModel):
     pm10_avoided_kg: Decimal | None
     nox_avoided_kg: Decimal | None
     unavailable_metrics: list[EnvironmentalMetricKey]
+    equivalences: list[EnvironmentalEquivalenceResult]

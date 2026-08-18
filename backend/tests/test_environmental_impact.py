@@ -240,8 +240,7 @@ def test_seeded_lighting_methodology_calculates_all_documented_metrics(context):
     db, event, _, _, _, admin, *_rest = context
     methodology = db.scalar(
         select(EnvironmentalMethodology).where(
-            EnvironmentalMethodology.name
-            == "Torre diésel vs torre eléctrica (energía medida)"
+            EnvironmentalMethodology.name == "Torre diésel vs torre eléctrica (energía medida)"
         )
     )
     assert methodology is not None
@@ -267,6 +266,11 @@ def test_seeded_lighting_methodology_calculates_all_documented_metrics(context):
     assert values[EnvironmentalMetricKey.PM25_AVOIDED_KG] == Decimal("0.04023000")
     assert values[EnvironmentalMetricKey.PM10_AVOIDED_KG] == Decimal("0.04023000")
     assert values[EnvironmentalMetricKey.NOX_AVOIDED_KG] == Decimal("0.56724000")
+    summary = service.summary(db, event.id, None, admin)
+    equivalences = {item.key: item for item in summary.equivalences}
+    assert equivalences["GASOLINE_LITERS"].source_value == Decimal("21.03700000")
+    assert equivalences["GASOLINE_LITERS"].value == Decimal("8.943748016900000000")
+    assert equivalences["FOREST_ACRE_YEAR"].value == Decimal("0.021037000000000000")
 
 
 def test_permissions_missing_methodology_update_delete_and_override(context):
