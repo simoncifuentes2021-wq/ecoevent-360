@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from html import escape
 from typing import Any
 
@@ -200,9 +201,10 @@ def _styles(document: ReportRenderDocument) -> str:
     .carbon-check{{display:grid;width:5mm;height:5mm;place-items:center;border-radius:50%;background:{t["primary_color"]};color:white;font-size:8pt;font-weight:900;margin-top:1mm}}
     .carbon-card h4{{font-size:11pt;line-height:1.15;margin:0 0 1mm}} .carbon-card strong{{display:block;font-size:10pt;line-height:1.2;margin-bottom:1mm}}
     .carbon-card p{{font-size:7.5pt;line-height:1.35;margin:0;color:{t["text_color"]}}}
-    .impact-official{{display:grid;grid-template-columns:1.1fr .9fr;gap:7mm}} .impact-official .impact-kpis{{display:grid;grid-template-columns:repeat(2,1fr);gap:3mm}}
-    .impact-official .impact-card{{border:1px solid {t["accent_color"]};border-radius:3mm;padding:4mm;background:white}} .impact-card span{{display:block;color:{t["muted_color"]};font-size:8pt}} .impact-card strong{{display:block;margin-top:1mm;font-size:16pt;color:{t["primary_color"]}}}
-    .impact-trace{{border-radius:3mm;background:{t["primary_color"]};color:white;padding:6mm}} .impact-trace h3{{color:white}} .impact-trace p{{font-size:8pt;line-height:1.45}} .impact-trace li{{margin:2mm 0;font-size:8pt}}
+    .impact-official{{display:grid;grid-template-columns:1.08fr .92fr;gap:6mm;align-items:stretch}} .impact-official .impact-kpis{{display:grid;grid-template-columns:repeat(2,1fr);gap:3mm}}
+    .impact-official .impact-card{{min-height:27mm;border:1px solid {t["accent_color"]};border-radius:3mm;padding:4mm;background:white;display:flex;flex-direction:column;justify-content:space-between}} .impact-card span{{display:block;color:{t["muted_color"]};font-size:8pt}} .impact-card strong{{display:flex;align-items:baseline;gap:1.5mm;margin-top:2mm;font-size:17pt;line-height:1;color:{t["primary_color"]};white-space:nowrap}} .impact-card strong small{{font-size:9pt;font-weight:700}}
+    .impact-trace{{border-radius:3mm;background:{t["primary_color"]};color:white;padding:6mm;min-height:117mm}} .impact-trace h3{{color:white;font-size:19pt}} .impact-trace p{{font-size:7.5pt;line-height:1.45}} .impact-trace li{{margin:2mm 0;font-size:7.5pt;line-height:1.35}}
+    .impact-details{{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:6mm}} .impact-detail{{border-radius:3mm;background:{t["background_color"]};padding:5mm;min-height:34mm}} .impact-detail h4{{margin:0 0 2mm;color:{t["primary_color"]};font-size:11pt}} .impact-detail p{{margin:1mm 0;font-size:7.5pt;line-height:1.4;color:{t["muted_color"]}}} .impact-pill{{display:inline-block;margin:1mm 1mm 0 0;padding:1.5mm 2.5mm;border-radius:99px;background:white;font-size:7pt;color:{t["primary_color"]}}} .impact-disclaimer{{margin-top:5mm;padding:3mm 4mm;border-left:1.5mm solid {t["accent_color"]};font-size:7.5pt;color:{t["muted_color"]};background:{t["background_color"]}}}
     .carbon-visual,.carbon-photo,.carbon-photo figure{{height:100%;margin:0}} .carbon-photo{{display:block}}
     .carbon-photo figure img{{height:211mm;border-radius:0;object-fit:cover}} .carbon-photo figcaption{{display:none}}
     .carbon-story{{grid-template-columns:1.05fr 1.05fr .65fr}} .carbon-story h3{{font-size:18pt;overflow-wrap:normal;hyphens:none}}
@@ -312,32 +314,93 @@ def _environmental_impact_html(sections: list[dict]) -> str:
     content = section.get("content") or {}
     snapshot = section.get("source_snapshot") or {}
     official = snapshot.get("official_data") or content.get("official_data") or {}
+    precision = {
+        "energy_kwh": 2,
+        "fuel_avoided_l": 2,
+        "co2e_baseline_kg": 2,
+        "co2e_actual_kg": 2,
+        "co2e_avoided_kg": 2,
+        "pm25_avoided_kg": 5,
+        "pm10_avoided_kg": 5,
+        "nox_avoided_kg": 5,
+    }
     fields = content.get("fields") or []
     cards = "".join(
         '<article class="impact-card">'
         f"<span>{escape(str(field.get('label') or 'Indicador'))}</span>"
-        f"<strong>{escape(str(field.get('value') if field.get('value') is not None else '—'))} {escape(str(field.get('unit') or ''))}</strong>"
+        f"<strong>{escape(_display_number(field.get('value'), precision.get(str(field.get('key')), 2), str(field.get('key')) in {'energy_kwh', 'fuel_avoided_l'}))}"
+        f"<small>{escape(str(field.get('unit') or ''))}</small></strong>"
         "</article>"
         for field in fields[:8]
     )
     actions = official.get("actions") or []
     action_list = "".join(
-        f"<li>{escape(str(item.get('name')))} · {escape(str(item.get('session_name')))} · {escape(str(item.get('methodology') or 'Sin metodología'))}</li>"
+        f"<li>{escape(str(item.get('name')))} · {escape(str(item.get('session_name')))} · "
+        f"{escape(str(item.get('methodology') or 'Sin metodología'))}</li>"
         for item in actions[:8]
     )
     sources = official.get("sources") or []
-    source_text = "; ".join(
-        f"{item.get('source')} ({item.get('year')})" for item in sources[:5]
-    ) or "Sin factores aprobados disponibles."
+    source_list = (
+        "".join(
+            f"<li>{escape(str(item.get('source') or 'Fuente documentada'))}"
+            f"{' (' + escape(str(item.get('year'))) + ')' if item.get('year') else ''}</li>"
+            for item in sources[:4]
+        )
+        or "<li>Sin factores aprobados disponibles.</li>"
+    )
+    breakdown = official.get("breakdown") or []
+    breakdown_html = (
+        "".join(
+            '<span class="impact-pill">'
+            f"{escape(str(item.get('session_name') or item.get('scope_name') or 'Evento'))}: "
+            f"{escape(_display_number((item.get('metrics') or {}).get('co2e_avoided_kg'), 2))} kg CO2e</span>"
+            for item in breakdown[:6]
+        )
+        or "<p>El resultado corresponde al alcance completo del evento.</p>"
+    )
+    methodologies = official.get("methodologies") or []
+    methodology_html = (
+        "".join(
+            f"<p><b>{escape(str(item.get('name') or item.get('title') or 'Metodología aprobada'))}</b></p>"
+            for item in methodologies[:3]
+        )
+        or "<p>La metodología utilizada se detalla en la trazabilidad aprobada.</p>"
+    )
+    equivalences = official.get("equivalences") or []
+    equivalence_html = "".join(
+        '<span class="impact-pill">'
+        f"{escape(str(item.get('label') or item.get('name') or 'Equivalencia'))}: "
+        f"{escape(_display_number(item.get('value'), 2, True))} {escape(str(item.get('unit') or ''))}</span>"
+        for item in equivalences[:4]
+    )
     disclaimer = official.get("disclaimer") or content.get("text") or ""
     return (
         "<h2>Impacto ambiental evitado</h2>"
         '<div class="impact-official"><div class="impact-kpis">'
         f"{cards}</div><aside class='impact-trace'><h3>Trazabilidad aprobada</h3>"
         f"<p>{escape(str(len(actions)))} acciones aprobadas. Solo estos resultados forman parte del reporte oficial.</p>"
-        f"<ul>{action_list}</ul><p><b>Fuentes:</b> {escape(source_text)}</p>"
-        f"<p>{escape(str(disclaimer))}</p></aside></div>"
+        f"<ul>{action_list}</ul><p><b>Fuentes documentadas</b></p><ul>{source_list}</ul>"
+        "</aside></div>"
+        '<div class="impact-details">'
+        f'<article class="impact-detail"><h4>Resultados por alcance</h4>{breakdown_html}</article>'
+        f'<article class="impact-detail"><h4>Metodologías y equivalencias</h4>{methodology_html}{equivalence_html}</article>'
+        "</div>"
+        f'<div class="impact-disclaimer">{escape(str(disclaimer))}</div>'
     )
+
+
+def _display_number(value: Any, digits: int = 2, trim: bool = False) -> str:
+    """Format report values for people without changing the stored calculation."""
+    if value is None:
+        return "—"
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return str(value)
+    formatted = f"{number:.{digits}f}"
+    if trim:
+        formatted = formatted.rstrip("0").rstrip(".")
+    return formatted.replace(".", ",")
 
 
 def _carbon_equivalences_html(sections: list[dict], photos: list[dict]) -> str:

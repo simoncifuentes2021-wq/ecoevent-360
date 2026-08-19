@@ -682,6 +682,69 @@ def test_premium_renderer_opens_and_renders_all_layouts():
     assert pdf.startswith(b"%PDF-") and len(pdf) > 20_000 and 4 <= pages <= 7
 
 
+def test_environmental_impact_renderer_uses_human_readable_precision_and_details():
+    from app.services.report_render_service import _environmental_impact_html
+
+    html = _environmental_impact_html(
+        [
+            {
+                "content": {
+                    "fields": [
+                        {
+                            "key": "energy_kwh",
+                            "label": "Energía utilizada",
+                            "value": "30.00000000",
+                            "unit": "kWh",
+                        },
+                        {
+                            "key": "co2e_baseline_kg",
+                            "label": "CO2e línea base",
+                            "value": "27.10000000",
+                            "unit": "kg",
+                        },
+                        {
+                            "key": "pm25_avoided_kg",
+                            "label": "PM2.5 evitado",
+                            "value": "0.04023000",
+                            "unit": "kg",
+                        },
+                    ]
+                },
+                "source_snapshot": {
+                    "official_data": {
+                        "actions": [
+                            {
+                                "name": "Torre eléctrica",
+                                "session_name": "Show 1",
+                                "methodology": "Energía medida",
+                            }
+                        ],
+                        "breakdown": [
+                            {
+                                "session_name": "Show 1",
+                                "metrics": {"co2e_avoided_kg": "21.037"},
+                            }
+                        ],
+                        "methodologies": [{"name": "Torre diésel vs torre eléctrica"}],
+                        "sources": [{"source": "US EPA AP-42", "year": 1998}],
+                        "equivalences": [
+                            {"label": "Gasolina no consumida", "value": "8.944", "unit": "L"}
+                        ],
+                        "disclaimer": "Referencia comunicacional.",
+                    }
+                },
+            }
+        ]
+    )
+
+    assert "30.00000000" not in html
+    assert "30<small>kWh</small>" in html
+    assert "27,10<small>kg</small>" in html
+    assert "0,04023<small>kg</small>" in html
+    assert "Resultados por alcance" in html and "Show 1: 21,04 kg CO2e" in html
+    assert "Metodologías y equivalencias" in html
+
+
 def test_environmental_story_template_preserves_key_content():
     from app.services.report_render_service import (
         ReportRenderDocument,
