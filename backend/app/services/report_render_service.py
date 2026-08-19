@@ -113,7 +113,7 @@ def build_html(document: ReportRenderDocument) -> str:
         evidence_by_section.setdefault(item.get("section_key"), []).append(item)
     all_photos = [item for item in document.evidences if item.get("uri")]
     sections = [
-        visible_section(item)
+        item if item.get("section_type") == "ENVIRONMENTAL_IMPACT" else visible_section(item)
         for item in document.sections
         if item.get("is_enabled") and item.get("section_type") != "COVER"
     ]

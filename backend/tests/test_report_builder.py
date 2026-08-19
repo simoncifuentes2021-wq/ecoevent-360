@@ -813,6 +813,60 @@ def test_environmental_impact_renderer_respects_item_and_traceability_visibility
     assert "Show 1: 21,04 kg CO2e" not in html
 
 
+def test_full_html_pipeline_keeps_environmental_hidden_item_configuration():
+    from app.services.report_render_service import ReportRenderDocument, build_html, normalize_theme
+
+    section = {
+        "section_key": "environmental_impact",
+        "section_type": "ENVIRONMENTAL_IMPACT",
+        "title": "Impacto ambiental evitado",
+        "layout_variant": "KPI_GRID",
+        "is_enabled": True,
+        "sort_order": 1,
+        "content": {
+            "show_traceability": False,
+            "fields": [],
+            "items": [
+                {"label": "Torre", "_is_visible": False},
+                {"label": "Gasolina", "_is_visible": False},
+            ],
+        },
+        "source_snapshot": {
+            "official_data": {
+                "actions": [
+                    {
+                        "name": "Torre",
+                        "session_name": "Evento completo",
+                        "methodology": "Método oculto",
+                        "metrics": {"CO2E_AVOIDED_KG": "21.04"},
+                    }
+                ],
+                "breakdown": [],
+                "methodologies": [{"name": "Método oculto"}],
+                "sources": [],
+                "equivalences": [{"name": "Gasolina", "value": "8.94", "unit": "L"}],
+            }
+        },
+    }
+    document = ReportRenderDocument(
+        report={"id": "r", "title": "Reporte", "scope": "EVENT", "template_key": "COMPLETE"},
+        event={"id": "e", "name": "Evento", "date": "19.08.2026"},
+        show=None,
+        client={"id": "c", "name": "Cliente"},
+        theme=normalize_theme({}),
+        sections=(section,),
+        evidences=tuple(),
+        publication={"number": None},
+    )
+
+    html = build_html(document)
+
+    assert "Trazabilidad aprobada" not in html
+    assert "Resultados por alcance" not in html
+    assert "Método oculto" not in html
+    assert "Gasolina: 8,94 L" not in html
+
+
 def test_environmental_story_template_preserves_key_content():
     from app.services.report_render_service import (
         ReportRenderDocument,
