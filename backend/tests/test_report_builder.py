@@ -726,7 +726,10 @@ def test_environmental_impact_renderer_uses_human_readable_precision_and_details
                             }
                         ],
                         "methodologies": [{"name": "Torre diésel vs torre eléctrica"}],
-                        "sources": [{"source": "US EPA AP-42", "year": 1998}],
+                        "sources": [
+                            {"source": "US EPA AP-42", "year": 1998},
+                            {"source": "US EPA AP-42", "year": 1998},
+                        ],
                         "equivalences": [
                             {"label": "Gasolina no consumida", "value": "8.944", "unit": "L"}
                         ],
@@ -743,6 +746,7 @@ def test_environmental_impact_renderer_uses_human_readable_precision_and_details
     assert "0,04023<small>kg</small>" in html
     assert "Resultados por alcance" in html and "Show 1: 21,04 kg CO2e" in html
     assert "Metodologías y equivalencias" in html
+    assert html.count("US EPA AP-42") == 1
 
 
 def test_environmental_story_template_preserves_key_content():

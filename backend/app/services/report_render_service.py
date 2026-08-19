@@ -339,7 +339,14 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         f"{escape(str(item.get('methodology') or 'Sin metodología'))}</li>"
         for item in actions[:8]
     )
-    sources = official.get("sources") or []
+    sources = []
+    seen_sources: set[tuple[str, str]] = set()
+    for item in official.get("sources") or []:
+        identity = (str(item.get("source") or ""), str(item.get("year") or ""))
+        if identity in seen_sources:
+            continue
+        seen_sources.add(identity)
+        sources.append(item)
     source_list = (
         "".join(
             f"<li>{escape(str(item.get('source') or 'Fuente documentada'))}"
