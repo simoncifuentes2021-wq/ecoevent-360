@@ -396,7 +396,9 @@ def summary(
     _session(db, event_id, session_id)
     action_filter = [EnvironmentalAction.event_id == event_id]
     if user.role == UserRole.CLIENT:
-        action_filter.append(EnvironmentalAction.review_status == EnvironmentalReviewStatus.APPROVED)
+        action_filter.append(
+            EnvironmentalAction.review_status == EnvironmentalReviewStatus.APPROVED
+        )
     if session_id is not None:
         action_filter.append(EnvironmentalAction.session_id == session_id)
     count = db.scalar(select(func.count(EnvironmentalAction.id)).where(*action_filter)) or 0
@@ -459,9 +461,7 @@ def summary(
     )
 
 
-def _invalidate_review(
-    db: Session, action: EnvironmentalAction, user: User, reason: str
-) -> None:
+def _invalidate_review(db: Session, action: EnvironmentalAction, user: User, reason: str) -> None:
     if action.review_status == EnvironmentalReviewStatus.DRAFT:
         return
     db.add(
@@ -482,9 +482,7 @@ def _invalidate_review(
     action.review_comment = reason
 
 
-def submit_review(
-    db: Session, event_id: UUID, action_id: UUID, user: User
-) -> EnvironmentalAction:
+def submit_review(db: Session, event_id: UUID, action_id: UUID, user: User) -> EnvironmentalAction:
     _manage(db, event_id, user)
     action = get_action(db, event_id, action_id, user)
     if action.status != EnvironmentalActionStatus.CALCULATED or not action.metrics:
@@ -566,9 +564,7 @@ def review_history(db: Session, event_id: UUID, action_id: UUID, user: User) -> 
     ]
 
 
-def official_data(
-    db: Session, event_id: UUID, session_id: UUID | None = None
-) -> dict:
+def official_data(db: Session, event_id: UUID, session_id: UUID | None = None) -> dict:
     """Build the immutable, approved-only dataset used by reports and client views."""
     filters = [
         EnvironmentalAction.event_id == event_id,
@@ -590,15 +586,21 @@ def official_data(
         .all()
     )
     session_ids = {action.session_id for action in actions if action.session_id}
-    session_names = dict(
-        db.execute(
-            select(EventSession.id, EventSession.name).where(EventSession.id.in_(session_ids))
-        ).all()
-    ) if session_ids else {}
+    session_names = (
+        dict(
+            db.execute(
+                select(EventSession.id, EventSession.name).where(EventSession.id.in_(session_ids))
+            ).all()
+        )
+        if session_ids
+        else {}
+    )
     reviewer_ids = {action.reviewed_by for action in actions if action.reviewed_by}
-    reviewer_names = dict(
-        db.execute(select(User.id, User.full_name).where(User.id.in_(reviewer_ids))).all()
-    ) if reviewer_ids else {}
+    reviewer_names = (
+        dict(db.execute(select(User.id, User.full_name).where(User.id.in_(reviewer_ids))).all())
+        if reviewer_ids
+        else {}
+    )
     metric_keys = [
         EnvironmentalMetricKey.ENERGY_KWH,
         EnvironmentalMetricKey.FUEL_AVOIDED_L,
@@ -665,7 +667,10 @@ def official_data(
         {
             "name": item.name,
             "value": str(totals[item.metric_source.value] * item.factor),
-            "unit": item.unit,
+            # Catalog units describe the conversion factor (for example,
+            # L/kgCO2e). The calculated result is expressed only in its
+            # numerator unit.
+            "unit": item.unit.split("/", 1)[0],
             "source": item.source,
             "year": item.year,
         }
@@ -682,7 +687,8 @@ def official_data(
             {
                 **scope,
                 "metrics": {
-                    key: str(value) if value != ZERO else "0" for key, value in scope["metrics"].items()
+                    key: str(value) if value != ZERO else "0"
+                    for key, value in scope["metrics"].items()
                 },
             }
             for scope in breakdown.values()
