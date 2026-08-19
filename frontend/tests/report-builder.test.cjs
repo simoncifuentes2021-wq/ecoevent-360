@@ -45,6 +45,8 @@ test("2B.1 editor uses three panels and the backend page plan", () => {
   assert.match(builder, /Zoom de vista previa/);
   assert.match(builder, /Ajustar/);
   assert.match(builder, /794 \* zoom/);
+  assert.match(builder, /cause\.status !== 409/);
+  assert.match(builder, /payload\(latest\.edit_version\)/);
   assert.match(builder, /Guardado automático activo/);
   assert.match(builder, /Fotografía principal/);
   assert.match(builder, /layout-thumbnail-selector/);

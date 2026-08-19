@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_URL } from "@/lib/constants";
 import { getStoredToken } from "@/lib/auth";
+import { ApiError } from "@/lib/api";
 import { addCustomReportSection, addReportEvidence, createReportRevision, deleteCustomReportSection, deliverReportPublication, downloadReportPublication, generateReportPublication, getAvailableReportEvidences, getReportEditor, getReportHtmlPreview, getReportPagePlan, getReportPublications, getReportRevisions, previewReportPdf, refreshReport, reorderReportSections, resetReportField, restoreReportRevision, updateReportDesign, updateReportEditorialConfig, updateReportEvidence, updateReportSection } from "@/lib/api/reports";
 import type { AvailableReportEvidence, ReportEditor, ReportEditorialConfig, ReportField, ReportLayoutVariant, ReportPagePlan, ReportPublication, ReportRevision, ReportSection, ReportTemplateKey, ReportTheme } from "@/types/report";
 
@@ -38,7 +39,25 @@ export function ReportBuilder({ reportId }: { reportId: string }) {
   if (!report) return <main className="grid min-h-screen place-items-center bg-slate-50"><p>{error || "Cargando constructor…"}</p></main>;
   const currentReport = report;
   const section = currentReport.sections.find(item => item.id === active);
-  async function saveSection(next: ReportSection) { await act(() => updateReportSection(currentReport.id, next.id, { title: next.title, is_enabled: next.is_enabled, layout_variant: next.layout_variant, content: next.content, edit_version: currentReport.edit_version })); }
+  async function saveSection(next: ReportSection) {
+    setBusy(true); setError(undefined); setNotice(undefined);
+    const payload = (editVersion: number) => ({ title: next.title, is_enabled: next.is_enabled, layout_variant: next.layout_variant, content: next.content, edit_version: editVersion });
+    try {
+      try {
+        await updateReportSection(currentReport.id, next.id, payload(currentReport.edit_version));
+      } catch (cause) {
+        if (!(cause instanceof ApiError) || cause.status !== 409) throw cause;
+        const latest = await getReportEditor(currentReport.id);
+        await updateReportSection(currentReport.id, next.id, payload(latest.edit_version));
+      }
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo guardar la sección");
+      throw cause;
+    } finally {
+      setBusy(false);
+    }
+  }
   async function openPdf(blobPromise: Promise<Blob>) { const popup = window.open("about:blank", "_blank"); if (popup) { popup.opener = null; popup.document.title = "Preparando PDF…"; popup.document.body.innerHTML = '<p style="font-family:Arial;padding:24px">Preparando vista previa PDF…</p>'; } setBusy(true); try { const blob = await blobPromise; const url = URL.createObjectURL(blob); if (popup) popup.location.replace(url); else { const link = document.createElement("a"); link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer"; link.click(); } setTimeout(() => URL.revokeObjectURL(url), 300_000); } catch (e) { popup?.close(); setError(e instanceof Error ? e.message : "No se pudo abrir el PDF"); } finally { setBusy(false); } }
   async function generatePdf() { setConfirmGenerate(false); await act(async () => { await generateReportPublication(currentReport.id, `${currentReport.id}:${currentReport.edit_version}`); setPublications(await getReportPublications(currentReport.id)); }, "PDF generado correctamente. Ya puedes verlo, descargarlo o entregarlo al cliente."); }
   async function saveRevision() { await act(async () => { await createReportRevision(currentReport.id, note, currentReport.edit_version); setNote(""); }, "Revisión guardada correctamente."); }
