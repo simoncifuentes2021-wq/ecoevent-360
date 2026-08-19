@@ -205,7 +205,7 @@ def _styles(document: ReportRenderDocument) -> str:
     .impact-official.no-trace{{grid-template-columns:1fr}} .impact-official.no-trace .impact-kpis{{grid-template-columns:repeat(4,1fr)}}
     .impact-official .impact-card{{min-height:27mm;border:1px solid {t["accent_color"]};border-radius:3mm;padding:4mm;background:white;display:flex;flex-direction:column;justify-content:space-between}} .impact-card span{{display:block;color:{t["muted_color"]};font-size:8pt}} .impact-card strong{{display:flex;align-items:baseline;gap:1.5mm;margin-top:2mm;font-size:17pt;line-height:1;color:{t["primary_color"]};white-space:nowrap}} .impact-card strong small{{font-size:9pt;font-weight:700}}
     .impact-trace{{border-radius:3mm;background:{t["primary_color"]};color:white;padding:6mm;min-height:117mm}} .impact-trace h3{{color:white;font-size:19pt}} .impact-trace p{{font-size:7.5pt;line-height:1.45}} .impact-trace li{{margin:2mm 0;font-size:7.5pt;line-height:1.35}}
-    .impact-details{{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:6mm}} .impact-detail{{border-radius:3mm;background:{t["background_color"]};padding:5mm;min-height:34mm}} .impact-detail h4{{margin:0 0 2mm;color:{t["primary_color"]};font-size:11pt}} .impact-detail p{{margin:1mm 0;font-size:7.5pt;line-height:1.4;color:{t["muted_color"]}}} .impact-pill{{display:inline-block;margin:1mm 1mm 0 0;padding:1.5mm 2.5mm;border-radius:99px;background:white;font-size:7pt;color:{t["primary_color"]}}} .impact-disclaimer{{margin-top:5mm;padding:3mm 4mm;border-left:1.5mm solid {t["accent_color"]};font-size:7.5pt;color:{t["muted_color"]};background:{t["background_color"]}}}
+    .impact-details{{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:6mm}} .impact-details.one-detail{{grid-template-columns:1fr}} .impact-detail{{border-radius:3mm;background:{t["background_color"]};padding:5mm;min-height:34mm}} .impact-detail h4{{margin:0 0 2mm;color:{t["primary_color"]};font-size:11pt}} .impact-detail p{{margin:1mm 0;font-size:7.5pt;line-height:1.4;color:{t["muted_color"]}}} .impact-pill{{display:inline-block;margin:1mm 1mm 0 0;padding:1.5mm 2.5mm;border-radius:99px;background:white;font-size:7pt;color:{t["primary_color"]}}} .impact-disclaimer{{margin-top:5mm;padding:3mm 4mm;border-left:1.5mm solid {t["accent_color"]};font-size:7.5pt;color:{t["muted_color"]};background:{t["background_color"]}}}
     .carbon-visual,.carbon-photo,.carbon-photo figure{{height:100%;margin:0}} .carbon-photo{{display:block}}
     .carbon-photo figure img{{height:211mm;border-radius:0;object-fit:cover}} .carbon-photo figcaption{{display:none}}
     .carbon-story{{grid-template-columns:1.05fr 1.05fr .65fr}} .carbon-story h3{{font-size:18pt;overflow-wrap:normal;hyphens:none}}
@@ -365,23 +365,28 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         )
         or "<li>Sin factores aprobados disponibles.</li>"
     )
-    breakdown = official.get("breakdown") or []
-    breakdown_html = (
-        "".join(
-            '<span class="impact-pill">'
-            f"{escape(str(item.get('session_name') or item.get('scope_name') or 'Evento'))}: "
-            f"{escape(_display_number((item.get('metrics') or {}).get('CO2E_AVOIDED_KG') or (item.get('metrics') or {}).get('co2e_avoided_kg'), 2))} kg CO2e</span>"
-            for item in breakdown[:6]
-        )
-        or "<p>El resultado corresponde al alcance completo del evento.</p>"
+    breakdown: dict[str, Decimal] = {}
+    for action in actions:
+        scope_name = str(action.get("session_name") or "Evento completo")
+        value = (action.get("metrics") or {}).get("CO2E_AVOIDED_KG")
+        if value is not None:
+            breakdown[scope_name] = breakdown.get(scope_name, Decimal("0")) + Decimal(str(value))
+    breakdown_html = "".join(
+        '<span class="impact-pill">'
+        f"{escape(scope_name)}: {escape(_display_number(value, 2))} kg CO2e</span>"
+        for scope_name, value in list(breakdown.items())[:6]
     )
-    methodologies = official.get("methodologies") or []
-    methodology_html = (
-        "".join(
-            f"<p><b>{escape(str(item.get('name') or item.get('title') or 'Metodología aprobada'))}</b></p>"
-            for item in methodologies[:3]
-        )
-        or "<p>La metodología utilizada se detalla en la trazabilidad aprobada.</p>"
+    selected_methodologies = {
+        str(item.get("methodology")) for item in actions if item.get("methodology")
+    }
+    methodologies = [
+        item
+        for item in (official.get("methodologies") or [])
+        if str(item.get("name") or item.get("title")) in selected_methodologies
+    ]
+    methodology_html = "".join(
+        f"<p><b>{escape(str(item.get('name') or item.get('title') or 'Metodología aprobada'))}</b></p>"
+        for item in methodologies[:3]
     )
     equivalences = [
         item
@@ -405,14 +410,27 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         if show_traceability
         else ""
     )
+    detail_cards = []
+    if breakdown_html:
+        detail_cards.append(
+            f'<article class="impact-detail"><h4>Resultados por alcance</h4>{breakdown_html}</article>'
+        )
+    if methodology_html or equivalence_html:
+        detail_cards.append(
+            '<article class="impact-detail"><h4>Metodologías y equivalencias</h4>'
+            f"{methodology_html}{equivalence_html}</article>"
+        )
+    details_html = (
+        f'<div class="impact-details{" one-detail" if len(detail_cards) == 1 else ""}">'
+        f"{''.join(detail_cards)}</div>"
+        if detail_cards
+        else ""
+    )
     return (
         "<h2>Impacto ambiental evitado</h2>"
         f'<div class="impact-official{"" if show_traceability else " no-trace"}"><div class="impact-kpis">'
         f"{cards}</div>{traceability_html}</div>"
-        '<div class="impact-details">'
-        f'<article class="impact-detail"><h4>Resultados por alcance</h4>{breakdown_html}</article>'
-        f'<article class="impact-detail"><h4>Metodologías y equivalencias</h4>{methodology_html}{equivalence_html}</article>'
-        "</div>"
+        f"{details_html}"
         f'<div class="impact-disclaimer">{escape(str(disclaimer))}</div>'
     )
 

@@ -738,6 +738,7 @@ def test_environmental_impact_renderer_uses_human_readable_precision_and_details
                                 "name": "Torre eléctrica",
                                 "session_name": "Show 1",
                                 "methodology": "Energía medida",
+                                "metrics": {"CO2E_AVOIDED_KG": "21.037"},
                             }
                         ],
                         "breakdown": [
@@ -809,7 +810,7 @@ def test_environmental_impact_renderer_respects_item_and_traceability_visibility
     assert "no-trace" in html
     assert "Gasolina" not in html
     assert "Bosque: 0,02 acre-año" in html
-    assert "Show 1: 21,04 kg CO2e" in html
+    assert "Show 1: 21,04 kg CO2e" not in html
 
 
 def test_environmental_story_template_preserves_key_content():
