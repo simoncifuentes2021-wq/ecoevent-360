@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, BriefcaseBusiness, Camera, ClipboardCheck, ClipboardList, Cloud, FileText, MessageSquare, PackageCheck, Recycle, ShieldAlert } from "lucide-react";
+import { BarChart3, BriefcaseBusiness, Camera, ClipboardCheck, ClipboardList, Cloud, FileText, Leaf, MessageSquare, PackageCheck, Recycle, ShieldAlert } from "lucide-react";
 import { ClientLogbooksTab } from "@/components/logbooks/ClientLogbooksTab";
 
 import { ClientCarbonTab } from "@/components/client/ClientCarbonTab";
+import { ClientEnvironmentalImpactTab } from "@/components/client/ClientEnvironmentalImpactTab";
 import { ClientEvidencesTab } from "@/components/client/ClientEvidencesTab";
 import { ClientEventSummaryTab } from "@/components/client/ClientEventSummaryTab";
 import { ClientIncidentsTab } from "@/components/client/ClientIncidentsTab";
@@ -37,6 +38,7 @@ const allTabs: ClientTab[] = [
   { key: "evidencias", sectionKey: "evidences", label: "Evidencias", icon: Camera },
   { key: "residuos", sectionKey: "waste", label: "Residuos", icon: Recycle },
   { key: "huella", sectionKey: "carbon", label: "Huella", icon: Cloud },
+  { key: "impacto", sectionKey: "environmental_impact", label: "Impacto ambiental", icon: Leaf },
   { key: "formularios", sectionKey: "forms", label: "Formularios", icon: MessageSquare },
   { key: "bike_zone", sectionKey: "bike_zone", label: "Bike Zone", icon: MessageSquare },
   { key: "reportes", sectionKey: "reports", label: "Reportes", icon: FileText }
@@ -101,6 +103,7 @@ export function ClientEventTabs({ eventId }: { eventId: string }) {
       {active === "evidencias" ? <ClientEvidencesTab eventId={eventId} /> : null}
       {active === "residuos" ? <ClientWasteTab eventId={eventId} /> : null}
       {active === "huella" ? <ClientCarbonTab eventId={eventId} /> : null}
+      {active === "impacto" ? <ClientEnvironmentalImpactTab data={portal?.data.environmental_impact} /> : null}
       {active === "formularios" ? (
         <div className="space-y-4">
           <ClientFormsTab eventId={eventId} />

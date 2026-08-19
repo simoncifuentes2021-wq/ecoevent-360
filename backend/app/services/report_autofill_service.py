@@ -21,6 +21,7 @@ from app.models.core import (
     WasteType,
 )
 from app.models.enums import IncidentStatus, TaskStatus
+from app.services.environmental_calculation_service import official_data
 
 
 def _scalar(value):
@@ -228,6 +229,46 @@ def build_sections(
             availability=availability,
             source_scope="EVENT_LEVEL",
         )
+    official = official_data(db, event.id, session.id if session else None)
+    metrics = official["metrics"]
+    environmental_fields = [
+        _field("energy_kwh", "Energía utilizada", metrics["ENERGY_KWH"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kWh"),
+        _field("fuel_avoided_l", "Combustible evitado", metrics["FUEL_AVOIDED_L"], "APPROVED_ENVIRONMENTAL_ACTIONS", "L"),
+        _field("co2e_baseline_kg", "CO₂e línea base", metrics["CO2E_BASELINE_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
+        _field("co2e_actual_kg", "CO₂e escenario real", metrics["CO2E_ACTUAL_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
+        _field("co2e_avoided_kg", "CO₂e evitado", metrics["CO2E_AVOIDED_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
+        _field("pm25_avoided_kg", "PM2.5 evitado", metrics["PM25_AVOIDED_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
+        _field("pm10_avoided_kg", "PM10 evitado", metrics["PM10_AVOIDED_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
+        _field("nox_avoided_kg", "NOx evitado", metrics["NOX_AVOIDED_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
+    ]
+    environmental_items = [
+        {
+            "label": action["name"],
+            "value": action["metrics"].get("CO2E_AVOIDED_KG"),
+            "unit": "kg CO₂e evitado",
+            "description": f"{action['session_name']} · {action['methodology'] or 'Metodología no informada'} · aprobado por {action['approved_by'] or 'usuario no disponible'}",
+        }
+        for action in official["actions"]
+    ] + [
+        {
+            "label": equivalence["name"],
+            "value": equivalence["value"],
+            "unit": equivalence["unit"],
+            "description": f"Referencia: {equivalence['source']} · {equivalence['year']}",
+        }
+        for equivalence in official["equivalences"]
+    ]
+    environmental = _section(
+        environmental_fields,
+        environmental_items,
+        availability="AVAILABLE" if official["actions_count"] else "NO_DATA",
+        source_scope="APPROVED_SHOW" if show else "APPROVED_EVENT",
+    )
+    environmental[0]["text"] = official["disclaimer"]
+    environmental[1]["text"] = official["disclaimer"]
+    environmental[1]["official_data"] = official
+    environmental[2]["approved_actions_count"] = official["actions_count"]
+    result["environmental_impact"] = environmental
     result["evidences"] = _section([], [], availability="NO_DATA")
     for key in ("operations", "recommendations", "conclusion"):
         result[key] = _section([], [], availability="NO_DATA")

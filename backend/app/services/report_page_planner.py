@@ -49,6 +49,7 @@ FEATURE_RECIPES = {
     "BIKE_ZONE": PageRecipe.BIKE_ZONE_FEATURE,
     "WASTE": PageRecipe.WASTE_FEATURE,
     "CARBON": PageRecipe.CARBON_FEATURE,
+    "ENVIRONMENTAL_IMPACT": PageRecipe.ENVIRONMENTAL_OVERVIEW,
     "FORMS": PageRecipe.FORMS_INSIGHTS,
     "EVIDENCES": PageRecipe.PHOTO_STORY,
 }
@@ -151,12 +152,12 @@ def plan_pages(
             pages.append((PageRecipe.CARBON_EQUIVALENCES, footprint))
 
     order = {
-        "ENVIRONMENTAL_PREMIUM": ["WASTE", "CARBON", "BIKE_ZONE", "EVIDENCES"],
-        "ENVIRONMENTAL_STORY": ["EVIDENCES", "FORMS"],
+        "ENVIRONMENTAL_PREMIUM": ["ENVIRONMENTAL_IMPACT", "WASTE", "CARBON", "BIKE_ZONE", "EVIDENCES"],
+        "ENVIRONMENTAL_STORY": ["ENVIRONMENTAL_IMPACT", "EVIDENCES", "FORMS"],
         "BIKE_ZONE": ["BIKE_ZONE", "FORMS", "EVIDENCES"],
         "OPERATIONS": ["FORMS", "EVIDENCES"],
-        "EXECUTIVE": ["WASTE", "CARBON", "BIKE_ZONE", "FORMS", "EVIDENCES"],
-        "COMPLETE": ["WASTE", "CARBON", "BIKE_ZONE", "FORMS", "EVIDENCES"],
+        "EXECUTIVE": ["ENVIRONMENTAL_IMPACT", "WASTE", "CARBON", "BIKE_ZONE", "FORMS", "EVIDENCES"],
+        "COMPLETE": ["ENVIRONMENTAL_IMPACT", "WASTE", "CARBON", "BIKE_ZONE", "FORMS", "EVIDENCES"],
     }.get(template, [])
     rank = {kind: index for index, kind in enumerate(order)}
     visible.sort(key=lambda s: (rank.get(s.get("section_type"), len(rank)), s.get("sort_order", 0)))

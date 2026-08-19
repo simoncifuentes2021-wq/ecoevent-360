@@ -200,6 +200,9 @@ def _styles(document: ReportRenderDocument) -> str:
     .carbon-check{{display:grid;width:5mm;height:5mm;place-items:center;border-radius:50%;background:{t["primary_color"]};color:white;font-size:8pt;font-weight:900;margin-top:1mm}}
     .carbon-card h4{{font-size:11pt;line-height:1.15;margin:0 0 1mm}} .carbon-card strong{{display:block;font-size:10pt;line-height:1.2;margin-bottom:1mm}}
     .carbon-card p{{font-size:7.5pt;line-height:1.35;margin:0;color:{t["text_color"]}}}
+    .impact-official{{display:grid;grid-template-columns:1.1fr .9fr;gap:7mm}} .impact-official .impact-kpis{{display:grid;grid-template-columns:repeat(2,1fr);gap:3mm}}
+    .impact-official .impact-card{{border:1px solid {t["accent_color"]};border-radius:3mm;padding:4mm;background:white}} .impact-card span{{display:block;color:{t["muted_color"]};font-size:8pt}} .impact-card strong{{display:block;margin-top:1mm;font-size:16pt;color:{t["primary_color"]}}}
+    .impact-trace{{border-radius:3mm;background:{t["primary_color"]};color:white;padding:6mm}} .impact-trace h3{{color:white}} .impact-trace p{{font-size:8pt;line-height:1.45}} .impact-trace li{{margin:2mm 0;font-size:8pt}}
     .carbon-visual,.carbon-photo,.carbon-photo figure{{height:100%;margin:0}} .carbon-photo{{display:block}}
     .carbon-photo figure img{{height:211mm;border-radius:0;object-fit:cover}} .carbon-photo figcaption{{display:none}}
     .carbon-story{{grid-template-columns:1.05fr 1.05fr .65fr}} .carbon-story h3{{font-size:18pt;overflow-wrap:normal;hyphens:none}}
@@ -267,6 +270,8 @@ def _page_html(
         content = _evidence_html(sections[0], photos)
     elif recipe == "ENVIRONMENTAL_MANAGEMENT":
         content = _environmental_management_html(sections, photos)
+    elif recipe == "ENVIRONMENTAL_OVERVIEW":
+        content = _environmental_impact_html(sections)
     elif recipe == "CARBON_EQUIVALENCES":
         content = _carbon_equivalences_html(sections, photos)
     elif recipe in {"BIKE_ZONE_FEATURE", "WASTE_FEATURE", "CARBON_FEATURE", "FORMS_INSIGHTS"}:
@@ -299,6 +304,39 @@ def _environmental_management_html(sections: list[dict], photos: list[dict]) -> 
         f'<article class="environmental-panel bike-panel"><h3>Bicicletero</h3>{_kpis(bike_fields)}'
         f"<p>{_safe_text(bike_content.get('text') or 'Movilidad sustentable durante el evento.')}</p></article>"
         "</div></div>"
+    )
+
+
+def _environmental_impact_html(sections: list[dict]) -> str:
+    section = sections[0]
+    content = section.get("content") or {}
+    snapshot = section.get("source_snapshot") or {}
+    official = snapshot.get("official_data") or content.get("official_data") or {}
+    fields = content.get("fields") or []
+    cards = "".join(
+        '<article class="impact-card">'
+        f"<span>{escape(str(field.get('label') or 'Indicador'))}</span>"
+        f"<strong>{escape(str(field.get('value') if field.get('value') is not None else '—'))} {escape(str(field.get('unit') or ''))}</strong>"
+        "</article>"
+        for field in fields[:8]
+    )
+    actions = official.get("actions") or []
+    action_list = "".join(
+        f"<li>{escape(str(item.get('name')))} · {escape(str(item.get('session_name')))} · {escape(str(item.get('methodology') or 'Sin metodología'))}</li>"
+        for item in actions[:8]
+    )
+    sources = official.get("sources") or []
+    source_text = "; ".join(
+        f"{item.get('source')} ({item.get('year')})" for item in sources[:5]
+    ) or "Sin factores aprobados disponibles."
+    disclaimer = official.get("disclaimer") or content.get("text") or ""
+    return (
+        "<h2>Impacto ambiental evitado</h2>"
+        '<div class="impact-official"><div class="impact-kpis">'
+        f"{cards}</div><aside class='impact-trace'><h3>Trazabilidad aprobada</h3>"
+        f"<p>{escape(str(len(actions)))} acciones aprobadas. Solo estos resultados forman parte del reporte oficial.</p>"
+        f"<ul>{action_list}</ul><p><b>Fuentes:</b> {escape(source_text)}</p>"
+        f"<p>{escape(str(disclaimer))}</p></aside></div>"
     )
 
 

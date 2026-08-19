@@ -47,6 +47,7 @@ TITLES = {
     "bike_zone": "Bike Zone",
     "waste": "Residuos",
     "carbon": "Huella de carbono",
+    "environmental_impact": "Impacto ambiental evitado",
     "evidences": "Evidencias",
     "recommendations": "Recomendaciones",
     "conclusion": "Conclusión",
@@ -64,6 +65,7 @@ EVENT_ORDER = [
     "bike_zone",
     "waste",
     "carbon",
+    "environmental_impact",
     "evidences",
     "recommendations",
     "conclusion",
@@ -83,6 +85,7 @@ SHOW_ORDER = [
     "services",
     "waste",
     "carbon",
+    "environmental_impact",
 ]
 DEFAULT_LAYOUTS = {
     "cover": ReportLayoutVariant.HERO_IMAGE_TEXT,
@@ -98,6 +101,7 @@ DEFAULT_LAYOUTS = {
     "bike_zone": ReportLayoutVariant.BIG_NUMBERS,
     "waste": ReportLayoutVariant.FEATURE_CHART,
     "carbon": ReportLayoutVariant.FEATURE_CHART,
+    "environmental_impact": ReportLayoutVariant.FEATURE_CHART,
     "evidences": ReportLayoutVariant.PHOTO_GRID,
     "recommendations": ReportLayoutVariant.TEXT_IMAGE,
     "conclusion": ReportLayoutVariant.EDITORIAL,
@@ -111,6 +115,7 @@ ENVIRONMENTAL_STORY_ORDER = [
     "waste",
     "bike_zone",
     "carbon",
+    "environmental_impact",
     "preset_eco_equivalences",
     "evidences",
     "conclusion",
@@ -188,6 +193,38 @@ def _apply_environmental_story_preset(db: Session, report: Report) -> None:
         sections.append(equivalences)
         lookup[equivalences.section_key] = equivalences
 
+    official_section = lookup.get("environmental_impact")
+    official = (
+        (official_section.source_snapshot or {}).get("official_data") or {}
+        if official_section
+        else {}
+    )
+    equivalence_fields = [
+        {
+            "key": f"equivalence_{index}",
+            "label": item["name"],
+            "auto_value": item["value"],
+            "value": item["value"],
+            "unit": item["unit"],
+            "description": f"{item['source']} · {item['year']}",
+            "is_overridden": False,
+            "source": "APPROVED_ENVIRONMENTAL_ACTIONS",
+            "is_visible": True,
+        }
+        for index, item in enumerate(official.get("equivalences") or [])
+    ]
+    equivalences.content = {
+        "text": official.get("disclaimer"),
+        "fields": equivalence_fields,
+        "items": [],
+    }
+    equivalences.source_snapshot = equivalences.content
+    equivalences.source_metadata = {
+        "availability": "AVAILABLE" if equivalence_fields else "NO_DATA",
+        "source_scope": "APPROVED_ENVIRONMENTAL_ACTIONS",
+    }
+    equivalences.is_custom = False
+
     layouts = {
         "waste": ReportLayoutVariant.METRIC_LIST,
         "bike_zone": ReportLayoutVariant.BIG_NUMBERS,
@@ -202,7 +239,7 @@ def _apply_environmental_story_preset(db: Session, report: Report) -> None:
         ) not in {"NO_DATA", "NOT_APPLICABLE"}
         if section.section_key in layouts:
             section.layout_variant = layouts[section.section_key]
-    equivalences.is_enabled = True
+    equivalences.is_enabled = bool(equivalence_fields)
     ordered = sorted(
         sections,
         key=lambda section: (

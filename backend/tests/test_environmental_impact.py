@@ -23,6 +23,7 @@ from app.models.enums import (
     EnvironmentalReviewDecision,
     EnvironmentalReviewStatus,
     EventStatus,
+    ReportScope,
     UserRole,
 )
 from app.schemas.environmental_schema import (
@@ -33,8 +34,11 @@ from app.schemas.environmental_schema import (
     EnvironmentalReviewRequest,
     MetricOverride,
 )
+from app.schemas.client_portal_schema import ClientPortalConfigUpdate
+from app.services import client_portal_service
 from app.services import environmental_calculation_service as service
 from app.services import environmental_catalog_service as catalog
+from app.services import report_builder_service
 
 
 @pytest.fixture()
@@ -451,4 +455,132 @@ def test_factor_metric_compatibility_and_documented_equivalence(context):
     updated = catalog.update_equivalence(db, equivalence.id, EcoEquivalenceUpdate(is_active=False))
     assert updated.is_active is False
     db.execute(delete(EcoEquivalenceFactor).where(EcoEquivalenceFactor.id == equivalence.id))
+    db.commit()
+
+
+def test_official_reporting_filters_states_scopes_and_all_roles(context):
+    db, event, _, show, _, admin, supervisor, client_user, foreign_client, methodology, _ = context
+    super_admin = User(
+        full_name="Super Admin Impact",
+        email=f"impact-super-{uuid4().hex[:8]}@test.invalid",
+        password_hash="x",
+        role=UserRole.SUPER_ADMIN,
+    )
+    db.add(super_admin)
+    db.commit()
+    approved = service.calculate(
+        db,
+        event.id,
+        service.create_action(
+            db,
+            event.id,
+            tower_payload(methodology.id, session_id=show.id, name="Approved show action"),
+            supervisor,
+        ).id,
+        supervisor,
+    )
+    service.submit_review(db, event.id, approved.id, supervisor)
+    service.review_action(
+        db,
+        event.id,
+        approved.id,
+        EnvironmentalReviewRequest(decision=EnvironmentalReviewDecision.APPROVED),
+        super_admin,
+    )
+    observed = service.calculate(
+        db,
+        event.id,
+        service.create_action(
+            db, event.id, tower_payload(methodology.id, name="Observed action"), admin
+        ).id,
+        admin,
+    )
+    service.submit_review(db, event.id, observed.id, admin)
+    service.review_action(
+        db,
+        event.id,
+        observed.id,
+        EnvironmentalReviewRequest(
+            decision=EnvironmentalReviewDecision.CHANGES_REQUESTED,
+            comment="Falta respaldo operacional",
+        ),
+        admin,
+    )
+    rejected = service.calculate(
+        db,
+        event.id,
+        service.create_action(
+            db, event.id, tower_payload(methodology.id, name="Rejected action"), admin
+        ).id,
+        admin,
+    )
+    service.submit_review(db, event.id, rejected.id, admin)
+    service.review_action(
+        db,
+        event.id,
+        rejected.id,
+        EnvironmentalReviewRequest(
+            decision=EnvironmentalReviewDecision.REJECTED,
+            comment="Fuente no válida",
+        ),
+        super_admin,
+    )
+    service.calculate(
+        db,
+        event.id,
+        service.create_action(
+            db, event.id, tower_payload(methodology.id, name="Draft action"), supervisor
+        ).id,
+        supervisor,
+    )
+
+    official = service.official_data(db, event.id)
+    assert official["actions_count"] == 1
+    assert [item["name"] for item in official["actions"]] == ["Approved show action"]
+    assert official["breakdown"][0]["session_name"] == show.name
+    assert service.official_data(db, event.id, show.id)["actions_count"] == 1
+    assert len(service.list_actions(db, event.id, None, client_user)[0]) == 1
+    assert len(service.list_actions(db, event.id, None, supervisor)[0]) == 4
+    assert len(service.list_actions(db, event.id, None, admin)[0]) == 4
+    assert len(service.list_actions(db, event.id, None, super_admin)[0]) == 4
+    with pytest.raises(HTTPException, match="authorized"):
+        service.list_actions(db, event.id, None, foreign_client)
+
+    report = report_builder_service.create_draft(
+        db, event.id, ReportScope.EVENT, None, admin
+    )
+    section = next(item for item in report.sections if item.section_key == "environmental_impact")
+    assert section.is_enabled is True
+    assert section.source_metadata["approved_actions_count"] == 1
+    assert section.source_snapshot["official_data"]["actions"][0]["name"] == "Approved show action"
+    assert "Observed action" not in str(section.source_snapshot)
+    client_portal_service.update_config(
+        db,
+        event.id,
+        ClientPortalConfigUpdate(
+            sections=[
+                {
+                    "section_key": "environmental_impact",
+                    "label": "Impacto ambiental",
+                    "is_enabled": True,
+                    "sort_order": 10,
+                }
+            ],
+            widgets=[
+                {
+                    "widget_key": "environmental_actions_approved",
+                    "section_key": "environmental_impact",
+                    "label": "Acciones aprobadas",
+                    "is_enabled": True,
+                    "sort_order": 10,
+                }
+            ],
+        ),
+        admin,
+    )
+    portal = client_portal_service.client_portal(db, event.id, client_user)
+    assert portal["data"]["environmental_impact"]["actions_count"] == 1
+    assert portal["widgets"][0]["value"] == 1
+    assert "Observed action" not in str(portal)
+    db.delete(super_admin)
     db.commit()

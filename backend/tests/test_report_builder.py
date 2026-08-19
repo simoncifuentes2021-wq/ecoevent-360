@@ -206,19 +206,15 @@ def test_environmental_story_template_loads_predetermined_sections_once(report_c
     )
     configured = report_builder_service.get_editor(db, report.id, admin)
     enabled = [section.section_key for section in configured.sections if section.is_enabled]
-    assert "preset_eco_equivalences" in enabled
+    assert "preset_eco_equivalences" not in enabled
     assert enabled.index("waste") < enabled.index("bike_zone") < enabled.index("carbon")
     equivalences = next(
         section
         for section in configured.sections
         if section.section_key == "preset_eco_equivalences"
     )
-    assert [field["label"] for field in equivalences.content["fields"]] == [
-        "Árboles equivalentes",
-        "CO₂ evitado",
-        "Residuos desviados",
-        "Agua ahorrada",
-    ]
+    assert equivalences.content["fields"] == []
+    assert equivalences.source_metadata["availability"] == "NO_DATA"
     report_builder_service.update_report(
         db,
         configured,

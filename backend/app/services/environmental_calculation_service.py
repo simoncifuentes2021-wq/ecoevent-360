@@ -564,3 +564,131 @@ def review_history(db: Session, event_id: UUID, action_id: UUID, user: User) -> 
         }
         for item, actor_name in rows
     ]
+
+
+def official_data(
+    db: Session, event_id: UUID, session_id: UUID | None = None
+) -> dict:
+    """Build the immutable, approved-only dataset used by reports and client views."""
+    filters = [
+        EnvironmentalAction.event_id == event_id,
+        EnvironmentalAction.review_status == EnvironmentalReviewStatus.APPROVED,
+    ]
+    if session_id is not None:
+        filters.append(EnvironmentalAction.session_id == session_id)
+    actions = list(
+        db.scalars(
+            select(EnvironmentalAction)
+            .options(
+                selectinload(EnvironmentalAction.metrics),
+                selectinload(EnvironmentalAction.methodology),
+            )
+            .where(*filters)
+            .order_by(EnvironmentalAction.updated_at)
+        )
+        .unique()
+        .all()
+    )
+    session_ids = {action.session_id for action in actions if action.session_id}
+    session_names = dict(
+        db.execute(
+            select(EventSession.id, EventSession.name).where(EventSession.id.in_(session_ids))
+        ).all()
+    ) if session_ids else {}
+    reviewer_ids = {action.reviewed_by for action in actions if action.reviewed_by}
+    reviewer_names = dict(
+        db.execute(select(User.id, User.full_name).where(User.id.in_(reviewer_ids))).all()
+    ) if reviewer_ids else {}
+    metric_keys = [
+        EnvironmentalMetricKey.ENERGY_KWH,
+        EnvironmentalMetricKey.FUEL_AVOIDED_L,
+        EnvironmentalMetricKey.CO2E_BASELINE_KG,
+        EnvironmentalMetricKey.CO2E_ACTUAL_KG,
+        EnvironmentalMetricKey.CO2E_AVOIDED_KG,
+        EnvironmentalMetricKey.PM25_AVOIDED_KG,
+        EnvironmentalMetricKey.PM10_AVOIDED_KG,
+        EnvironmentalMetricKey.NOX_AVOIDED_KG,
+    ]
+    totals = {key.value: ZERO for key in metric_keys}
+    present: set[str] = set()
+    breakdown: dict[str, dict] = {}
+    methodologies: dict[str, dict] = {}
+    sources: dict[str, dict] = {}
+    action_rows = []
+    for action in actions:
+        values = {}
+        for metric in action.metrics:
+            if metric.metric_key not in metric_keys or metric.value is None:
+                continue
+            key = metric.metric_key.value
+            totals[key] += metric.value
+            present.add(key)
+            values[key] = str(metric.value)
+            snapshot = metric.calculation_snapshot or {}
+            method = snapshot.get("methodology") or {}
+            if method.get("id"):
+                methodologies[method["id"]] = method
+            for factor in snapshot.get("factors") or []:
+                if factor.get("id"):
+                    sources[factor["id"]] = factor
+        scope_key = str(action.session_id) if action.session_id else "EVENT"
+        scope = breakdown.setdefault(
+            scope_key,
+            {
+                "session_id": str(action.session_id) if action.session_id else None,
+                "session_name": session_names.get(action.session_id, "Evento completo"),
+                "actions_count": 0,
+                "metrics": {key.value: ZERO for key in metric_keys},
+            },
+        )
+        scope["actions_count"] += 1
+        for key, value in values.items():
+            scope["metrics"][key] += Decimal(value)
+        action_rows.append(
+            {
+                "id": str(action.id),
+                "name": action.name,
+                "action_type": action.action_type.value,
+                "session_id": str(action.session_id) if action.session_id else None,
+                "session_name": session_names.get(action.session_id, "Evento completo"),
+                "methodology": action.methodology.name if action.methodology else None,
+                "metrics": values,
+                "review_revision": action.review_revision,
+                "approved_at": action.reviewed_at.isoformat() if action.reviewed_at else None,
+                "approved_by": reviewer_names.get(action.reviewed_by),
+            }
+        )
+    equivalence_factors = db.scalars(
+        select(EcoEquivalenceFactor).where(EcoEquivalenceFactor.is_active.is_(True))
+    ).all()
+    equivalences = [
+        {
+            "name": item.name,
+            "value": str(totals[item.metric_source.value] * item.factor),
+            "unit": item.unit,
+            "source": item.source,
+            "year": item.year,
+        }
+        for item in equivalence_factors
+        if item.metric_source.value in present
+    ]
+    return {
+        "event_id": str(event_id),
+        "session_id": str(session_id) if session_id else None,
+        "actions_count": len(actions),
+        "metrics": {key: str(value) if key in present else None for key, value in totals.items()},
+        "actions": action_rows,
+        "breakdown": [
+            {
+                **scope,
+                "metrics": {
+                    key: str(value) if value != ZERO else "0" for key, value in scope["metrics"].items()
+                },
+            }
+            for scope in breakdown.values()
+        ],
+        "methodologies": list(methodologies.values()),
+        "sources": list(sources.values()),
+        "equivalences": equivalences,
+        "disclaimer": "Resultados operacionales aprobados. Las equivalencias son referencias comunicacionales y no representan compensaciones ni certificaciones.",
+    }
