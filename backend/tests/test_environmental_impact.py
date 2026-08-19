@@ -20,6 +20,8 @@ from app.models.enums import (
     EnvironmentalActionStatus,
     EnvironmentalActionType,
     EnvironmentalMetricKey,
+    EnvironmentalReviewDecision,
+    EnvironmentalReviewStatus,
     EventStatus,
     UserRole,
 )
@@ -28,6 +30,7 @@ from app.schemas.environmental_schema import (
     EcoEquivalenceUpdate,
     EnvironmentalActionCreate,
     EnvironmentalActionUpdate,
+    EnvironmentalReviewRequest,
     MetricOverride,
 )
 from app.services import environmental_calculation_service as service
@@ -322,13 +325,60 @@ def test_permissions_missing_methodology_update_delete_and_override(context):
         overridden.value == Decimal("2.5")
         and overridden.calculated_value != overridden.reported_value
     )
-    assert len(service.list_actions(db, event.id, None, client_user)[0]) == 2
+    assert service.list_actions(db, event.id, None, client_user)[0] == []
     with pytest.raises(HTTPException, match="authorized"):
         service.list_actions(db, event.id, None, foreign_client)
     service.update_action(
         db, event.id, pending.id, EnvironmentalActionUpdate(name="Updated"), admin
     )
     service.delete_action(db, event.id, pending.id, admin)
+
+
+def test_review_workflow_permissions_history_client_visibility_and_invalidation(context):
+    db, event, _, _, _, admin, supervisor, client_user, _, methodology, _ = context
+    action = service.create_action(db, event.id, tower_payload(methodology.id), supervisor)
+    with pytest.raises(HTTPException, match="calculated"):
+        service.submit_review(db, event.id, action.id, supervisor)
+    action = service.calculate(db, event.id, action.id, supervisor)
+    action = service.submit_review(db, event.id, action.id, supervisor)
+    assert action.review_status == EnvironmentalReviewStatus.IN_REVIEW
+    with pytest.raises(HTTPException, match="administrators"):
+        service.review_action(
+            db,
+            event.id,
+            action.id,
+            EnvironmentalReviewRequest(decision=EnvironmentalReviewDecision.APPROVED),
+            supervisor,
+        )
+    action = service.review_action(
+        db,
+        event.id,
+        action.id,
+        EnvironmentalReviewRequest(
+            decision=EnvironmentalReviewDecision.APPROVED,
+            comment="Fuentes y cálculo verificados",
+        ),
+        admin,
+    )
+    assert action.review_status == EnvironmentalReviewStatus.APPROVED
+    assert len(service.list_actions(db, event.id, None, client_user)[0]) == 1
+    history = service.review_history(db, event.id, action.id, admin)
+    assert [entry["decision"] for entry in history] == [
+        EnvironmentalReviewDecision.APPROVED,
+        EnvironmentalReviewDecision.SUBMITTED,
+    ]
+    action = service.update_action(
+        db,
+        event.id,
+        action.id,
+        EnvironmentalActionUpdate(notes="Nueva evidencia operacional"),
+        supervisor,
+    )
+    assert action.review_status == EnvironmentalReviewStatus.DRAFT
+    assert action.review_revision == 2
+    assert service.list_actions(db, event.id, None, client_user)[0] == []
+    history = service.review_history(db, event.id, action.id, admin)
+    assert history[0]["decision"] == EnvironmentalReviewDecision.INVALIDATED
 
 
 def _rls_query(user, sql, params=None):

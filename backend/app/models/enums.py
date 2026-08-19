@@ -184,6 +184,22 @@ class EnvironmentalActionStatus(StrEnum):
     NEEDS_REVIEW = "NEEDS_REVIEW"
 
 
+class EnvironmentalReviewStatus(StrEnum):
+    DRAFT = "DRAFT"
+    IN_REVIEW = "IN_REVIEW"
+    APPROVED = "APPROVED"
+    CHANGES_REQUESTED = "CHANGES_REQUESTED"
+    REJECTED = "REJECTED"
+
+
+class EnvironmentalReviewDecision(StrEnum):
+    SUBMITTED = "SUBMITTED"
+    APPROVED = "APPROVED"
+    CHANGES_REQUESTED = "CHANGES_REQUESTED"
+    REJECTED = "REJECTED"
+    INVALIDATED = "INVALIDATED"
+
+
 class EnvironmentalEnergySource(StrEnum):
     MEASURED = "MEASURED"
     CALCULATED = "CALCULATED"

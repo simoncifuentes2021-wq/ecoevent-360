@@ -161,6 +161,7 @@ export const canViewEnvironmentalImpact = (role?: UserRole | null) => role === "
 export const canManageEnvironmentalActions = (role?: UserRole | null) => role === "SUPER_ADMIN" || role === "ADMIN" || role === "SUPERVISOR";
 export const canDeleteEnvironmentalActions = (role?: UserRole | null) => role === "SUPER_ADMIN" || role === "ADMIN";
 export const canOverrideEnvironmentalMetrics = (role?: UserRole | null) => role === "SUPER_ADMIN" || role === "ADMIN";
+export const canReviewEnvironmentalActions = (role?: UserRole | null) => role === "SUPER_ADMIN" || role === "ADMIN";
 export const canViewOperationalConsumption = (role?: UserRole | null) => Boolean(role);
 export const canCreateOperationalConsumption = (role?: UserRole | null) => role === "SUPER_ADMIN" || role === "ADMIN" || role === "SUPERVISOR";
 export const canEditOperationalConsumption = canCreateOperationalConsumption;

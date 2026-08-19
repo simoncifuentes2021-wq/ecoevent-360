@@ -3,6 +3,7 @@ from app.models.environmental import (  # noqa: F401
     EcoEquivalenceFactor,
     EnvironmentalAction,
     EnvironmentalActionMetric,
+    EnvironmentalActionReview,
     EnvironmentalFactor,
     EnvironmentalMethodology,
 )

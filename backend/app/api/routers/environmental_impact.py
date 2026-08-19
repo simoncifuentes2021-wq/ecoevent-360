@@ -22,6 +22,8 @@ from app.schemas.environmental_schema import (
     EnvironmentalMethodologyRead,
     EnvironmentalMethodologyUpdate,
     EnvironmentalMetricRead,
+    EnvironmentalReviewRead,
+    EnvironmentalReviewRequest,
     EnvironmentalSummary,
     MetricOverride,
 )
@@ -160,6 +162,72 @@ def calculate(
         request=request,
     )
     return item
+
+
+@router.post(
+    "/events/{event_id}/environmental-actions/{action_id}/submit-review",
+    response_model=EnvironmentalActionRead,
+)
+def submit_review(
+    event_id: UUID,
+    action_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    item = calculations.submit_review(db, event_id, action_id, user)
+    create_audit_log(
+        db,
+        user=user,
+        action="ENVIRONMENTAL_REVIEW_SUBMITTED",
+        module="environmental_impact",
+        entity_type="EnvironmentalAction",
+        entity_id=item.id,
+        event_id=event_id,
+        metadata={"revision": item.review_revision},
+        request=request,
+    )
+    return item
+
+
+@router.post(
+    "/events/{event_id}/environmental-actions/{action_id}/review",
+    response_model=EnvironmentalActionRead,
+)
+def review_action(
+    event_id: UUID,
+    action_id: UUID,
+    payload: EnvironmentalReviewRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    item = calculations.review_action(db, event_id, action_id, payload, user)
+    create_audit_log(
+        db,
+        user=user,
+        action=f"ENVIRONMENTAL_REVIEW_{payload.decision.value}",
+        module="environmental_impact",
+        entity_type="EnvironmentalAction",
+        entity_id=item.id,
+        event_id=event_id,
+        metadata={"revision": item.review_revision, "comment": payload.comment},
+        request=request,
+    )
+    return item
+
+
+@router.get(
+    "/events/{event_id}/environmental-actions/{action_id}/review-history",
+    response_model=list[EnvironmentalReviewRead],
+)
+def review_history(
+    event_id: UUID,
+    action_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    return calculations.review_history(db, event_id, action_id, user)
 
 
 @router.patch(

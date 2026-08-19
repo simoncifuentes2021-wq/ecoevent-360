@@ -27,6 +27,8 @@ from app.models.enums import (
     EnvironmentalActionType,
     EnvironmentalEnergySource,
     EnvironmentalMetricKey,
+    EnvironmentalReviewDecision,
+    EnvironmentalReviewStatus,
 )
 
 
@@ -146,6 +148,21 @@ class EnvironmentalAction(Base):
         nullable=False,
         server_default=text("'INCOMPLETE'"),
     )
+    review_status: Mapped[EnvironmentalReviewStatus] = mapped_column(
+        Enum(EnvironmentalReviewStatus, native_enum=False, create_constraint=False),
+        nullable=False,
+        server_default=text("'DRAFT'"),
+    )
+    review_revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    submitted_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reviewed_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    review_comment: Mapped[str | None] = mapped_column(Text)
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     quantity_used: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
@@ -166,6 +183,28 @@ class EnvironmentalAction(Base):
     metrics: Mapped[list["EnvironmentalActionMetric"]] = relationship(
         back_populates="action", cascade="all, delete-orphan"
     )
+    review_history: Mapped[list["EnvironmentalActionReview"]] = relationship(
+        back_populates="action", cascade="all, delete-orphan", order_by="EnvironmentalActionReview.created_at"
+    )
+
+
+class EnvironmentalActionReview(Base):
+    __tablename__ = "environmental_action_reviews"
+    __table_args__ = (Index("idx_environmental_action_reviews_action_id", "action_id"),)
+    id: Mapped[UUID] = uuid_pk()
+    action_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("environmental_actions.id", ondelete="CASCADE"), nullable=False
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    decision: Mapped[EnvironmentalReviewDecision] = mapped_column(
+        Enum(EnvironmentalReviewDecision, native_enum=False, create_constraint=False), nullable=False
+    )
+    comment: Mapped[str | None] = mapped_column(Text)
+    actor_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    action: Mapped[EnvironmentalAction] = relationship(back_populates="review_history")
 
 
 class EnvironmentalActionMetric(Base):

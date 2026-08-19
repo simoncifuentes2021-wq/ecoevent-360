@@ -9,6 +9,8 @@ from app.models.enums import (
     EnvironmentalActionType,
     EnvironmentalEnergySource,
     EnvironmentalMetricKey,
+    EnvironmentalReviewDecision,
+    EnvironmentalReviewStatus,
 )
 
 
@@ -85,6 +87,13 @@ class EnvironmentalActionRead(BaseModel):
     methodology_id: UUID | None
     action_type: EnvironmentalActionType
     status: EnvironmentalActionStatus
+    review_status: EnvironmentalReviewStatus
+    review_revision: int
+    submitted_at: datetime | None
+    submitted_by: UUID | None
+    reviewed_at: datetime | None
+    reviewed_by: UUID | None
+    review_comment: str | None
     name: str
     description: str | None
     quantity_used: Decimal
@@ -103,6 +112,34 @@ class EnvironmentalActionRead(BaseModel):
 class EnvironmentalActionList(BaseModel):
     items: list[EnvironmentalActionRead]
     total: int
+
+
+class EnvironmentalReviewRequest(BaseModel):
+    decision: EnvironmentalReviewDecision
+    comment: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_decision(self):
+        if self.decision not in {
+            EnvironmentalReviewDecision.APPROVED,
+            EnvironmentalReviewDecision.CHANGES_REQUESTED,
+            EnvironmentalReviewDecision.REJECTED,
+        }:
+            raise ValueError("Invalid review decision")
+        if self.decision != EnvironmentalReviewDecision.APPROVED and not (self.comment or "").strip():
+            raise ValueError("A comment is required for this decision")
+        return self
+
+
+class EnvironmentalReviewRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    revision: int
+    decision: EnvironmentalReviewDecision
+    comment: str | None
+    actor_id: UUID | None
+    actor_name: str | None = None
+    created_at: datetime
 
 
 class EnvironmentalFactorBase(BaseModel):

@@ -12,6 +12,7 @@ from app.models.environmental import (
     EcoEquivalenceFactor,
     EnvironmentalAction,
     EnvironmentalActionMetric,
+    EnvironmentalActionReview,
     EnvironmentalFactor,
     EnvironmentalMethodology,
 )
@@ -19,11 +20,14 @@ from app.models.enums import (
     EnvironmentalActionStatus,
     EnvironmentalEnergySource,
     EnvironmentalMetricKey,
+    EnvironmentalReviewDecision,
+    EnvironmentalReviewStatus,
     UserRole,
 )
 from app.schemas.environmental_schema import (
     EnvironmentalActionCreate,
     EnvironmentalActionUpdate,
+    EnvironmentalReviewRequest,
     EnvironmentalSummary,
     MetricOverride,
 )
@@ -136,6 +140,8 @@ def get_action(db: Session, event_id: UUID, action_id: UUID, user: User) -> Envi
     )
     if item is None:
         raise HTTPException(status_code=404, detail="Environmental action not found")
+    if user.role == UserRole.CLIENT and item.review_status != EnvironmentalReviewStatus.APPROVED:
+        raise HTTPException(status_code=404, detail="Environmental action not found")
     return item
 
 
@@ -145,6 +151,8 @@ def list_actions(
     _view(db, event_id, user)
     _session(db, event_id, session_id)
     filters = [EnvironmentalAction.event_id == event_id]
+    if user.role == UserRole.CLIENT:
+        filters.append(EnvironmentalAction.review_status == EnvironmentalReviewStatus.APPROVED)
     if session_id is not None:
         filters.append(EnvironmentalAction.session_id == session_id)
     query = (
@@ -162,6 +170,7 @@ def update_action(
 ) -> EnvironmentalAction:
     _manage(db, event_id, user)
     item = get_action(db, event_id, action_id, user)
+    _invalidate_review(db, item, user, "Datos operacionales o metodología modificados")
     values = payload.model_dump(exclude_unset=True)
     resulting_type = values.get("action_type", item.action_type)
     if "session_id" in values:
@@ -249,6 +258,7 @@ def _snapshot(action, methodology, factors, inputs):
 def calculate(db: Session, event_id: UUID, action_id: UUID, user: User) -> EnvironmentalAction:
     _manage(db, event_id, user)
     action = get_action(db, event_id, action_id, user)
+    _invalidate_review(db, action, user, "Cálculo regenerado")
     methodology = _methodology(db, action.methodology_id, action.action_type)
     if methodology is None:
         action.status = EnvironmentalActionStatus.MISSING_METHODOLOGY
@@ -369,6 +379,7 @@ def override_metric(
     )
     if metric is None:
         raise HTTPException(status_code=404, detail="Metric not found")
+    _invalidate_review(db, action, user, "Resultado reemplazado manualmente")
     metric.reported_value = payload.reported_value
     metric.is_manual_override = True
     metric.override_reason = payload.override_reason
@@ -384,6 +395,8 @@ def summary(
     _view(db, event_id, user)
     _session(db, event_id, session_id)
     action_filter = [EnvironmentalAction.event_id == event_id]
+    if user.role == UserRole.CLIENT:
+        action_filter.append(EnvironmentalAction.review_status == EnvironmentalReviewStatus.APPROVED)
     if session_id is not None:
         action_filter.append(EnvironmentalAction.session_id == session_id)
     count = db.scalar(select(func.count(EnvironmentalAction.id)).where(*action_filter)) or 0
@@ -444,3 +457,110 @@ def summary(
         unavailable_metrics=[key for key in targets if key not in values],
         equivalences=equivalences,
     )
+
+
+def _invalidate_review(
+    db: Session, action: EnvironmentalAction, user: User, reason: str
+) -> None:
+    if action.review_status == EnvironmentalReviewStatus.DRAFT:
+        return
+    db.add(
+        EnvironmentalActionReview(
+            action_id=action.id,
+            revision=action.review_revision,
+            decision=EnvironmentalReviewDecision.INVALIDATED,
+            comment=reason,
+            actor_id=user.id,
+        )
+    )
+    action.review_revision += 1
+    action.review_status = EnvironmentalReviewStatus.DRAFT
+    action.submitted_at = None
+    action.submitted_by = None
+    action.reviewed_at = None
+    action.reviewed_by = None
+    action.review_comment = reason
+
+
+def submit_review(
+    db: Session, event_id: UUID, action_id: UUID, user: User
+) -> EnvironmentalAction:
+    _manage(db, event_id, user)
+    action = get_action(db, event_id, action_id, user)
+    if action.status != EnvironmentalActionStatus.CALCULATED or not action.metrics:
+        raise HTTPException(status_code=409, detail="The action must be calculated before review")
+    if action.review_status == EnvironmentalReviewStatus.IN_REVIEW:
+        raise HTTPException(status_code=409, detail="The action is already under review")
+    action.review_status = EnvironmentalReviewStatus.IN_REVIEW
+    action.submitted_at = _utcnow()
+    action.submitted_by = user.id
+    action.reviewed_at = None
+    action.reviewed_by = None
+    action.review_comment = None
+    db.add(
+        EnvironmentalActionReview(
+            action_id=action.id,
+            revision=action.review_revision,
+            decision=EnvironmentalReviewDecision.SUBMITTED,
+            actor_id=user.id,
+        )
+    )
+    db.commit()
+    return get_action(db, event_id, action_id, user)
+
+
+def review_action(
+    db: Session,
+    event_id: UUID,
+    action_id: UUID,
+    payload: EnvironmentalReviewRequest,
+    user: User,
+) -> EnvironmentalAction:
+    if user.role not in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Only administrators can review results")
+    _manage(db, event_id, user)
+    action = get_action(db, event_id, action_id, user)
+    if action.review_status != EnvironmentalReviewStatus.IN_REVIEW:
+        raise HTTPException(status_code=409, detail="The action is not under review")
+    status_by_decision = {
+        EnvironmentalReviewDecision.APPROVED: EnvironmentalReviewStatus.APPROVED,
+        EnvironmentalReviewDecision.CHANGES_REQUESTED: EnvironmentalReviewStatus.CHANGES_REQUESTED,
+        EnvironmentalReviewDecision.REJECTED: EnvironmentalReviewStatus.REJECTED,
+    }
+    action.review_status = status_by_decision[payload.decision]
+    action.reviewed_at = _utcnow()
+    action.reviewed_by = user.id
+    action.review_comment = payload.comment
+    db.add(
+        EnvironmentalActionReview(
+            action_id=action.id,
+            revision=action.review_revision,
+            decision=payload.decision,
+            comment=payload.comment,
+            actor_id=user.id,
+        )
+    )
+    db.commit()
+    return get_action(db, event_id, action_id, user)
+
+
+def review_history(db: Session, event_id: UUID, action_id: UUID, user: User) -> list[dict]:
+    action = get_action(db, event_id, action_id, user)
+    rows = db.execute(
+        select(EnvironmentalActionReview, User.full_name)
+        .outerjoin(User, User.id == EnvironmentalActionReview.actor_id)
+        .where(EnvironmentalActionReview.action_id == action.id)
+        .order_by(EnvironmentalActionReview.created_at.desc())
+    ).all()
+    return [
+        {
+            "id": item.id,
+            "revision": item.revision,
+            "decision": item.decision,
+            "comment": item.comment,
+            "actor_id": item.actor_id,
+            "actor_name": actor_name,
+            "created_at": item.created_at,
+        }
+        for item, actor_name in rows
+    ]

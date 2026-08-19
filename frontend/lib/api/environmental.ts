@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
 import { toQuery } from "@/lib/api/query";
-import type { EcoEquivalence, EcoEquivalenceInput, EnvironmentalAction, EnvironmentalActionInput, EnvironmentalFactor, EnvironmentalFactorInput, EnvironmentalMethodology, EnvironmentalSummary } from "@/types/environmental";
+import type { EcoEquivalence, EcoEquivalenceInput, EnvironmentalAction, EnvironmentalActionInput, EnvironmentalFactor, EnvironmentalFactorInput, EnvironmentalMethodology, EnvironmentalReview, EnvironmentalReviewDecision, EnvironmentalSummary } from "@/types/environmental";
 
 export const getEnvironmentalSummary = (eventId: string, sessionId?: string) => api.get<EnvironmentalSummary>(`/events/${eventId}/environmental-impact/summary${toQuery({ session_id: sessionId })}`);
 export const getEnvironmentalActions = (eventId: string, sessionId?: string) => api.get<{items: EnvironmentalAction[]; total: number}>(`/events/${eventId}/environmental-actions${toQuery({ session_id: sessionId })}`);
@@ -8,6 +8,9 @@ export const createEnvironmentalAction = (eventId: string, data: EnvironmentalAc
 export const updateEnvironmentalAction = (eventId: string, actionId: string, data: Partial<EnvironmentalActionInput>) => api.patch<EnvironmentalAction>(`/events/${eventId}/environmental-actions/${actionId}`, data);
 export const deleteEnvironmentalAction = (eventId: string, actionId: string) => api.delete<void>(`/events/${eventId}/environmental-actions/${actionId}`);
 export const calculateEnvironmentalAction = (eventId: string, actionId: string) => api.post<EnvironmentalAction>(`/events/${eventId}/environmental-actions/${actionId}/calculate`, {});
+export const submitEnvironmentalReview = (eventId: string, actionId: string) => api.post<EnvironmentalAction>(`/events/${eventId}/environmental-actions/${actionId}/submit-review`, {});
+export const reviewEnvironmentalAction = (eventId: string, actionId: string, decision: EnvironmentalReviewDecision, comment?: string) => api.post<EnvironmentalAction>(`/events/${eventId}/environmental-actions/${actionId}/review`, { decision, comment });
+export const getEnvironmentalReviewHistory = (eventId: string, actionId: string) => api.get<EnvironmentalReview[]>(`/events/${eventId}/environmental-actions/${actionId}/review-history`);
 export const getEnvironmentalMethodologies = () => api.get<EnvironmentalMethodology[]>("/environmental-impact/methodologies");
 export const getEnvironmentalFactors = () => api.get<EnvironmentalFactor[]>("/environmental-impact/factors");
 export const createEnvironmentalFactor = (data: EnvironmentalFactorInput) => api.post<EnvironmentalFactor>("/environmental-impact/factors", data);
