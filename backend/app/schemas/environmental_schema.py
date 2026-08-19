@@ -73,6 +73,7 @@ class EnvironmentalMetricRead(BaseModel):
     is_manual_override: bool
     override_reason: str | None
     calculation_method: str
+    calculation_snapshot: dict
     calculated_at: datetime
 
 
