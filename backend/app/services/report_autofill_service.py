@@ -232,14 +232,62 @@ def build_sections(
     official = official_data(db, event.id, session.id if session else None)
     metrics = official["metrics"]
     environmental_fields = [
-        _field("energy_kwh", "Energía utilizada", metrics["ENERGY_KWH"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kWh"),
-        _field("fuel_avoided_l", "Combustible evitado", metrics["FUEL_AVOIDED_L"], "APPROVED_ENVIRONMENTAL_ACTIONS", "L"),
-        _field("co2e_baseline_kg", "CO₂e línea base", metrics["CO2E_BASELINE_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
-        _field("co2e_actual_kg", "CO₂e escenario real", metrics["CO2E_ACTUAL_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
-        _field("co2e_avoided_kg", "CO₂e evitado", metrics["CO2E_AVOIDED_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
-        _field("pm25_avoided_kg", "PM2.5 evitado", metrics["PM25_AVOIDED_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
-        _field("pm10_avoided_kg", "PM10 evitado", metrics["PM10_AVOIDED_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
-        _field("nox_avoided_kg", "NOx evitado", metrics["NOX_AVOIDED_KG"], "APPROVED_ENVIRONMENTAL_ACTIONS", "kg"),
+        _field(
+            "energy_kwh",
+            "Energía utilizada",
+            metrics["ENERGY_KWH"],
+            "APPROVED_ENVIRONMENTAL_ACTIONS",
+            "kWh",
+        ),
+        _field(
+            "fuel_avoided_l",
+            "Combustible evitado",
+            metrics["FUEL_AVOIDED_L"],
+            "APPROVED_ENVIRONMENTAL_ACTIONS",
+            "L",
+        ),
+        _field(
+            "co2e_baseline_kg",
+            "CO₂e línea base",
+            metrics["CO2E_BASELINE_KG"],
+            "APPROVED_ENVIRONMENTAL_ACTIONS",
+            "kg",
+        ),
+        _field(
+            "co2e_actual_kg",
+            "CO₂e escenario real",
+            metrics["CO2E_ACTUAL_KG"],
+            "APPROVED_ENVIRONMENTAL_ACTIONS",
+            "kg",
+        ),
+        _field(
+            "co2e_avoided_kg",
+            "CO₂e evitado",
+            metrics["CO2E_AVOIDED_KG"],
+            "APPROVED_ENVIRONMENTAL_ACTIONS",
+            "kg",
+        ),
+        _field(
+            "pm25_avoided_kg",
+            "PM2.5 evitado",
+            metrics["PM25_AVOIDED_KG"],
+            "APPROVED_ENVIRONMENTAL_ACTIONS",
+            "kg",
+        ),
+        _field(
+            "pm10_avoided_kg",
+            "PM10 evitado",
+            metrics["PM10_AVOIDED_KG"],
+            "APPROVED_ENVIRONMENTAL_ACTIONS",
+            "kg",
+        ),
+        _field(
+            "nox_avoided_kg",
+            "NOx evitado",
+            metrics["NOX_AVOIDED_KG"],
+            "APPROVED_ENVIRONMENTAL_ACTIONS",
+            "kg",
+        ),
     ]
     environmental_items = [
         {
@@ -287,6 +335,8 @@ def merge_preserving_overrides(old: dict, fresh: dict) -> dict:
             field["is_overridden"] = True
     if old.get("text") is not None:
         fresh["text"] = old["text"]
+    if "show_traceability" in old:
+        fresh["show_traceability"] = old["show_traceability"]
     old_items = old.get("items", [])
     old_by_label = {item.get("label"): item for item in old_items if item.get("label")}
     for item in fresh.get("items", []):

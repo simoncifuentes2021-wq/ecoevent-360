@@ -749,6 +749,48 @@ def test_environmental_impact_renderer_uses_human_readable_precision_and_details
     assert html.count("US EPA AP-42") == 1
 
 
+def test_environmental_impact_renderer_respects_item_and_traceability_visibility():
+    from app.services.report_render_service import _environmental_impact_html
+
+    html = _environmental_impact_html(
+        [
+            {
+                "content": {
+                    "show_traceability": False,
+                    "fields": [],
+                    "items": [
+                        {"label": "Gasolina", "_is_visible": False},
+                        {"label": "Bosque", "_is_visible": True},
+                    ],
+                },
+                "source_snapshot": {
+                    "official_data": {
+                        "actions": [],
+                        "breakdown": [
+                            {
+                                "session_name": "Show 1",
+                                "metrics": {"CO2E_AVOIDED_KG": "21.037"},
+                            }
+                        ],
+                        "methodologies": [],
+                        "sources": [],
+                        "equivalences": [
+                            {"name": "Gasolina", "value": "8.94", "unit": "L/kgCO2e"},
+                            {"name": "Bosque", "value": "0.02104", "unit": "acre-año/kgCO2e"},
+                        ],
+                    }
+                },
+            }
+        ]
+    )
+
+    assert "Trazabilidad aprobada" not in html
+    assert "no-trace" in html
+    assert "Gasolina" not in html
+    assert "Bosque: 0,02 acre-año" in html
+    assert "Show 1: 21,04 kg CO2e" in html
+
+
 def test_environmental_story_template_preserves_key_content():
     from app.services.report_render_service import (
         ReportRenderDocument,

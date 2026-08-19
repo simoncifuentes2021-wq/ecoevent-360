@@ -202,6 +202,7 @@ def _styles(document: ReportRenderDocument) -> str:
     .carbon-card h4{{font-size:11pt;line-height:1.15;margin:0 0 1mm}} .carbon-card strong{{display:block;font-size:10pt;line-height:1.2;margin-bottom:1mm}}
     .carbon-card p{{font-size:7.5pt;line-height:1.35;margin:0;color:{t["text_color"]}}}
     .impact-official{{display:grid;grid-template-columns:1.08fr .92fr;gap:6mm;align-items:stretch}} .impact-official .impact-kpis{{display:grid;grid-template-columns:repeat(2,1fr);gap:3mm}}
+    .impact-official.no-trace{{grid-template-columns:1fr}} .impact-official.no-trace .impact-kpis{{grid-template-columns:repeat(4,1fr)}}
     .impact-official .impact-card{{min-height:27mm;border:1px solid {t["accent_color"]};border-radius:3mm;padding:4mm;background:white;display:flex;flex-direction:column;justify-content:space-between}} .impact-card span{{display:block;color:{t["muted_color"]};font-size:8pt}} .impact-card strong{{display:flex;align-items:baseline;gap:1.5mm;margin-top:2mm;font-size:17pt;line-height:1;color:{t["primary_color"]};white-space:nowrap}} .impact-card strong small{{font-size:9pt;font-weight:700}}
     .impact-trace{{border-radius:3mm;background:{t["primary_color"]};color:white;padding:6mm;min-height:117mm}} .impact-trace h3{{color:white;font-size:19pt}} .impact-trace p{{font-size:7.5pt;line-height:1.45}} .impact-trace li{{margin:2mm 0;font-size:7.5pt;line-height:1.35}}
     .impact-details{{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:6mm}} .impact-detail{{border-radius:3mm;background:{t["background_color"]};padding:5mm;min-height:34mm}} .impact-detail h4{{margin:0 0 2mm;color:{t["primary_color"]};font-size:11pt}} .impact-detail p{{margin:1mm 0;font-size:7.5pt;line-height:1.4;color:{t["muted_color"]}}} .impact-pill{{display:inline-block;margin:1mm 1mm 0 0;padding:1.5mm 2.5mm;border-radius:99px;background:white;font-size:7pt;color:{t["primary_color"]}}} .impact-disclaimer{{margin-top:5mm;padding:3mm 4mm;border-left:1.5mm solid {t["accent_color"]};font-size:7.5pt;color:{t["muted_color"]};background:{t["background_color"]}}}
@@ -333,7 +334,16 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         "</article>"
         for field in fields[:8]
     )
-    actions = official.get("actions") or []
+    content_items = content.get("items") or []
+    selected_labels = {
+        str(item.get("label")) for item in content_items if item.get("_is_visible") is not False
+    }
+    has_item_selection = bool(content_items)
+    actions = [
+        item
+        for item in (official.get("actions") or [])
+        if not has_item_selection or str(item.get("name")) in selected_labels
+    ]
     action_list = "".join(
         f"<li>{escape(str(item.get('name')))} · {escape(str(item.get('session_name')))} · "
         f"{escape(str(item.get('methodology') or 'Sin metodología'))}</li>"
@@ -360,7 +370,7 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         "".join(
             '<span class="impact-pill">'
             f"{escape(str(item.get('session_name') or item.get('scope_name') or 'Evento'))}: "
-            f"{escape(_display_number((item.get('metrics') or {}).get('co2e_avoided_kg'), 2))} kg CO2e</span>"
+            f"{escape(_display_number((item.get('metrics') or {}).get('CO2E_AVOIDED_KG') or (item.get('metrics') or {}).get('co2e_avoided_kg'), 2))} kg CO2e</span>"
             for item in breakdown[:6]
         )
         or "<p>El resultado corresponde al alcance completo del evento.</p>"
@@ -373,21 +383,32 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         )
         or "<p>La metodología utilizada se detalla en la trazabilidad aprobada.</p>"
     )
-    equivalences = official.get("equivalences") or []
+    equivalences = [
+        item
+        for item in (official.get("equivalences") or [])
+        if not has_item_selection or str(item.get("name")) in selected_labels
+    ]
     equivalence_html = "".join(
         '<span class="impact-pill">'
         f"{escape(str(item.get('label') or item.get('name') or 'Equivalencia'))}: "
-        f"{escape(_display_number(item.get('value'), 2, True))} {escape(str(item.get('unit') or ''))}</span>"
+        f"{escape(_display_number(item.get('value'), 2, True))} "
+        f"{escape(str(item.get('unit') or '').split('/', 1)[0])}</span>"
         for item in equivalences[:4]
     )
     disclaimer = official.get("disclaimer") or content.get("text") or ""
-    return (
-        "<h2>Impacto ambiental evitado</h2>"
-        '<div class="impact-official"><div class="impact-kpis">'
-        f"{cards}</div><aside class='impact-trace'><h3>Trazabilidad aprobada</h3>"
+    show_traceability = content.get("show_traceability") is not False
+    traceability_html = (
+        "<aside class='impact-trace'><h3>Trazabilidad aprobada</h3>"
         f"<p>{escape(str(len(actions)))} acciones aprobadas. Solo estos resultados forman parte del reporte oficial.</p>"
         f"<ul>{action_list}</ul><p><b>Fuentes documentadas</b></p><ul>{source_list}</ul>"
-        "</aside></div>"
+        "</aside>"
+        if show_traceability
+        else ""
+    )
+    return (
+        "<h2>Impacto ambiental evitado</h2>"
+        f'<div class="impact-official{"" if show_traceability else " no-trace"}"><div class="impact-kpis">'
+        f"{cards}</div>{traceability_html}</div>"
         '<div class="impact-details">'
         f'<article class="impact-detail"><h4>Resultados por alcance</h4>{breakdown_html}</article>'
         f'<article class="impact-detail"><h4>Metodologías y equivalencias</h4>{methodology_html}{equivalence_html}</article>'

@@ -4,7 +4,7 @@ import type { User } from "@/types/user";
 export type ReportStatus = "DRAFT" | "GENERATED" | "DELIVERED" | "ARCHIVED" | "FAILED";
 export type ReportScope = "EVENT" | "SHOW";
 export type ReportDataAvailability = "AVAILABLE" | "NO_DATA" | "EVENT_LEVEL_ONLY" | "NOT_APPLICABLE";
-export type ReportSectionType = "COVER" | "EXECUTIVE_SUMMARY" | "EVENT_INFO" | "SHOW_INFO" | "SERVICES" | "OPERATIONS" | "STAFF" | "TASKS" | "INCIDENTS" | "FORMS" | "BIKE_ZONE" | "WASTE" | "CARBON" | "EVIDENCES" | "RECOMMENDATIONS" | "CONCLUSION" | "CUSTOM";
+export type ReportSectionType = "COVER" | "EXECUTIVE_SUMMARY" | "EVENT_INFO" | "SHOW_INFO" | "SERVICES" | "OPERATIONS" | "STAFF" | "TASKS" | "INCIDENTS" | "FORMS" | "BIKE_ZONE" | "WASTE" | "CARBON" | "ENVIRONMENTAL_IMPACT" | "EVIDENCES" | "RECOMMENDATIONS" | "CONCLUSION" | "CUSTOM";
 export type ReportLayoutVariant = "HERO_IMAGE_TEXT" | "KPI_GRID" | "TWO_COLUMN" | "METRIC_LIST" | "FEATURE_CHART" | "PHOTO_GRID" | "EDITORIAL" | "TEXT_IMAGE" | "BIG_NUMBERS";
 export type ReportTemplateKey = "ENVIRONMENTAL_PREMIUM" | "ENVIRONMENTAL_STORY" | "BIKE_ZONE" | "OPERATIONS" | "EXECUTIVE" | "COMPLETE";
 export type ReportPageOverrideMode = "AUTO" | "KEEP_WITH_NEXT" | "OWN_PAGE" | "GROUP_WITH" | "NEW_PAGE";
@@ -14,7 +14,7 @@ export type ReportTheme = { primary_color: string; secondary_color: string; acce
 export type ReportPublication = { id: string; report_id: string; revision_id?: string | null; publication_number: number; status: "GENERATED" | "DELIVERED" | "ARCHIVED"; sha256: string; file_size: number; page_count: number; generated_by?: string | null; generated_at: string; delivered_by?: string | null; delivered_at?: string | null; created_at: string };
 export type ReportScalar = string | number | boolean | null;
 export type ReportField = { key: string; label: string; auto_value: ReportScalar; value: ReportScalar; unit?: string | null; description?: string | null; is_overridden: boolean; source: string; is_visible?: boolean };
-export type ReportSectionContent = { text?: string | null; fields: ReportField[]; items: Array<Record<string, ReportScalar>> };
+export type ReportSectionContent = { text?: string | null; show_traceability?: boolean; fields: ReportField[]; items: Array<Record<string, ReportScalar>> };
 export type ReportSection = { id: string; report_id: string; section_key: string; section_type: ReportSectionType; title: string; layout_variant: ReportLayoutVariant; is_enabled: boolean; sort_order: number; content: ReportSectionContent; source_snapshot: ReportSectionContent; source_metadata: { availability: ReportDataAvailability; source_scope: string; generated_at?: string }; is_custom: boolean; edit_version: number; created_at: string; updated_at: string };
 export type ReportEvidence = { id: string; report_id: string; section_id?: string | null; evidence_id: string; sort_order: number; caption?: string | null; is_enabled: boolean; created_at: string };
 export type ReportRevision = { id: string; report_id: string; revision_number: number; snapshot: Record<string, unknown>; created_by?: string | null; note?: string | null; created_at: string };
