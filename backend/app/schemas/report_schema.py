@@ -32,6 +32,7 @@ class ReportField(BaseModel):
 
 class ReportSectionContent(BaseModel):
     text: SafeText | None = None
+    show_traceability: bool = True
     fields: list[ReportField] = Field(default_factory=list, max_length=100)
     items: list[dict[str, Scalar]] = Field(default_factory=list, max_length=500)
 
@@ -102,9 +103,16 @@ class ReportEditorialConfig(BaseModel):
     mode: Literal["AUTO", "CUSTOM"] = "AUTO"
     cover_style: Literal["FULL_PHOTO", "SIDE_PHOTO", "EDITORIAL", "MINIMAL_PREMIUM"] = "FULL_PHOTO"
     cover_evidence_id: UUID | None = None
-    featured_kpi_ids: list[Annotated[str, StringConstraints(pattern=r"^[a-z0-9_.-]{1,100}$")]] = Field(default_factory=list, max_length=6)
-    page_overrides: dict[Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,100}$")], SectionPageOverride] = Field(default_factory=dict)
-    chart_types: dict[Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,100}$")], Literal["BAR", "DONUT", "COMPARISON", "DISTRIBUTION"]] = Field(default_factory=dict)
+    featured_kpi_ids: list[Annotated[str, StringConstraints(pattern=r"^[a-z0-9_.-]{1,100}$")]] = (
+        Field(default_factory=list, max_length=6)
+    )
+    page_overrides: dict[
+        Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,100}$")], SectionPageOverride
+    ] = Field(default_factory=dict)
+    chart_types: dict[
+        Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,100}$")],
+        Literal["BAR", "DONUT", "COMPARISON", "DISTRIBUTION"],
+    ] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_kpis(self):

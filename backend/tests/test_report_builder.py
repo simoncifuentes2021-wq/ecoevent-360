@@ -170,6 +170,27 @@ def test_override_refresh_reset_and_stale_version(report_context):
     assert stale.value.status_code == 409
 
 
+def test_environmental_visibility_preferences_persist_after_section_reload(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    section = next(item for item in report.sections if item.section_key == "environmental_impact")
+    content = ReportSectionContent.model_validate(section.content)
+    content.show_traceability = False
+    content.items = [{"label": "Gasolina", "value": "8.94", "unit": "L", "_is_visible": False}]
+
+    report_builder_service.update_section(
+        db,
+        report,
+        section.id,
+        SectionUpdate(content=content, edit_version=report.edit_version),
+    )
+    reloaded = report_builder_service.get_editor(db, report.id, admin)
+    stored = next(item for item in reloaded.sections if item.id == section.id).content
+
+    assert stored["show_traceability"] is False
+    assert stored["items"][0]["_is_visible"] is False
+
+
 def test_only_custom_sections_can_be_removed(report_context):
     db, event, _, _, admin, _, _ = report_context
     report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
