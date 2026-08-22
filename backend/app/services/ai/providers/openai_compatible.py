@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 
 from app.services.ai.providers.base import AIProviderError
@@ -23,27 +25,45 @@ class OpenAICompatibleProvider:
             "max_tokens": request.max_output_tokens,
             "response_format": {"type": "json_object"},
         }
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                    json=payload,
-                )
-                response.raise_for_status()
-        except httpx.TimeoutException as exc:
-            raise AIProviderError("timeout", "AI provider timed out") from exc
-        except httpx.HTTPStatusError as exc:
-            raise AIProviderError("http_error", f"AI provider returned HTTP {exc.response.status_code}") from exc
-        except httpx.HTTPError as exc:
-            raise AIProviderError("connection_error", "AI provider is unavailable") from exc
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            for attempt in range(2):
+                try:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                except httpx.TimeoutException as exc:
+                    if attempt == 0:
+                        await asyncio.sleep(0.25)
+                        continue
+                    raise AIProviderError("timeout", "AI provider timed out") from exc
+                except httpx.HTTPStatusError as exc:
+                    if attempt == 0 and (exc.response.status_code == 429 or exc.response.status_code >= 500):
+                        await asyncio.sleep(0.25)
+                        continue
+                    raise AIProviderError("http_error", f"AI provider returned HTTP {exc.response.status_code}") from exc
+                except httpx.HTTPError as exc:
+                    if attempt == 0:
+                        await asyncio.sleep(0.25)
+                        continue
+                    raise AIProviderError("connection_error", "AI provider is unavailable") from exc
 
-        try:
-            data = response.json()
-            return ProviderResult(
-                content=data["choices"][0]["message"]["content"],
-                effective_model=data.get("model"),
-                metadata={"request_id": response.headers.get("x-request-id")},
-            )
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise AIProviderError("invalid_provider_response", "AI provider response was incomplete") from exc
+                try:
+                    data = response.json()
+                    content = data["choices"][0]["message"]["content"]
+                    if not isinstance(content, str) or not content.strip():
+                        raise KeyError("empty content")
+                    return ProviderResult(
+                        content=content,
+                        effective_model=data.get("model"),
+                        metadata={"request_id": response.headers.get("x-request-id")},
+                    )
+                except (KeyError, IndexError, TypeError, ValueError) as exc:
+                    if attempt == 0:
+                        await asyncio.sleep(0.25)
+                        continue
+                    raise AIProviderError(
+                        "invalid_provider_response", "AI provider response was incomplete"
+                    ) from exc

@@ -38,6 +38,10 @@ def _parse_output(content: str) -> AIInterpretation:
     candidate = content.strip()
     if candidate.startswith("```"):
         candidate = candidate.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    if not candidate.startswith("{") or not candidate.endswith("}"):
+        start, end = candidate.find("{"), candidate.rfind("}")
+        if start >= 0 and end > start:
+            candidate = candidate[start : end + 1]
     try:
         return AIInterpretation.model_validate_json(candidate)
     except (ValidationError, ValueError) as exc:
