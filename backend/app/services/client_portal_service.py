@@ -37,7 +37,7 @@ WIDGET_DEFINITIONS = [
     ("carbon_total_tco2e", "carbon", "Huella total tCO2e", 80),
     ("carbon_per_attendee", "carbon", "Huella por asistente", 90),
     ("environmental_co2e_avoided_kg", "environmental_impact", "CO₂e evitado aprobado", 92),
-    ("environmental_energy_kwh", "environmental_impact", "Energía utilizada aprobada", 94),
+    ("environmental_energy_kwh", "environmental_impact", "Energía generada aprobada", 94),
     ("environmental_actions_approved", "environmental_impact", "Acciones ambientales aprobadas", 96),
     ("forms_total_responses", "forms", "Respuestas de formularios", 100),
     ("forms_transport_modes", "forms", "Modos de transporte", 110),

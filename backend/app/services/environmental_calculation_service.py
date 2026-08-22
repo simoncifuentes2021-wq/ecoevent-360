@@ -19,6 +19,7 @@ from app.models.environmental import (
 from app.models.enums import (
     EnvironmentalActionStatus,
     EnvironmentalEnergySource,
+    EnvironmentalEnergyInputMode,
     EnvironmentalMetricKey,
     EnvironmentalReviewDecision,
     EnvironmentalReviewStatus,
@@ -108,6 +109,21 @@ def _status(action: EnvironmentalAction) -> EnvironmentalActionStatus:
     return EnvironmentalActionStatus.READY_TO_CALCULATE
 
 
+def _normalize_energy(values: dict) -> None:
+    if values.get("energy_input_mode") == EnvironmentalEnergyInputMode.PER_UNIT_HOUR:
+        unit_energy = values.get("energy_per_unit_hour_kwh")
+        quantity = values.get("quantity_used")
+        hours = values.get("hours_used")
+        if unit_energy is None:
+            raise HTTPException(status_code=422, detail="energy_per_unit_hour_kwh is required")
+        if quantity is None or quantity <= 0:
+            raise HTTPException(status_code=422, detail="quantity_used must be greater than zero")
+        if hours is None or hours <= 0:
+            raise HTTPException(status_code=422, detail="hours_used must be greater than zero")
+        values["energy_kwh"] = unit_energy * quantity * hours
+        values["energy_source"] = EnvironmentalEnergySource.CALCULATED
+
+
 def create_action(
     db: Session, event_id: UUID, payload: EnvironmentalActionCreate, user: User
 ) -> EnvironmentalAction:
@@ -115,6 +131,7 @@ def create_action(
     _session(db, event_id, payload.session_id)
     _methodology(db, payload.methodology_id, payload.action_type)
     values = payload.model_dump()
+    _normalize_energy(values)
     if (
         values["energy_kwh"] is None
         and values["power_kw"] is not None
@@ -177,6 +194,16 @@ def update_action(
         _session(db, event_id, values["session_id"])
     if "methodology_id" in values or "action_type" in values:
         _methodology(db, values.get("methodology_id", item.methodology_id), resulting_type)
+    merged = {
+        "energy_input_mode": values.get("energy_input_mode", item.energy_input_mode),
+        "energy_per_unit_hour_kwh": values.get("energy_per_unit_hour_kwh", item.energy_per_unit_hour_kwh),
+        "quantity_used": values.get("quantity_used", item.quantity_used),
+        "hours_used": values.get("hours_used", item.hours_used),
+    }
+    if merged["energy_input_mode"] == EnvironmentalEnergyInputMode.PER_UNIT_HOUR:
+        _normalize_energy(merged)
+        values["energy_kwh"] = merged["energy_kwh"]
+        values["energy_source"] = merged["energy_source"]
     for key, value in values.items():
         setattr(item, key, value)
     if item.energy_kwh is None and item.power_kw is not None and item.hours_used is not None:
@@ -272,6 +299,9 @@ def calculate(db: Session, event_id: UUID, action_id: UUID, user: User) -> Envir
         "hours_used": action.hours_used,
         "distance_km": action.distance_km,
         "energy_kwh": action.energy_kwh,
+        "energy_total_kwh": action.energy_kwh,
+        "energy_per_unit_hour_kwh": action.energy_per_unit_hour_kwh,
+        "energy_input_mode": action.energy_input_mode.value,
         "power_kw": action.power_kw,
         "energy_source": action.energy_source.value if action.energy_source else None,
     }

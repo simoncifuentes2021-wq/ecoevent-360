@@ -26,6 +26,7 @@ from app.models.enums import (
     EnvironmentalActionStatus,
     EnvironmentalActionType,
     EnvironmentalEnergySource,
+    EnvironmentalEnergyInputMode,
     EnvironmentalMetricKey,
     EnvironmentalReviewDecision,
     EnvironmentalReviewStatus,
@@ -126,6 +127,14 @@ class EnvironmentalAction(Base):
             name="ck_environmental_action_energy_nonnegative",
         ),
         CheckConstraint(
+            "energy_per_unit_hour_kwh is null or energy_per_unit_hour_kwh > 0",
+            name="ck_environmental_action_energy_per_unit_hour_positive",
+        ),
+        CheckConstraint(
+            "energy_input_mode != 'PER_UNIT_HOUR' or (energy_per_unit_hour_kwh is not null and hours_used > 0)",
+            name="ck_environmental_action_per_unit_hour_complete",
+        ),
+        CheckConstraint(
             "power_kw is null or power_kw >= 0", name="ck_environmental_action_power_nonnegative"
         ),
         Index("idx_environmental_actions_event_id", "event_id"),
@@ -169,6 +178,12 @@ class EnvironmentalAction(Base):
     hours_used: Mapped[Decimal | None] = mapped_column(Numeric(14, 4))
     distance_km: Mapped[Decimal | None] = mapped_column(Numeric(16, 4))
     energy_kwh: Mapped[Decimal | None] = mapped_column(Numeric(16, 6))
+    energy_per_unit_hour_kwh: Mapped[Decimal | None] = mapped_column(Numeric(16, 6))
+    energy_input_mode: Mapped[EnvironmentalEnergyInputMode] = mapped_column(
+        Enum(EnvironmentalEnergyInputMode, native_enum=False, create_constraint=False),
+        nullable=False,
+        server_default=text("'TOTAL_MEASURED'"),
+    )
     power_kw: Mapped[Decimal | None] = mapped_column(Numeric(16, 6))
     energy_source: Mapped[EnvironmentalEnergySource | None] = mapped_column(
         Enum(EnvironmentalEnergySource, native_enum=False, create_constraint=False)

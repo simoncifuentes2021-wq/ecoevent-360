@@ -19,6 +19,7 @@ from app.models.environmental import (
 from app.models.enums import (
     EnvironmentalActionStatus,
     EnvironmentalActionType,
+    EnvironmentalEnergyInputMode,
     EnvironmentalMetricKey,
     EnvironmentalReviewDecision,
     EnvironmentalReviewStatus,
@@ -191,6 +192,145 @@ def tower_payload(methodology_id, **changes):
     return EnvironmentalActionCreate(**values)
 
 
+@pytest.mark.parametrize(
+    ("quantity", "hours", "unit_energy", "expected"),
+    [
+        ("1", "1", "0.75", "0.75"),
+        ("1", "12", "0.75", "9"),
+        ("4", "12", "0.75", "36"),
+        ("10", "6", "1.2", "72"),
+    ],
+)
+def test_per_unit_hour_energy_is_normalized(quantity, hours, unit_energy, expected):
+    values = {
+        "energy_input_mode": EnvironmentalEnergyInputMode.PER_UNIT_HOUR,
+        "energy_per_unit_hour_kwh": Decimal(unit_energy),
+        "quantity_used": Decimal(quantity),
+        "hours_used": Decimal(hours),
+    }
+    service._normalize_energy(values)
+    assert values["energy_kwh"] == Decimal(expected)
+
+
+def test_per_unit_hour_requires_complete_positive_inputs():
+    with pytest.raises(ValueError, match="energy_per_unit_hour_kwh"):
+        EnvironmentalActionCreate(
+            action_type="ELECTRIC_LIGHTING_TOWER",
+            name="Incomplete tower",
+            quantity_used=1,
+            hours_used=12,
+            energy_input_mode="PER_UNIT_HOUR",
+        )
+    with pytest.raises(ValueError, match="hours_used"):
+        EnvironmentalActionCreate(
+            action_type="ELECTRIC_LIGHTING_TOWER",
+            name="Incomplete tower",
+            quantity_used=1,
+            hours_used=0,
+            energy_per_unit_hour_kwh=Decimal("0.75"),
+            energy_input_mode="PER_UNIT_HOUR",
+        )
+
+
+def test_per_unit_hour_drives_energy_and_environmental_metrics(context):
+    db, event, _, _, _, admin, *_rest = context
+    methodology = db.scalar(
+        select(EnvironmentalMethodology).where(
+            EnvironmentalMethodology.id == "52000000-0000-4000-8000-000000000001"
+        )
+    )
+    action = service.create_action(
+        db,
+        event.id,
+        EnvironmentalActionCreate(
+            action_type=EnvironmentalActionType.ELECTRIC_LIGHTING_TOWER,
+            methodology_id=methodology.id,
+            name="Torre fotovoltaica",
+            quantity_used=Decimal("4"),
+            hours_used=Decimal("12"),
+            energy_per_unit_hour_kwh=Decimal("0.75"),
+            energy_input_mode=EnvironmentalEnergyInputMode.PER_UNIT_HOUR,
+        ),
+        admin,
+    )
+    assert action.energy_kwh == Decimal("36")
+    calculated = service.calculate(db, event.id, action.id, admin)
+    values = {metric.metric_key: metric.value for metric in calculated.metrics}
+    assert values[EnvironmentalMetricKey.ENERGY_KWH] == Decimal("36")
+    assert values[EnvironmentalMetricKey.FUEL_AVOIDED_L] == Decimal("12.00000000")
+    assert values[EnvironmentalMetricKey.CO2E_BASELINE_KG] == Decimal("32.52000000")
+    assert values[EnvironmentalMetricKey.CO2E_ACTUAL_KG] == Decimal("7.27560000")
+    assert values[EnvironmentalMetricKey.PM25_AVOIDED_KG] == Decimal("0.04827600")
+    assert values[EnvironmentalMetricKey.PM10_AVOIDED_KG] == Decimal("0.04827600")
+    assert values[EnvironmentalMetricKey.NOX_AVOIDED_KG] == Decimal("0.68068800")
+    snapshot = next(iter(calculated.metrics)).calculation_snapshot["inputs"]
+    assert snapshot["energy_total_kwh"] == "36.000000"
+    assert snapshot["energy_per_unit_hour_kwh"] == "0.750000"
+    assert snapshot["energy_input_mode"] == "PER_UNIT_HOUR"
+
+
+def test_historical_total_measured_is_not_multiplied(context):
+    db, event, _, _, _, admin, _, _, _, methodology, _ = context
+    action = service.create_action(
+        db,
+        event.id,
+        EnvironmentalActionCreate(
+            action_type=EnvironmentalActionType.ELECTRIC_LIGHTING_TOWER,
+            methodology_id=methodology.id,
+            name="Historical total",
+            quantity_used=Decimal("4"),
+            hours_used=Decimal("12"),
+            energy_kwh=Decimal("750"),
+            energy_source="MEASURED",
+            energy_input_mode=EnvironmentalEnergyInputMode.TOTAL_MEASURED,
+        ),
+        admin,
+    )
+    calculated = service.calculate(db, event.id, action.id, admin)
+    energy = next(m for m in calculated.metrics if m.metric_key == EnvironmentalMetricKey.ENERGY_KWH)
+    assert action.energy_kwh == Decimal("750")
+    assert energy.value == Decimal("750")
+
+
+def test_per_unit_hour_create_and_update_preserve_mode_and_recalculate(context):
+    db, event, _, _, _, admin, _, _, _, methodology, _ = context
+    action = service.create_action(
+        db,
+        event.id,
+        EnvironmentalActionCreate(
+            action_type=EnvironmentalActionType.ELECTRIC_LIGHTING_TOWER,
+            methodology_id=methodology.id,
+            name="Torre fotovoltaica editable",
+            quantity_used=Decimal("4"),
+            hours_used=Decimal("12"),
+            energy_per_unit_hour_kwh=Decimal("0.75"),
+            energy_input_mode=EnvironmentalEnergyInputMode.PER_UNIT_HOUR,
+        ),
+        admin,
+    )
+    assert action.energy_input_mode == EnvironmentalEnergyInputMode.PER_UNIT_HOUR
+    assert action.energy_per_unit_hour_kwh == Decimal("0.750000")
+    assert action.energy_kwh == Decimal("36.000000")
+
+    unchanged = service.update_action(
+        db, event.id, action.id, EnvironmentalActionUpdate(notes="Evidencia revisada"), admin
+    )
+    assert unchanged.energy_input_mode == EnvironmentalEnergyInputMode.PER_UNIT_HOUR
+    assert unchanged.energy_per_unit_hour_kwh == Decimal("0.750000")
+    assert unchanged.energy_kwh == Decimal("36.000000")
+
+    updated = service.update_action(
+        db,
+        event.id,
+        action.id,
+        EnvironmentalActionUpdate(quantity_used=Decimal("5")),
+        admin,
+    )
+    assert updated.energy_input_mode == EnvironmentalEnergyInputMode.PER_UNIT_HOUR
+    assert updated.energy_per_unit_hour_kwh == Decimal("0.750000")
+    assert updated.energy_kwh == Decimal("45.000000")
+
+
 def test_event_show_scope_cross_event_and_validation(context):
     db, event, _, show, other_show, admin, supervisor, *_rest = context
     event_action = service.create_action(db, event.id, tower_payload(_rest[-2].id), admin)
@@ -247,7 +387,7 @@ def test_seeded_lighting_methodology_calculates_all_documented_metrics(context):
     db, event, _, _, _, admin, *_rest = context
     methodology = db.scalar(
         select(EnvironmentalMethodology).where(
-            EnvironmentalMethodology.name == "Torre diésel vs torre eléctrica (energía medida)"
+            EnvironmentalMethodology.id == "52000000-0000-4000-8000-000000000001"
         )
     )
     assert methodology is not None

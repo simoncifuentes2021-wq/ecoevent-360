@@ -8,6 +8,7 @@ from app.models.enums import (
     EnvironmentalActionStatus,
     EnvironmentalActionType,
     EnvironmentalEnergySource,
+    EnvironmentalEnergyInputMode,
     EnvironmentalMetricKey,
     EnvironmentalReviewDecision,
     EnvironmentalReviewStatus,
@@ -24,11 +25,13 @@ class EnvironmentalActionCreate(BaseModel):
     hours_used: Decimal | None = Field(default=None, ge=0)
     distance_km: Decimal | None = Field(default=None, ge=0)
     energy_kwh: Decimal | None = Field(default=None, ge=0)
+    energy_per_unit_hour_kwh: Decimal | None = Field(default=None, gt=0)
+    energy_input_mode: EnvironmentalEnergyInputMode = EnvironmentalEnergyInputMode.TOTAL_MEASURED
     power_kw: Decimal | None = Field(default=None, ge=0)
     energy_source: EnvironmentalEnergySource | None = None
     notes: str | None = Field(default=None, max_length=4000)
 
-    @field_validator("quantity_used", "hours_used", "distance_km", "energy_kwh", "power_kw")
+    @field_validator("quantity_used", "hours_used", "distance_km", "energy_kwh", "energy_per_unit_hour_kwh", "power_kw")
     @classmethod
     def finite(cls, value: Decimal | None) -> Decimal | None:
         if value is not None and not value.is_finite():
@@ -37,6 +40,11 @@ class EnvironmentalActionCreate(BaseModel):
 
     @model_validator(mode="after")
     def energy_provenance(self):
+        if self.energy_input_mode == EnvironmentalEnergyInputMode.PER_UNIT_HOUR:
+            if self.energy_per_unit_hour_kwh is None:
+                raise ValueError("energy_per_unit_hour_kwh is required for PER_UNIT_HOUR")
+            if self.hours_used is None or self.hours_used <= 0:
+                raise ValueError("hours_used must be greater than zero for PER_UNIT_HOUR")
         if self.energy_kwh is not None and self.energy_source is None:
             raise ValueError("energy_source is required when energy_kwh is provided")
         return self
@@ -52,11 +60,13 @@ class EnvironmentalActionUpdate(BaseModel):
     hours_used: Decimal | None = Field(default=None, ge=0)
     distance_km: Decimal | None = Field(default=None, ge=0)
     energy_kwh: Decimal | None = Field(default=None, ge=0)
+    energy_per_unit_hour_kwh: Decimal | None = Field(default=None, gt=0)
+    energy_input_mode: EnvironmentalEnergyInputMode | None = None
     power_kw: Decimal | None = Field(default=None, ge=0)
     energy_source: EnvironmentalEnergySource | None = None
     notes: str | None = Field(default=None, max_length=4000)
 
-    @field_validator("quantity_used", "hours_used", "distance_km", "energy_kwh", "power_kw")
+    @field_validator("quantity_used", "hours_used", "distance_km", "energy_kwh", "energy_per_unit_hour_kwh", "power_kw")
     @classmethod
     def finite(cls, value: Decimal | None) -> Decimal | None:
         if value is not None and not value.is_finite():
@@ -100,6 +110,8 @@ class EnvironmentalActionRead(BaseModel):
     hours_used: Decimal | None
     distance_km: Decimal | None
     energy_kwh: Decimal | None
+    energy_per_unit_hour_kwh: Decimal | None
+    energy_input_mode: EnvironmentalEnergyInputMode
     power_kw: Decimal | None
     energy_source: EnvironmentalEnergySource | None
     notes: str | None

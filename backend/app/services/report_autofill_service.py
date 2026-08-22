@@ -234,14 +234,14 @@ def build_sections(
     environmental_fields = [
         _field(
             "energy_kwh",
-            "Energía utilizada",
+            "Energía generada",
             metrics["ENERGY_KWH"],
             "APPROVED_ENVIRONMENTAL_ACTIONS",
             "kWh",
         ),
         _field(
             "fuel_avoided_l",
-            "Combustible evitado",
+            "Diésel evitado",
             metrics["FUEL_AVOIDED_L"],
             "APPROVED_ENVIRONMENTAL_ACTIONS",
             "L",

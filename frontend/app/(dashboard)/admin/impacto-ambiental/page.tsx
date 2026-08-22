@@ -31,7 +31,7 @@ import type {
 } from "@/types/environmental";
 
 const actionTypes: Array<[EnvironmentalActionType, string]> = [
-  ["ELECTRIC_LIGHTING_TOWER", "Torre eléctrica"], ["ELECTRIC_MOTORCYCLE", "Moto eléctrica"],
+  ["ELECTRIC_LIGHTING_TOWER", "Torre fotovoltaica"], ["ELECTRIC_MOTORCYCLE", "Moto eléctrica"],
   ["ELECTRIC_CART", "Carrito eléctrico"], ["SOLAR_ENERGY", "Energía solar"],
   ["ELECTRIC_VEHICLE", "Vehículo eléctrico"], ["BIKE_MOBILITY", "Bicicleta"],
   ["PUBLIC_TRANSPORT", "Transporte público"], ["OTHER", "Otra solución"],
