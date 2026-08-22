@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     rate_limit_public_submit: str = "10/300"
     rate_limit_bike_code: str = "30/60"
     rate_limit_sensitive_user: str = "60/60"
+    ai_enabled: bool = False
+    ai_provider: str = "openrouter"
+    ai_model: str = "openrouter/free"
+    ai_api_key: str | None = None
+    ai_base_url: str | None = None
+    ai_timeout_seconds: float = 30.0
+    ai_max_output_tokens: int = 800
+    ai_temperature: float = 0.2
+    rate_limit_ai_interpretation: str = "5/300"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

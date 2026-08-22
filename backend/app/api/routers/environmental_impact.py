@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user, require_roles
@@ -30,8 +30,58 @@ from app.schemas.environmental_schema import (
 from app.services import environmental_calculation_service as calculations
 from app.services import environmental_catalog_service as catalog
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
+from app.core.config import settings
+from app.core.rate_limit import enforce
+from app.services.ai.ai_service import AIService, AIServiceError
+from app.services.ai.schemas import AIInterpretationResponse
 
 router = APIRouter(tags=["environmental impact"])
+
+
+@router.post(
+    "/events/{event_id}/environmental-actions/{action_id}/ai-interpretation",
+    response_model=AIInterpretationResponse,
+)
+async def interpret_action_with_ai(
+    event_id: UUID,
+    action_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    enforce(
+        request,
+        "ai_environmental_interpretation",
+        str(user.id),
+        settings.rate_limit_ai_interpretation,
+    )
+    try:
+        result = await AIService().interpret_environmental_action(db, event_id, action_id, user)
+    except AIServiceError as exc:
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        if exc.code == "not_calculated":
+            status_code = status.HTTP_409_CONFLICT
+        if exc.code == "timeout":
+            status_code = status.HTTP_504_GATEWAY_TIMEOUT
+        raise HTTPException(status_code=status_code, detail={"code": exc.code, "message": str(exc)}) from exc
+    create_audit_log(
+        db,
+        user=user,
+        action="ENVIRONMENTAL_AI_INTERPRETATION_REQUESTED",
+        module="environmental_impact",
+        entity_type="EnvironmentalAction",
+        entity_id=action_id,
+        event_id=event_id,
+        metadata={
+            "generation_id": result.generation_id,
+            "provider": result.provider,
+            "model": result.model,
+            "prompt_version": result.prompt_version,
+            "cached": result.cached,
+        },
+        request=request,
+    )
+    return result
 
 
 @router.get("/events/{event_id}/environmental-actions", response_model=EnvironmentalActionList)

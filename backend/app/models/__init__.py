@@ -1,4 +1,5 @@
 from app.models.audit_log import AuditLog
+from app.models.ai import AIGeneration
 from app.models.environmental import (  # noqa: F401
     EcoEquivalenceFactor,
     EnvironmentalAction,
@@ -52,6 +53,7 @@ from app.models.core import (
 
 __all__ = [
     "AuditLog",
+    "AIGeneration",
     "Alert",
     "CarbonFactor",
     "CarbonRecord",

@@ -1,9 +1,12 @@
 "use client";
 
-import { CalendarDays, Database, Fuel, Gauge, Leaf, Route, Zap } from "lucide-react";
+import { useState } from "react";
+import { CalendarDays, Database, Fuel, Gauge, Leaf, Route, Sparkles, Zap } from "lucide-react";
 
 import { ModalShell } from "@/components/common/ModalShell";
-import type { EnvironmentalAction, EnvironmentalMetric, EnvironmentalMetricKey } from "@/types/environmental";
+import { Button } from "@/components/ui/button";
+import { interpretEnvironmentalAction } from "@/lib/api/environmental";
+import type { AIEnvironmentalInterpretation, EnvironmentalAction, EnvironmentalMetric, EnvironmentalMetricKey } from "@/types/environmental";
 
 const metricLabels: Partial<Record<EnvironmentalMetricKey, string>> = {
   CO2E_BASELINE_KG: "Línea base", CO2E_ACTUAL_KG: "Escenario real", CO2E_AVOIDED_KG: "Evitado",
@@ -26,6 +29,9 @@ function snapshot(metric?: EnvironmentalMetric) {
 }
 
 export function EnvironmentalActionDetail({ action, showName, onClose }: { action: EnvironmentalAction; showName?: string; onClose: () => void }) {
+  const [interpretation, setInterpretation] = useState<AIEnvironmentalInterpretation | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const byKey = new Map(action.metrics.map((metric) => [metric.metric_key, metric]));
   const calculated = action.metrics.find((metric) => metric.metric_key.endsWith("_AVOIDED_KG")) || action.metrics[0];
   const methodology = snapshot(calculated).methodology;
@@ -34,22 +40,40 @@ export function EnvironmentalActionDetail({ action, showName, onClose }: { actio
   const isTower = action.action_type === "ELECTRIC_LIGHTING_TOWER";
   const perUnitHour = isTower && action.energy_input_mode === "PER_UNIT_HOUR" && action.energy_per_unit_hour_kwh != null && action.hours_used != null;
   const historicalTowerTotal = isTower && action.energy_input_mode === "TOTAL_MEASURED";
+
+  async function interpret() {
+    setAiLoading(true); setAiError(null);
+    try { setInterpretation(await interpretEnvironmentalAction(action.event_id, action.id)); }
+    catch (error) { setAiError(error instanceof Error ? error.message : "No fue posible generar la interpretación en este momento."); }
+    finally { setAiLoading(false); }
+  }
+
   return <ModalShell title={action.name} description={`${showName || "Evento completo"} · Detalle trazable del cálculo`} onClose={onClose} size="lg">
     <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Info icon={Zap} label="Energía generada" value={`${number(energy?.value ?? action.energy_kwh ?? null)} kWh`} />
-        <Info icon={Fuel} label="Diésel evitado" value={fuel?.value == null ? "No calculado" : `${number(fuel.value)} L`} />
-        <Info icon={Route} label="Distancia" value={action.distance_km == null ? "No aplica" : `${number(action.distance_km)} km`} />
-        <Info icon={CalendarDays} label="Último cálculo" value={calculated ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(calculated.calculated_at)) : "Pendiente"} />
-      </div>
+      <section aria-label="Datos calculados por EcoEvent">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-emerald-800">Datos calculados por EcoEvent</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Info icon={Zap} label="Energía generada" value={`${number(energy?.value ?? action.energy_kwh ?? null)} kWh`} />
+          <Info icon={Fuel} label="Diésel evitado" value={fuel?.value == null ? "No calculado" : `${number(fuel.value)} L`} />
+          <Info icon={Route} label="Distancia" value={action.distance_km == null ? "No aplica" : `${number(action.distance_km)} km`} />
+          <Info icon={CalendarDays} label="Último cálculo" value={calculated ? new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(calculated.calculated_at)) : "Pendiente"} />
+        </div>
+      </section>
       <section><h3 className="mb-3 text-base font-bold uppercase">Datos operacionales</h3><div className="grid gap-3 sm:grid-cols-3"><Info icon={Gauge} label={isTower ? "Cantidad de torres" : "Cantidad"} value={number(action.quantity_used)} /><Info icon={CalendarDays} label="Horas de funcionamiento" value={action.hours_used == null ? "No aplica" : `${number(action.hours_used)} h`} /><Info icon={Zap} label={isTower ? "Energía por torre/hora" : "Energía unitaria por hora"} value={perUnitHour ? `${number(action.energy_per_unit_hour_kwh ?? null)} kWh` : historicalTowerTotal ? "Registro histórico total" : "No aplica"} /></div></section>
       {perUnitHour ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><h3 className="font-bold uppercase">Cálculo energético</h3><p className="mt-2">{number(action.energy_per_unit_hour_kwh ?? null)} kWh × {number(action.quantity_used)} torres × {number(action.hours_used ?? null)} h = {number(action.energy_kwh ?? null)} kWh</p><p className="mt-2 text-lg font-bold text-emerald-800">Energía generada: {number(energy?.value ?? action.energy_kwh ?? null)} kWh</p></section> : null}
       <section><h3 className="mb-3 text-base font-bold">Comparación ambiental</h3><div className="grid gap-3 md:grid-cols-2">{groups.map(({ title, icon: Icon, keys }) => <article className="rounded-2xl border border-slate-200 p-4" key={title}><div className="mb-3 flex items-center gap-2"><Icon className="h-5 w-5 text-emerald-700" /><h4 className="font-bold">{title}</h4></div><div className="grid grid-cols-3 gap-2">{keys.map((key) => { const metric = byKey.get(key); const avoided = key.includes("AVOIDED"); return <div className={`rounded-xl p-3 ${avoided ? "bg-emerald-50" : "bg-slate-50"}`} key={key}><p className="text-xs text-slate-500">{metricLabels[key]}</p><p className={`mt-1 font-bold ${avoided ? "text-emerald-800" : "text-slate-800"}`}>{metric ? `${number(metric.value)} ${metric.unit}` : "—"}</p></div>; })}</div></article>)}</div></section>
       {methodology ? <section className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-5"><h3 className="font-bold">{methodology.name || "Metodología aplicada"}</h3><div className="mt-3 grid gap-3 sm:grid-cols-2"><div><p className="text-xs font-semibold uppercase text-slate-500">Línea base</p><p>{methodology.baseline_technology}</p></div><div><p className="text-xs font-semibold uppercase text-slate-500">Escenario real</p><p>{methodology.actual_technology}</p></div></div><p className="mt-3 text-sm text-slate-600">{methodology.description}</p></section> : null}
       {calculated ? <section><h3 className="mb-2 font-bold">Fórmula aplicada</h3><code className="block overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs text-emerald-200">{calculated.calculation_method}</code>{calculated.is_manual_override ? <p className="mt-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Resultado reemplazado manualmente: {calculated.override_reason}</p> : null}</section> : null}
       <section><h3 className="mb-3 flex items-center gap-2 font-bold"><Database className="h-5 w-5 text-emerald-700" />Factores congelados en el cálculo</h3>{factors.length ? <div className="grid gap-3 md:grid-cols-2">{factors.map((factor) => <article className="rounded-xl border p-4" key={factor.id}><p className="font-semibold">{factor.technology}</p><p className="mt-1 font-mono text-sm text-emerald-800">{number(factor.factor_value, 10)} {factor.factor_unit}</p><p className="mt-2 text-xs text-slate-500">{factor.source} · {factor.year}</p><p className="mt-2 text-xs text-slate-600">{factor.methodology}</p></article>)}</div> : <p className="text-sm text-slate-500">Esta métrica no utiliza factores externos.</p>}</section>
+      <section aria-labelledby="ai-interpretation-title" className="rounded-2xl border border-violet-200 bg-violet-50/60 p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 id="ai-interpretation-title" className="flex items-center gap-2 font-bold text-violet-950"><Sparkles className="h-5 w-5" />Interpretación con IA</h3><p className="mt-1 text-sm text-violet-800">Separada de los resultados certificados.</p></div><Button type="button" disabled={aiLoading || action.metrics.length === 0} onClick={() => void interpret()}>{aiLoading ? "Analizando..." : "Analizar con IA"}</Button></div>
+        {action.metrics.length === 0 ? <p className="mt-3 text-sm text-amber-800">Primero calcula la acción ambiental.</p> : null}
+        {aiError ? <p role="alert" className="mt-4 rounded-xl bg-white p-3 text-sm text-rose-700">{aiError}</p> : null}
+        {interpretation ? <div className="mt-5 space-y-4 text-sm text-slate-700"><p className="text-base font-semibold text-slate-900">{interpretation.summary}</p>{interpretation.impact_explanation ? <p>{interpretation.impact_explanation}</p> : null}<AIList title="Puntos destacados" items={interpretation.key_points} /><AIList title="Recomendaciones" items={interpretation.recommendations} />{interpretation.warnings.length ? <div className="rounded-xl bg-amber-50 p-3"><AIList title="Advertencias" items={interpretation.warnings} /></div> : null}<p className="border-t border-violet-200 pt-3 text-xs text-slate-500">Interpretación generada por IA a partir de los resultados calculados por EcoEvent. {interpretation.cached ? "Resultado reutilizado sin una nueva llamada al proveedor." : ""}</p></div> : null}
+      </section>
     </div>
   </ModalShell>;
 }
 
+function AIList({ title, items }: { title: string; items: string[] }) { return items.length ? <div><h4 className="font-semibold text-slate-900">{title}</h4><ul className="mt-2 list-disc space-y-1 pl-5">{items.map((item) => <li key={item}>{item}</li>)}</ul></div> : null; }
 function Info({ icon: Icon, label, value }: { icon: typeof Leaf; label: string; value: string }) { return <div className="rounded-2xl border bg-white p-4"><Icon className="h-5 w-5 text-emerald-700" /><p className="mt-2 text-xs text-slate-500">{label}</p><p className="mt-1 font-bold">{value}</p></div>; }

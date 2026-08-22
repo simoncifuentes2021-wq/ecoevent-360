@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
+import asyncio
 import os
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -40,6 +42,13 @@ from app.services import client_portal_service
 from app.services import environmental_calculation_service as service
 from app.services import environmental_catalog_service as catalog
 from app.services import report_builder_service
+from app.core.rate_limit import RateLimiter
+from app.models.ai import AIGeneration
+from app.services.ai.ai_router import build_provider
+from app.services.ai.ai_service import AIService, AIServiceError
+from app.services.ai.contexts.environmental import build_environmental_context
+from app.services.ai.providers.base import AIProviderError
+from app.services.ai.schemas import ProviderResult
 
 
 @pytest.fixture()
@@ -724,3 +733,131 @@ def test_official_reporting_filters_states_scopes_and_all_roles(context):
     assert "Observed action" not in str(portal)
     db.delete(super_admin)
     db.commit()
+
+
+class FakeAIProvider:
+    name = "fake"
+
+    def __init__(self, content: str | None = None, error: AIProviderError | None = None):
+        self.content = content or '{"summary":"Impacto explicado sin cambiar cifras.","impact_explanation":"Los resultados provienen de EcoEvent.","key_points":["Energía registrada"],"recommendations":[],"warnings":[]}'
+        self.error = error
+        self.requests = []
+
+    async def generate(self, request):
+        self.requests.append(request)
+        if self.error:
+            raise self.error
+        return ProviderResult(content=self.content, effective_model="resolved-free-model")
+
+
+def ai_settings(**changes):
+    values = dict(
+        ai_enabled=True,
+        ai_provider="openrouter",
+        ai_model="openrouter/free",
+        ai_api_key="test-secret-never-persist",
+        ai_base_url=None,
+        ai_timeout_seconds=30,
+        ai_max_output_tokens=500,
+        ai_temperature=0.1,
+    )
+    values.update(changes)
+    return SimpleNamespace(**values)
+
+
+def test_ai_environmental_context_is_server_built_private_and_authorized(context):
+    db, event, _, show, _, admin, _, _, foreign_client, methodology, _ = context
+    action = service.calculate(
+        db,
+        event.id,
+        service.create_action(db, event.id, tower_payload(methodology.id, session_id=show.id), admin).id,
+        admin,
+    )
+    _, payload = build_environmental_context(db, event.id, action.id, admin)
+    assert payload["scope"] == {"event": event.name, "show": show.name}
+    assert payload["certified_results"]["energy_generated_kwh"] == "20.00000000"
+    assert payload["certified_results"]["co2e_avoided_kg"] == "1.00000000"
+    assert "email" not in str(payload).lower()
+    assert "test-secret" not in str(payload)
+    with pytest.raises(HTTPException, match="authorized"):
+        build_environmental_context(db, event.id, action.id, foreign_client)
+    with pytest.raises(HTTPException, match="not found"):
+        build_environmental_context(db, event.id, uuid4(), admin)
+
+
+def test_ai_service_disabled_provider_configuration_and_normalized_output(context):
+    db, event, _, _, _, admin, _, _, _, methodology, _ = context
+    action = service.calculate(
+        db, event.id, service.create_action(db, event.id, tower_payload(methodology.id), admin).id, admin
+    )
+    with pytest.raises(AIServiceError, match="disabled"):
+        asyncio.run(AIService(ai_settings(ai_enabled=False)).interpret_environmental_action(db, event.id, action.id, admin))
+    with pytest.raises(AIProviderError, match="credentials"):
+        build_provider(ai_settings(ai_api_key=None))
+    assert build_provider(ai_settings()).name == "openrouter"
+    assert build_provider(ai_settings(ai_provider="openai")).name == "openai"
+
+    provider = FakeAIProvider()
+    first = asyncio.run(AIService(ai_settings(), provider).interpret_environmental_action(db, event.id, action.id, admin))
+    assert first.summary.startswith("Impacto explicado") and first.cached is False
+    assert first.effective_model == "resolved-free-model"
+    sent = provider.requests[0].context
+    assert sent["certified_results"]["energy_generated_kwh"] == "20.00000000"
+    assert "test-secret-never-persist" not in str(sent)
+    stored = db.get(AIGeneration, first.generation_id)
+    assert stored.requested_by == admin.id and stored.prompt_version == "environmental_interpretation_v1"
+    assert "test-secret-never-persist" not in str(stored.input_snapshot)
+
+
+def test_ai_cache_and_input_hash_invalidation(context):
+    db, event, _, _, _, admin, _, _, _, methodology, _ = context
+    action = service.calculate(
+        db, event.id, service.create_action(db, event.id, tower_payload(methodology.id), admin).id, admin
+    )
+    provider = FakeAIProvider()
+    ai = AIService(ai_settings(), provider)
+    first = asyncio.run(ai.interpret_environmental_action(db, event.id, action.id, admin))
+    cached = asyncio.run(ai.interpret_environmental_action(db, event.id, action.id, admin))
+    assert cached.generation_id == first.generation_id and cached.cached is True
+    assert len(provider.requests) == 1
+    service.update_action(db, event.id, action.id, EnvironmentalActionUpdate(hours_used=Decimal("11")), admin)
+    service.calculate(db, event.id, action.id, admin)
+    changed = asyncio.run(ai.interpret_environmental_action(db, event.id, action.id, admin))
+    assert changed.generation_id != first.generation_id
+    assert len(provider.requests) == 2
+
+
+@pytest.mark.parametrize(
+    ("provider", "expected_code"),
+    [
+        (FakeAIProvider(content="not-json"), "invalid_output"),
+        (
+            FakeAIProvider(
+                content='{"summary":"Se evitaron 999 kg.","key_points":[],"recommendations":[],"warnings":[]}'
+            ),
+            "unsupported_numeric_claim",
+        ),
+        (FakeAIProvider(error=AIProviderError("timeout", "late")), "timeout"),
+        (FakeAIProvider(error=AIProviderError("http_error", "down")), "http_error"),
+    ],
+)
+def test_ai_invalid_output_timeout_and_provider_errors_are_audited(context, provider, expected_code):
+    db, event, _, _, _, admin, _, _, _, methodology, _ = context
+    action = service.calculate(
+        db, event.id, service.create_action(db, event.id, tower_payload(methodology.id), admin).id, admin
+    )
+    with pytest.raises(AIServiceError, match="No fue posible") as exc:
+        asyncio.run(AIService(ai_settings(), provider).interpret_environmental_action(db, event.id, action.id, admin))
+    assert exc.value.code == expected_code
+    failed = db.scalar(select(AIGeneration).where(AIGeneration.subject_id == action.id).order_by(AIGeneration.created_at.desc()))
+    assert failed.status == "FAILED" and failed.error_code == expected_code
+    assert failed.output is None
+
+
+def test_ai_rate_limiter_blocks_repeated_requests():
+    limiter = RateLimiter()
+    limiter._redis = None
+    limiter.check("ai-test", "user-one", "1/60")
+    with pytest.raises(HTTPException) as exc:
+        limiter.check("ai-test", "user-one", "1/60")
+    assert exc.value.status_code == 429
