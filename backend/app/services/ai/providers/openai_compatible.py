@@ -25,6 +25,8 @@ class OpenAICompatibleProvider:
             "max_tokens": request.max_output_tokens,
             "response_format": {"type": "json_object"},
         }
+        if self.name == "openrouter":
+            payload["reasoning"] = {"effort": "none", "exclude": True}
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             for attempt in range(2):
                 try:
@@ -52,7 +54,10 @@ class OpenAICompatibleProvider:
 
                 try:
                     data = response.json()
-                    content = data["choices"][0]["message"]["content"]
+                    choice = data["choices"][0]
+                    if choice.get("finish_reason") == "length":
+                        raise KeyError("truncated content")
+                    content = choice["message"]["content"]
                     if not isinstance(content, str) or not content.strip():
                         raise KeyError("empty content")
                     return ProviderResult(

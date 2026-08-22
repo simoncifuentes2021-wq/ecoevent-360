@@ -3,6 +3,7 @@ import json
 import re
 import time
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -54,15 +55,31 @@ def _validate_numbers(output: AIInterpretation, context: dict) -> None:
             return [item for child in value.values() for item in collect(child)]
         if isinstance(value, list):
             return [item for child in value for item in collect(child)]
-        if isinstance(value, (int, float)) or (isinstance(value, str) and re.fullmatch(r"-?\d+(?:\.\d+)?", value)):
+        if isinstance(value, (int, float)):
             return [str(value)]
+        if isinstance(value, str):
+            return re.findall(r"(?<![A-Za-z0-9.])-?\d+(?:[.,]\d+)?", value)
         return []
 
-    allowed = {value.replace(",", ".").lstrip("+") for value in collect(context)}
-    allowed_normalized = {str(float(value)) for value in allowed}
+    allowed: set[Decimal] = set()
+    for value in collect(context):
+        try:
+            number = Decimal(value.replace(",", "."))
+        except InvalidOperation:
+            continue
+        allowed.add(number)
+        for digits in range(7):
+            quantum = Decimal(1).scaleb(-digits)
+            allowed.add(number.quantize(quantum, rounding=ROUND_HALF_UP))
     rendered = json.dumps(output.model_dump(), ensure_ascii=False)
     mentioned = re.findall(r"(?<![A-Za-z0-9.])-?\d+(?:[.,]\d+)?", rendered)
-    invented = [value for value in mentioned if str(float(value.replace(",", "."))) not in allowed_normalized]
+    invented = []
+    for value in mentioned:
+        try:
+            if Decimal(value.replace(",", ".")) not in allowed:
+                invented.append(value)
+        except InvalidOperation:
+            invented.append(value)
     if invented:
         raise AIProviderError("unsupported_numeric_claim", "AI output introduced unsupported numbers")
 
@@ -118,17 +135,26 @@ class AIService:
         started = time.perf_counter()
         try:
             provider = self._provider or build_provider(self.config)
-            result = await provider.generate(
-                ProviderRequest(
-                    system_prompt=SYSTEM_PROMPT,
-                    context=context,
-                    model=self.config.ai_model,
-                    temperature=self.config.ai_temperature,
-                    max_output_tokens=self.config.ai_max_output_tokens,
-                )
+            request = ProviderRequest(
+                system_prompt=SYSTEM_PROMPT,
+                context=context,
+                model=self.config.ai_model,
+                temperature=self.config.ai_temperature,
+                max_output_tokens=self.config.ai_max_output_tokens,
             )
-            output = _parse_output(result.content)
-            _validate_numbers(output, context)
+            for output_attempt in range(2):
+                result = await provider.generate(request)
+                try:
+                    output = _parse_output(result.content)
+                    _validate_numbers(output, context)
+                    break
+                except AIProviderError as exc:
+                    if output_attempt == 0 and exc.code in {
+                        "invalid_output",
+                        "unsupported_numeric_claim",
+                    }:
+                        continue
+                    raise
             generation.output = output.model_dump()
             generation.effective_model = result.effective_model
             generation.status = "SUCCEEDED"
