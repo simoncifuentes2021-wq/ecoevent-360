@@ -92,7 +92,10 @@ def _validate_numbers(output: AIInterpretation, context: dict) -> None:
         for digits in range(7):
             quantum = Decimal(1).scaleb(-digits)
             allowed.add(number.quantize(quantum, rounding=ROUND_HALF_UP))
-    rendered = json.dumps(output.model_dump(), ensure_ascii=False)
+    rendered_output = output.model_dump()
+    # Data-path indexes are traceability metadata, not claims shown to users.
+    rendered_output.pop("used_data_keys", None)
+    rendered = json.dumps(rendered_output, ensure_ascii=False)
     mentioned = re.findall(r"(?<![A-Za-z0-9.])-?\d+(?:[.,]\d+)?", rendered)
     invented = []
     for value in mentioned:

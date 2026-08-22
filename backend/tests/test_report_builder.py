@@ -245,6 +245,19 @@ def test_report_ai_normalizes_provider_lists_to_contract(report_context):
     assert len(result.key_points) == 8
 
 
+def test_report_ai_allows_numeric_indexes_only_in_traceability_keys(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    tasks = next(section for section in report.sections if section.section_key == "tasks")
+    provider = ReportFakeAIProvider(
+        '{"generated_text":"Texto seguro","key_points":[],"warnings":[],"used_data_keys":["effective_content.items.99"]}'
+    )
+    result = asyncio.run(AIService(report_ai_settings(), provider).generate_report_section_draft(
+        db, report.id, tasks.id, admin, ReportAIRequest()
+    ))
+    assert result.used_data_keys == ["effective_content.items.99"]
+
+
 def test_override_refresh_reset_and_stale_version(report_context):
     db, event, show, _, admin, _, _ = report_context
     report = report_builder_service.create_draft(db, event.id, ReportScope.SHOW, show.id, admin)
