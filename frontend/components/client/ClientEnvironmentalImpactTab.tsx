@@ -23,8 +23,8 @@ export function ClientEnvironmentalImpactTab({ data }: { data?: unknown }) {
   if (!impact?.actions_count) return <EmptyState title="Sin resultados ambientales aprobados" description="Los resultados aparecerán aquí después de que un administrador valide formalmente el cálculo." />;
   const cards = [
     ["CO₂e evitado", impact.metrics.CO2E_AVOIDED_KG, "kg", Leaf],
-    ["Energía utilizada", impact.metrics.ENERGY_KWH, "kWh", Zap],
-    ["Combustible evitado", impact.metrics.FUEL_AVOIDED_L, "L", Fuel],
+    ["Energía generada", impact.metrics.ENERGY_KWH, "kWh", Zap],
+    ["Diésel evitado", impact.metrics.FUEL_AVOIDED_L, "L", Fuel],
     ["PM2.5 evitado", impact.metrics.PM25_AVOIDED_KG, "kg", Gauge],
     ["PM10 evitado", impact.metrics.PM10_AVOIDED_KG, "kg", Gauge],
     ["NOx evitado", impact.metrics.NOX_AVOIDED_KG, "kg", Gauge],

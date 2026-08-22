@@ -206,6 +206,11 @@ class EnvironmentalEnergySource(StrEnum):
     MANUAL = "MANUAL"
 
 
+class EnvironmentalEnergyInputMode(StrEnum):
+    TOTAL_MEASURED = "TOTAL_MEASURED"
+    PER_UNIT_HOUR = "PER_UNIT_HOUR"
+
+
 class EnvironmentalMetricKey(StrEnum):
     ENERGY_KWH = "ENERGY_KWH"
     FUEL_AVOIDED_L = "FUEL_AVOIDED_L"
