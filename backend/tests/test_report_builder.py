@@ -231,6 +231,20 @@ def test_report_ai_disabled_and_rejects_invented_figures(report_context):
     assert exc.value.code == "unsupported_numeric_claim"
 
 
+def test_report_ai_normalizes_provider_lists_to_contract(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    tasks = next(section for section in report.sections if section.section_key == "tasks")
+    points = ",".join(f'"Punto {letter}"' for letter in "ABCDEFGHIJ")
+    provider = ReportFakeAIProvider(
+        '{"generated_text":"Texto seguro","key_points":[' + points + '],"warnings":[],"used_data_keys":[]}'
+    )
+    result = asyncio.run(AIService(report_ai_settings(), provider).generate_report_section_draft(
+        db, report.id, tasks.id, admin, ReportAIRequest()
+    ))
+    assert len(result.key_points) == 8
+
+
 def test_override_refresh_reset_and_stale_version(report_context):
     db, event, show, _, admin, _, _ = report_context
     report = report_builder_service.create_draft(db, event.id, ReportScope.SHOW, show.id, admin)

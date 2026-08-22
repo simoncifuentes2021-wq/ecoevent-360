@@ -60,8 +60,13 @@ def _parse_report_output(content: str) -> ReportAIDraft:
         if start >= 0 and end > start:
             candidate = candidate[start : end + 1]
     try:
-        return ReportAIDraft.model_validate_json(candidate)
-    except (ValidationError, ValueError) as exc:
+        payload = json.loads(candidate)
+        if isinstance(payload, dict):
+            for key, limit in (("key_points", 8), ("warnings", 8), ("used_data_keys", 100)):
+                if isinstance(payload.get(key), list):
+                    payload[key] = payload[key][:limit]
+        return ReportAIDraft.model_validate(payload)
+    except (json.JSONDecodeError, ValidationError, ValueError, TypeError) as exc:
         raise AIProviderError("invalid_output", "AI provider returned invalid structured output") from exc
 
 
@@ -97,7 +102,10 @@ def _validate_numbers(output: AIInterpretation, context: dict) -> None:
         except InvalidOperation:
             invented.append(value)
     if invented:
-        raise AIProviderError("unsupported_numeric_claim", "AI output introduced unsupported numbers")
+        values = ", ".join(dict.fromkeys(invented[:10]))
+        raise AIProviderError(
+            "unsupported_numeric_claim", f"AI output introduced unsupported numbers: {values}"
+        )
 
 
 class AIService:
@@ -248,6 +256,17 @@ class AIService:
                     break
                 except AIProviderError as exc:
                     if output_attempt == 0 and exc.code in {"invalid_output", "unsupported_numeric_claim"}:
+                        request = request.model_copy(
+                            update={
+                                "context": {
+                                    **context,
+                                    "validation_retry": (
+                                        "La respuesta anterior fue rechazada. Devuelve JSON valido y elimina "
+                                        "toda cifra no presente en los datos de entrada. " + str(exc)
+                                    ),
+                                }
+                            }
+                        )
                         continue
                     raise
             generation.output = output.model_dump()
