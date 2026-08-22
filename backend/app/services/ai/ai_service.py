@@ -15,9 +15,11 @@ from app.models.ai import AIGeneration
 from app.models.core import User
 from app.services.ai.ai_router import build_provider
 from app.services.ai.contexts.environmental import CAPABILITY, build_environmental_context
+from app.services.ai.contexts.reports import CAPABILITY as REPORT_CAPABILITY, build_report_section_context
 from app.services.ai.prompts.environmental import PROMPT_VERSION, SYSTEM_PROMPT
+from app.services.ai.prompts.reports import PROMPT_VERSION as REPORT_PROMPT_VERSION, SYSTEM_PROMPT as REPORT_SYSTEM_PROMPT
 from app.services.ai.providers.base import AIProvider, AIProviderError
-from app.services.ai.schemas import AIInterpretation, AIInterpretationResponse, ProviderRequest
+from app.services.ai.schemas import AIInterpretation, AIInterpretationResponse, ProviderRequest, ReportAIDraft, ReportAIDraftResponse, ReportAIRequest
 
 
 class AIServiceError(RuntimeError):
@@ -45,6 +47,20 @@ def _parse_output(content: str) -> AIInterpretation:
             candidate = candidate[start : end + 1]
     try:
         return AIInterpretation.model_validate_json(candidate)
+    except (ValidationError, ValueError) as exc:
+        raise AIProviderError("invalid_output", "AI provider returned invalid structured output") from exc
+
+
+def _parse_report_output(content: str) -> ReportAIDraft:
+    candidate = content.strip()
+    if candidate.startswith("```"):
+        candidate = candidate.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    if not candidate.startswith("{") or not candidate.endswith("}"):
+        start, end = candidate.find("{"), candidate.rfind("}")
+        if start >= 0 and end > start:
+            candidate = candidate[start : end + 1]
+    try:
+        return ReportAIDraft.model_validate_json(candidate)
     except (ValidationError, ValueError) as exc:
         raise AIProviderError("invalid_output", "AI provider returned invalid structured output") from exc
 
@@ -172,6 +188,85 @@ class AIService:
             db.commit()
             raise AIServiceError(exc.code, "No fue posible generar la interpretación en este momento") from exc
 
+    async def generate_report_section_draft(
+        self, db: Session, report_id: UUID, section_id: UUID, user: User, options: ReportAIRequest
+    ) -> ReportAIDraftResponse:
+        if not self.config.ai_enabled or not self.config.ai_reports_enabled:
+            raise AIServiceError("disabled", "La asistencia de IA para reportes esta deshabilitada")
+        try:
+            section, context = build_report_section_context(db, report_id, section_id, user, options)
+        except ValueError as exc:
+            raise AIServiceError("not_found", str(exc)) from exc
+        input_hash = _hash(context)
+        provider_name = self.config.ai_provider.strip().lower()
+        cached = None
+        if options.operation != "REGENERATE":
+            cached = db.scalar(
+                select(AIGeneration).where(
+                    AIGeneration.capability == REPORT_CAPABILITY,
+                    AIGeneration.subject_id == section_id,
+                    AIGeneration.input_hash == input_hash,
+                    AIGeneration.prompt_version == REPORT_PROMPT_VERSION,
+                    AIGeneration.provider == provider_name,
+                    AIGeneration.model == self.config.ai_model,
+                    AIGeneration.status == "SUCCEEDED",
+                ).order_by(AIGeneration.created_at.desc())
+            )
+        if cached and cached.output:
+            return self._report_response(cached, cached=True)
+        generation = AIGeneration(
+            capability=REPORT_CAPABILITY,
+            subject_type="ReportSection",
+            subject_id=section_id,
+            event_id=section.report.event_id,
+            requested_by=user.id,
+            provider=provider_name,
+            model=self.config.ai_model,
+            prompt_version=REPORT_PROMPT_VERSION,
+            input_hash=input_hash,
+            input_snapshot=context,
+            status="PENDING",
+        )
+        db.add(generation)
+        db.commit()
+        db.refresh(generation)
+        started = time.perf_counter()
+        try:
+            provider = self._provider or build_provider(self.config)
+            request = ProviderRequest(
+                system_prompt=REPORT_SYSTEM_PROMPT,
+                context=context,
+                model=self.config.ai_model,
+                temperature=self.config.ai_temperature,
+                max_output_tokens=self.config.ai_max_output_tokens,
+            )
+            for output_attempt in range(2):
+                result = await provider.generate(request)
+                try:
+                    output = _parse_report_output(result.content)
+                    _validate_numbers(output, context)
+                    break
+                except AIProviderError as exc:
+                    if output_attempt == 0 and exc.code in {"invalid_output", "unsupported_numeric_claim"}:
+                        continue
+                    raise
+            generation.output = output.model_dump()
+            generation.effective_model = result.effective_model
+            generation.status = "SUCCEEDED"
+            generation.completed_at = _utcnow()
+            generation.latency_ms = int((time.perf_counter() - started) * 1000)
+            db.commit()
+            db.refresh(generation)
+            return self._report_response(generation, cached=False)
+        except AIProviderError as exc:
+            generation.status = "FAILED"
+            generation.error_code = exc.code
+            generation.error_message = str(exc)[:2000]
+            generation.completed_at = _utcnow()
+            generation.latency_ms = int((time.perf_counter() - started) * 1000)
+            db.commit()
+            raise AIServiceError(exc.code, "No fue posible generar el borrador en este momento") from exc
+
     @staticmethod
     def _response(generation: AIGeneration, cached: bool) -> AIInterpretationResponse:
         return AIInterpretationResponse(
@@ -183,4 +278,17 @@ class AIService:
             prompt_version=generation.prompt_version,
             cached=cached,
             generated_at=generation.completed_at.isoformat() if generation.completed_at else generation.created_at.isoformat(),
+        )
+
+    @staticmethod
+    def _report_response(generation: AIGeneration, cached: bool) -> ReportAIDraftResponse:
+        return ReportAIDraftResponse(
+            **(generation.output or {}),
+            generation_id=str(generation.id),
+            provider=generation.provider,
+            model=generation.model,
+            effective_model=generation.effective_model,
+            prompt_version=generation.prompt_version,
+            cached=cached,
+            generated_at=(generation.completed_at or generation.created_at).isoformat(),
         )

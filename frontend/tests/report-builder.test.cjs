@@ -66,6 +66,16 @@ test("API surface retains legacy and adds professional builder operations", () =
   for (const pattern of [/generateFinalReport/, /createReportDraft/, /getReportEditor/, /resetReportField/, /getReportRevisions/]) assert.match(source, pattern);
 });
 
+test("report AI keeps generated copy as an explicit candidate", () => {
+  const editor = read("components", "reports", "ReportBuilder.tsx");
+  const api = read("lib", "api", "reports.ts");
+  const types = read("types", "report.ts");
+  for (const pattern of [/Asistente de redacción/, /Generar/, /Mejorar texto/, /Regenerar/, /Aceptar borrador/, /Descartar/, /Nada cambia hasta que lo aceptes/]) assert.match(editor, pattern);
+  assert.match(api, /\/ai-draft/);
+  for (const value of ["EXECUTIVE", "TECHNICAL", "COMMERCIAL", "BRIEF", "SHORT", "MEDIUM", "LONG"]) assert.match(types, new RegExp(value));
+  assert.doesNotMatch(editor, /AI_API_KEY|OPENROUTER/);
+});
+
 test("premium PDF workflow uses exact preview and immutable publications", () => {
   const editor = read("components", "reports", "ReportBuilder.tsx");
   const api = read("lib", "api", "reports.ts");

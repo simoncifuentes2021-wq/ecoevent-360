@@ -1,11 +1,13 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
 from app.db.session import get_db
+from app.core.config import settings
+from app.core.rate_limit import enforce
 from app.models.core import User
 from app.schemas.report_schema import (
     AvailableEvidence,
@@ -27,6 +29,8 @@ from app.schemas.report_schema import (
     SectionUpdate,
 )
 from app.services import report_service
+from app.services.ai.ai_service import AIService, AIServiceError
+from app.services.ai.schemas import ReportAIDraftResponse, ReportAIRequest
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -300,6 +304,48 @@ def update_section(
         entity_type="ReportSection",
         entity_id=section_id,
         event_id=report.event_id,
+        request=request,
+    )
+    return result
+
+
+@router.post(
+    "/{report_id}/sections/{section_id}/ai-draft", response_model=ReportAIDraftResponse
+)
+async def generate_section_ai_draft(
+    report_id: UUID,
+    section_id: UUID,
+    payload: ReportAIRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_builder_service
+
+    report = report_builder_service.get_editor(db, report_id, current_user)
+    report_service._ensure_admin(current_user)
+    enforce(request, "ai_report_section", str(current_user.id), settings.rate_limit_ai_reports)
+    try:
+        result = await AIService().generate_report_section_draft(
+            db, report_id, section_id, current_user, payload
+        )
+    except AIServiceError as exc:
+        code = status.HTTP_503_SERVICE_UNAVAILABLE
+        if exc.code == "not_found":
+            code = status.HTTP_404_NOT_FOUND
+        elif exc.code == "timeout":
+            code = status.HTTP_504_GATEWAY_TIMEOUT
+        raise HTTPException(status_code=code, detail={"code": exc.code, "message": str(exc)}) from exc
+    create_audit_log(
+        db,
+        user=current_user,
+        action="REPORT_AI_DRAFT_REQUESTED",
+        module="reports",
+        entity_type="ReportSection",
+        entity_id=section_id,
+        event_id=report.event_id,
+        metadata={"generation_id": result.generation_id, "operation": payload.operation,
+                  "style": payload.style, "length": payload.length, "cached": result.cached},
         request=request,
     )
     return result

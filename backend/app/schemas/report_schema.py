@@ -32,6 +32,8 @@ class ReportField(BaseModel):
 
 class ReportSectionContent(BaseModel):
     text: SafeText | None = None
+    text_origin: Literal["MANUAL", "AUTOFILLED", "GENERATED", "ENRICHED"] | None = None
+    ai_generation_id: UUID | None = None
     show_traceability: bool = True
     fields: list[ReportField] = Field(default_factory=list, max_length=100)
     items: list[dict[str, Scalar]] = Field(default_factory=list, max_length=500)

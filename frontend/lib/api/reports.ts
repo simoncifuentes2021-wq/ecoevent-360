@@ -3,7 +3,7 @@ import { clearSession, getStoredToken } from "@/lib/auth";
 import { api, ApiError } from "@/lib/api";
 import { toQuery, type QueryValue } from "@/lib/api/query";
 import type { ListResponse } from "@/types/common";
-import type { AvailableReportEvidence, GenerateReportResponse, Report, ReportEditor, ReportPagePlan, ReportPublication, ReportRevision, ReportScope, ReportSection, ReportTemplateKey, ReportTheme, ReportEditorialConfig } from "@/types/report";
+import type { AvailableReportEvidence, GenerateReportResponse, Report, ReportAIDraft, ReportAILength, ReportAIOperation, ReportAIStyle, ReportEditor, ReportPagePlan, ReportPublication, ReportRevision, ReportScope, ReportSection, ReportTemplateKey, ReportTheme, ReportEditorialConfig } from "@/types/report";
 
 function listFrom<T>(raw: T[] | ListResponse<T> | { data?: T[]; items?: T[]; total?: number; page?: number; limit?: number }): ListResponse<T> {
   if (Array.isArray(raw)) return { items: raw, total: raw.length, page: 1, limit: raw.length };
@@ -92,6 +92,7 @@ export function updateReportEditorialConfig(reportId: string, editVersion: numbe
 export function getReportPagePlan(reportId: string) { return api.get<ReportPagePlan>(`/reports/${reportId}/page-plan`); }
 export async function getReportHtmlPreview(reportId: string) { const token = getStoredToken(); const response = await fetch(`${API_URL}/reports/${reportId}/html-preview`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }); handleUnauthorized(response); if (!response.ok) throw new ApiError(response.status, "No se pudo actualizar la vista previa."); return response.text(); }
 export function updateReportSection(reportId: string, sectionId: string, body: { title?: string; is_enabled?: boolean; layout_variant?: ReportSection["layout_variant"]; content?: ReportSection["content"]; edit_version: number }) { return api.patch<ReportSection>(`/reports/${reportId}/sections/${sectionId}`, body); }
+export function generateReportSectionDraft(reportId: string, sectionId: string, body: { operation: ReportAIOperation; style: ReportAIStyle; length: ReportAILength; current_text?: string | null }) { return api.post<ReportAIDraft>(`/reports/${reportId}/sections/${sectionId}/ai-draft`, body); }
 export function reorderReportSections(reportId: string, sectionIds: string[], editVersion: number) { return api.put<ReportEditor>(`/reports/${reportId}/sections/order`, { section_ids: sectionIds, edit_version: editVersion }); }
 export function deleteCustomReportSection(reportId: string, sectionId: string, editVersion: number) { return api.delete<void>(`/reports/${reportId}/sections/${sectionId}?edit_version=${editVersion}`); }
 export function refreshReport(reportId: string, editVersion: number) { return api.post<ReportEditor>(`/reports/${reportId}/refresh?edit_version=${editVersion}`, {}); }

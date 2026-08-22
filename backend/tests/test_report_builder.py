@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
+import asyncio
 import os
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -23,6 +25,7 @@ from app.models.core import (
     Task,
     User,
 )
+from app.models.ai import AIGeneration
 from app.models.enums import (
     BikeZoneStatus,
     EventFormStatus,
@@ -52,6 +55,27 @@ from app.services import (
     report_revision_service,
     report_service,
 )
+from app.services.ai.ai_service import AIService, AIServiceError
+from app.services.ai.contexts.reports import build_report_section_context
+from app.services.ai.schemas import ProviderResult, ReportAIRequest
+
+
+class ReportFakeAIProvider:
+    def __init__(self, content: str | None = None):
+        self.content = content or '{"title_suggestion":"Balance","generated_text":"Se registraron tareas completadas.","key_points":["Tareas registradas"],"warnings":[],"used_data_keys":["effective_content.fields"]}'
+        self.requests = []
+
+    async def generate(self, request):
+        self.requests.append(request)
+        return ProviderResult(content=self.content, effective_model="test-model")
+
+
+def report_ai_settings(**changes):
+    values = dict(ai_enabled=True, ai_reports_enabled=True, ai_provider="openrouter", ai_model="test",
+                  ai_api_key="key", ai_base_url=None, ai_timeout_seconds=5, ai_max_output_tokens=500,
+                  ai_temperature=0.1)
+    values.update(changes)
+    return SimpleNamespace(**values)
 
 
 @pytest.fixture()
@@ -144,6 +168,67 @@ def test_cross_event_show_and_client_creation_are_rejected(report_context):
     with pytest.raises(HTTPException) as denied:
         report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, customer)
     assert denied.value.status_code == 403
+
+
+def test_report_ai_context_scope_manual_priority_and_no_pii(report_context):
+    db, event, show, _, admin, _, outsider = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.SHOW, show.id, admin)
+    tasks = next(section for section in report.sections if section.section_key == "tasks")
+    tasks.content = {**tasks.content, "text": "Correccion manual aprobada"}
+    tasks.source_snapshot = {**tasks.source_snapshot, "email": "private@example.com"}
+    db.commit()
+    _, context = build_report_section_context(
+        db, report.id, tasks.id, admin, ReportAIRequest(operation="IMPROVE")
+    )
+    assert context["scope"] == {"type": "SHOW", "event_id": str(event.id), "show_id": str(show.id)}
+    assert context["effective_content"]["text"] == "Correccion manual aprobada"
+    assert "private@example.com" not in str(context)
+    summary = next(section for section in report.sections if section.section_key == "executive_summary")
+    tasks.is_enabled = False
+    db.commit()
+    _, summary_context = build_report_section_context(
+        db, report.id, summary.id, admin, ReportAIRequest()
+    )
+    assert "tasks" not in {item["key"] for item in summary_context["included_sections"]}
+    assert summary_context["source_data"] == {}
+    with pytest.raises(HTTPException):
+        build_report_section_context(db, report.id, tasks.id, outsider, ReportAIRequest())
+
+
+def test_report_ai_candidate_cache_regenerate_and_persistence(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    tasks = next(section for section in report.sections if section.section_key == "tasks")
+    provider = ReportFakeAIProvider()
+    ai = AIService(report_ai_settings(), provider)
+    options = ReportAIRequest(style="TECHNICAL", length="SHORT")
+    first = asyncio.run(ai.generate_report_section_draft(db, report.id, tasks.id, admin, options))
+    cached = asyncio.run(ai.generate_report_section_draft(db, report.id, tasks.id, admin, options))
+    regenerated = asyncio.run(ai.generate_report_section_draft(
+        db, report.id, tasks.id, admin, ReportAIRequest(operation="REGENERATE", style="TECHNICAL", length="SHORT")
+    ))
+    assert first.cached is False and cached.cached is True
+    assert cached.generation_id == first.generation_id
+    assert regenerated.generation_id != first.generation_id and len(provider.requests) == 2
+    stored = db.get(AIGeneration, first.generation_id)
+    assert stored.capability == "reports.section_draft" and stored.subject_id == tasks.id
+    assert tasks.content.get("text") is None
+
+
+def test_report_ai_disabled_and_rejects_invented_figures(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    tasks = next(section for section in report.sections if section.section_key == "tasks")
+    with pytest.raises(AIServiceError, match="deshabilitada"):
+        asyncio.run(AIService(report_ai_settings(ai_reports_enabled=False)).generate_report_section_draft(
+            db, report.id, tasks.id, admin, ReportAIRequest()
+        ))
+    provider = ReportFakeAIProvider('{"generated_text":"Se completaron 999 tareas.","key_points":[],"warnings":[],"used_data_keys":[]}')
+    with pytest.raises(AIServiceError) as exc:
+        asyncio.run(AIService(report_ai_settings(), provider).generate_report_section_draft(
+            db, report.id, tasks.id, admin, ReportAIRequest()
+        ))
+    assert exc.value.code == "unsupported_numeric_claim"
 
 
 def test_override_refresh_reset_and_stale_version(report_context):
