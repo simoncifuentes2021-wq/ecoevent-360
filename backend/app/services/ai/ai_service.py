@@ -91,11 +91,66 @@ def _parse_editorial_output(content: str) -> ReportAIEditorialPlan:
             payload["warnings"] = (payload.get("warnings") or [])[:8]
             payload["used_data_keys"] = (payload.get("used_data_keys") or [])[:200]
             payload["sections"] = (payload.get("sections") or [])[:50]
+            for section in payload["sections"]:
+                if not isinstance(section, dict):
+                    continue
+                group_with = section.get("group_with")
+                if not isinstance(group_with, str) or not re.fullmatch(r"[a-z0-9_-]{1,100}", group_with):
+                    section["group_with"] = None
+                if section.get("page_mode") == "GROUP_WITH" and not section.get("group_with"):
+                    section["page_mode"] = "AUTO"
         return ReportAIEditorialPlan.model_validate(payload)
     except (json.JSONDecodeError, ValidationError, ValueError, TypeError) as exc:
         raise AIProviderError(
             "invalid_output", f"AI provider returned invalid editorial plan: {str(exc)[:500]}"
         ) from exc
+
+
+def _fallback_editorial_plan(context: dict, reason: str) -> ReportAIEditorialPlan:
+    rank = {
+        "COVER": 0, "EXECUTIVE_SUMMARY": 1, "EVENT_INFO": 2, "SHOW_INFO": 2,
+        "OPERATIONS": 3, "STAFF": 4, "TASKS": 5, "INCIDENTS": 6, "FORMS": 7,
+        "ENVIRONMENTAL_IMPACT": 8, "BIKE_ZONE": 9, "WASTE": 10, "CARBON": 11,
+        "EVIDENCES": 12, "RECOMMENDATIONS": 13, "CONCLUSION": 14,
+    }
+    visible = [item for item in context["sections"] if item["is_enabled"]]
+    visible.sort(key=lambda item: (rank.get(item["section_type"], 12), item["sort_order"]))
+    sections = []
+    for item in visible:
+        content = item.get("effective_content") or {}
+        field_count = len([field for field in content.get("fields") or [] if field.get("is_visible", True)])
+        item_count = len([row for row in content.get("items") or [] if row.get("_is_visible", True)])
+        kind = item["section_type"]
+        if kind == "COVER":
+            layout, page_mode = "HERO_IMAGE_TEXT", "OWN_PAGE"
+        elif kind == "EVIDENCES":
+            layout, page_mode = "PHOTO_GRID", "OWN_PAGE"
+        elif kind in {"ENVIRONMENTAL_IMPACT", "CARBON"}:
+            layout, page_mode = "FEATURE_CHART", "OWN_PAGE"
+        elif field_count >= 4:
+            layout, page_mode = "KPI_GRID", "AUTO"
+        elif item_count >= 4:
+            layout, page_mode = "METRIC_LIST", "OWN_PAGE"
+        elif item.get("evidence_count"):
+            layout, page_mode = "TEXT_IMAGE", "AUTO"
+        else:
+            layout, page_mode = "EDITORIAL", "AUTO"
+        sections.append({
+            "section_key": item["section_key"], "title_suggestion": item["title"],
+            "layout_variant": layout, "page_mode": page_mode, "group_with": None,
+            "generated_text": None,
+            "rationale": "Composicion segura basada en el tipo y densidad del contenido.",
+        })
+    cover_style = (context.get("report", {}).get("editorial_config") or {}).get("cover_style", "FULL_PHOTO")
+    if cover_style not in {"FULL_PHOTO", "SIDE_PHOTO", "EDITORIAL", "MINIMAL_PREMIUM"}:
+        cover_style = "FULL_PHOTO"
+    return ReportAIEditorialPlan(
+        report_title_suggestion=context["report"]["title"], cover_style=cover_style,
+        section_order=[item["section_key"] for item in visible], sections=sections,
+        overall_rationale="EcoEvent preparo una composicion editorial estable segun contenido, densidad y evidencias.",
+        warnings=[f"Se uso el planificador seguro porque el modelo no entrego un plan aplicable: {reason[:180]}"],
+        used_data_keys=["sections", "report.editorial_config"],
+    )
 
 
 def _validate_numbers(output: AIInterpretation, context: dict) -> None:
@@ -356,27 +411,23 @@ class AIService:
                 model=self.config.ai_model, temperature=self.config.ai_temperature,
                 max_output_tokens=max(self.config.ai_max_output_tokens, 3200))
             allowed_keys = [item["section_key"] for item in context["sections"] if item["is_enabled"]]
-            for attempt in range(3):
+            result = None
+            try:
                 result = await provider.generate(request)
-                try:
-                    output = _parse_editorial_output(result.content)
-                    normalized_order = []
-                    for key in [*output.section_order, *allowed_keys]:
-                        if key in allowed_keys and key not in normalized_order:
-                            normalized_order.append(key)
-                    output.section_order = normalized_order
-                    planned_keys = {item.section_key for item in output.sections}
-                    if not planned_keys.issubset(set(allowed_keys)):
-                        raise AIProviderError("invalid_output", "Editorial plan referenced an unknown section")
-                    _validate_numbers(output, context)
-                    break
-                except AIProviderError as exc:
-                    if attempt < 2:
-                        request = request.model_copy(update={"context": {**context, "validation_retry": str(exc)}})
-                        continue
-                    raise
+                output = _parse_editorial_output(result.content)
+                normalized_order = []
+                for key in [*output.section_order, *allowed_keys]:
+                    if key in allowed_keys and key not in normalized_order:
+                        normalized_order.append(key)
+                output.section_order = normalized_order
+                planned_keys = {item.section_key for item in output.sections}
+                if not planned_keys.issubset(set(allowed_keys)):
+                    raise AIProviderError("invalid_output", "Editorial plan referenced an unknown section")
+                _validate_numbers(output, context)
+            except AIProviderError as exc:
+                output = _fallback_editorial_plan(context, str(exc))
             generation.output = output.model_dump()
-            generation.effective_model = result.effective_model
+            generation.effective_model = result.effective_model if result else None
             generation.status = "SUCCEEDED"
             generation.completed_at = _utcnow()
             generation.latency_ms = int((time.perf_counter() - started) * 1000)

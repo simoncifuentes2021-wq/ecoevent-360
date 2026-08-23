@@ -58,6 +58,7 @@ from app.services import (
     report_service,
 )
 from app.services.ai.ai_service import AIService, AIServiceError
+from app.services.ai.ai_service import _parse_editorial_output
 from app.services.ai.contexts.reports import build_report_section_context
 from app.services.ai.contexts.reports import build_report_editorial_context
 from app.services.ai.schemas import ProviderResult, ReportAIEditorialRequest, ReportAIRequest
@@ -140,6 +141,21 @@ def test_openrouter_free_falls_back_when_optional_parameters_return_400(monkeypa
     assert result.effective_model == "free-model"
     assert "response_format" in payloads[0] and "reasoning" in payloads[0]
     assert "response_format" not in payloads[1] and "reasoning" not in payloads[1]
+
+
+def test_editorial_ai_normalizes_invalid_group_with_token():
+    raw = {
+        "cover_style": "HERO_IMAGE_TEXT",
+        "section_order": ["event_info"],
+        "sections": [{"section_key": "event_info", "title_suggestion": None,
+                      "layout_variant": "EDITORIAL", "page_mode": "GROUP_WITH",
+                      "group_with": "GROUP_WITH", "generated_text": None,
+                      "rationale": "Lectura clara"}],
+        "overall_rationale": "Plan seguro", "warnings": [], "used_data_keys": [],
+    }
+    plan = _parse_editorial_output(json.dumps(raw))
+    assert plan.cover_style == "FULL_PHOTO"
+    assert plan.sections[0].page_mode == "AUTO" and plan.sections[0].group_with is None
 
 
 @pytest.fixture()
@@ -356,6 +372,18 @@ def test_editorial_ai_context_is_scoped_and_sanitized(report_context):
     assert "private@test.local" not in str(context)
     with pytest.raises(HTTPException):
         build_report_editorial_context(db, report.id, outsider, "EXECUTIVE", True)
+
+
+def test_editorial_ai_uses_safe_fallback_for_invalid_provider_output(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    provider = ReportFakeAIProvider("respuesta sin JSON")
+    proposal = asyncio.run(AIService(report_ai_settings(), provider).generate_report_editorial_plan(
+        db, report.id, admin, ReportAIEditorialRequest(force_refresh=True)
+    ))
+    assert proposal.section_order
+    assert all(section.generated_text is None for section in proposal.sections)
+    assert any("planificador seguro" in warning for warning in proposal.warnings)
 
 
 def test_override_refresh_reset_and_stale_version(report_context):
