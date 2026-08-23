@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+import httpx
 from fastapi import HTTPException
 from sqlalchemy import create_engine, delete, select, text
 from sqlalchemy.exc import DBAPIError
@@ -58,6 +59,8 @@ from app.services import (
 from app.services.ai.ai_service import AIService, AIServiceError
 from app.services.ai.contexts.reports import build_report_section_context
 from app.services.ai.schemas import ProviderResult, ReportAIRequest
+from app.services.ai.providers.openrouter import OpenRouterProvider
+from app.services.ai.schemas import ProviderRequest
 
 
 class ReportFakeAIProvider:
@@ -76,6 +79,41 @@ def report_ai_settings(**changes):
                   ai_temperature=0.1)
     values.update(changes)
     return SimpleNamespace(**values)
+
+
+def test_openrouter_free_falls_back_when_optional_parameters_return_400(monkeypatch):
+    payloads = []
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, headers, json):
+            payloads.append(json.copy())
+            request = httpx.Request("POST", url)
+            if len(payloads) == 1:
+                return httpx.Response(400, request=request, json={"error": "unsupported parameter"})
+            return httpx.Response(
+                200,
+                request=request,
+                json={"model": "free-model", "choices": [{"finish_reason": "stop", "message": {"content": "{}"}}]},
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    provider = OpenRouterProvider("key", "https://example.test", 5)
+    result = asyncio.run(provider.generate(ProviderRequest(
+        system_prompt="Return JSON", context={}, model="openrouter/free", temperature=0.1,
+        max_output_tokens=100,
+    )))
+    assert result.effective_model == "free-model"
+    assert "response_format" in payloads[0] and "reasoning" in payloads[0]
+    assert "response_format" not in payloads[1] and "reasoning" not in payloads[1]
 
 
 @pytest.fixture()

@@ -42,6 +42,19 @@ class OpenAICompatibleProvider:
                         continue
                     raise AIProviderError("timeout", "AI provider timed out") from exc
                 except httpx.HTTPStatusError as exc:
+                    if (
+                        attempt == 0
+                        and self.name == "openrouter"
+                        and request.model == "openrouter/free"
+                        and exc.response.status_code == 400
+                    ):
+                        # The free router may select an endpoint that rejects optional
+                        # structured-output/reasoning parameters. The prompt still
+                        # requires JSON and the service validates it strictly.
+                        payload.pop("response_format", None)
+                        payload.pop("reasoning", None)
+                        await asyncio.sleep(0.25)
+                        continue
                     if attempt == 0 and (exc.response.status_code == 429 or exc.response.status_code >= 500):
                         await asyncio.sleep(0.25)
                         continue
