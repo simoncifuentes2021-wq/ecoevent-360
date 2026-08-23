@@ -15,6 +15,7 @@ from app.schemas.report_schema import (
     EvidenceAdd,
     EvidenceUpdate,
     ReportEditor,
+    ReportAIEditorialApplyResponse,
     ReportEvidenceRead,
     ReportPublicationRead,
     ReportPagePlanRead,
@@ -30,7 +31,7 @@ from app.schemas.report_schema import (
 )
 from app.services import report_service
 from app.services.ai.ai_service import AIService, AIServiceError
-from app.services.ai.schemas import ReportAIDraftResponse, ReportAIRequest
+from app.services.ai.schemas import ReportAIDraftResponse, ReportAIEditorialApplyRequest, ReportAIEditorialPlanResponse, ReportAIEditorialRequest, ReportAIRequest
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -349,6 +350,46 @@ async def generate_section_ai_draft(
         request=request,
     )
     return result
+
+
+@router.post("/{report_id}/ai-editorial-plan", response_model=ReportAIEditorialPlanResponse)
+async def generate_report_ai_editorial_plan(
+    report_id: UUID, payload: ReportAIEditorialRequest, request: Request,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_builder_service
+
+    report = report_builder_service.get_editor(db, report_id, current_user)
+    report_service._ensure_admin(current_user)
+    enforce(request, "ai_report_editorial", str(current_user.id), settings.rate_limit_ai_reports)
+    try:
+        result = await AIService().generate_report_editorial_plan(db, report_id, current_user, payload)
+    except AIServiceError as exc:
+        code = status.HTTP_504_GATEWAY_TIMEOUT if exc.code == "timeout" else status.HTTP_503_SERVICE_UNAVAILABLE
+        raise HTTPException(status_code=code, detail={"code": exc.code, "message": str(exc)}) from exc
+    create_audit_log(db, user=current_user, action="REPORT_AI_EDITORIAL_PLAN_REQUESTED",
+        module="reports", entity_type="Report", entity_id=report.id, event_id=report.event_id,
+        metadata={"generation_id": result.generation_id, "style": payload.style, "cached": result.cached}, request=request)
+    return result
+
+
+@router.post("/{report_id}/ai-editorial-plan/apply", response_model=ReportAIEditorialApplyResponse)
+def apply_report_ai_editorial_plan(
+    report_id: UUID, payload: ReportAIEditorialApplyRequest, request: Request,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_builder_service
+    from app.services.ai import report_editorial_service
+
+    report = report_builder_service.get_editor(db, report_id, current_user)
+    report_service._ensure_admin(current_user)
+    revision, updated = report_editorial_service.apply_plan(
+        db, report, payload.generation_id, payload.edit_version, current_user
+    )
+    create_audit_log(db, user=current_user, action="REPORT_AI_EDITORIAL_PLAN_APPLIED",
+        module="reports", entity_type="Report", entity_id=report.id, event_id=report.event_id,
+        metadata={"generation_id": str(payload.generation_id), "rollback_revision_id": str(revision.id)}, request=request)
+    return {"revision_id": revision.id, "report": updated}
 
 
 @router.post("/{report_id}/sections", response_model=ReportSectionRead, status_code=201)

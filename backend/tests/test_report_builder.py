@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import asyncio
+import json
 import os
 from types import SimpleNamespace
 from uuid import uuid4
@@ -58,7 +59,9 @@ from app.services import (
 )
 from app.services.ai.ai_service import AIService, AIServiceError
 from app.services.ai.contexts.reports import build_report_section_context
-from app.services.ai.schemas import ProviderResult, ReportAIRequest
+from app.services.ai.contexts.reports import build_report_editorial_context
+from app.services.ai.schemas import ProviderResult, ReportAIEditorialRequest, ReportAIRequest
+from app.services.ai import report_editorial_service
 from app.services.ai.providers.openrouter import OpenRouterProvider
 from app.services.ai.schemas import ProviderRequest
 
@@ -71,6 +74,29 @@ class ReportFakeAIProvider:
     async def generate(self, request):
         self.requests.append(request)
         return ProviderResult(content=self.content, effective_model="test-model")
+
+
+class EditorialFakeAIProvider:
+    def __init__(self):
+        self.requests = []
+
+    async def generate(self, request):
+        self.requests.append(request)
+        visible = [item for item in request.context["sections"] if item["is_enabled"]]
+        output = {
+            "report_title_suggestion": "Informe editorial optimizado",
+            "cover_style": "EDITORIAL",
+            "section_order": [item["section_key"] for item in reversed(visible)],
+            "sections": [
+                {"section_key": item["section_key"], "title_suggestion": item["title"],
+                 "layout_variant": "EDITORIAL", "page_mode": "AUTO", "group_with": None,
+                 "generated_text": None, "rationale": "Mejora la lectura"}
+                for item in visible
+            ],
+            "overall_rationale": "Orden editorial coherente",
+            "warnings": [], "used_data_keys": ["sections"],
+        }
+        return ProviderResult(content=json.dumps(output), effective_model="editorial-test-model")
 
 
 def report_ai_settings(**changes):
@@ -294,6 +320,42 @@ def test_report_ai_allows_numeric_indexes_only_in_traceability_keys(report_conte
         db, report.id, tasks.id, admin, ReportAIRequest()
     ))
     assert result.used_data_keys == ["effective_content.items.99"]
+
+
+def test_editorial_ai_plan_applies_with_automatic_rollback_revision(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    original_title = report.title
+    original_order = [section.section_key for section in report.sections]
+    provider = EditorialFakeAIProvider()
+    proposal = asyncio.run(AIService(report_ai_settings(), provider).generate_report_editorial_plan(
+        db, report.id, admin, ReportAIEditorialRequest()
+    ))
+    revision, updated = report_editorial_service.apply_plan(
+        db, report, proposal.generation_id, report.edit_version, admin
+    )
+    assert updated.title == "Informe editorial optimizado"
+    assert updated.editorial_config["cover_style"] == "EDITORIAL"
+    assert [section.section_key for section in updated.sections if section.is_enabled] == list(reversed([
+        key for key in original_order if next(item for item in report.sections if item.section_key == key).is_enabled
+    ]))
+    assert revision.note == "Antes de aplicar optimizacion editorial con IA"
+    report_revision_service.restore(db, updated, revision.id, updated.edit_version)
+    restored = report_builder_service.get_editor(db, report.id, admin)
+    assert restored.title == original_title
+    assert [section.section_key for section in restored.sections] == original_order
+
+
+def test_editorial_ai_context_is_scoped_and_sanitized(report_context):
+    db, event, show, _, admin, _, outsider = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.SHOW, show.id, admin)
+    report.sections[0].content = {**report.sections[0].content, "contact_email": "private@test.local"}
+    db.commit()
+    _, context = build_report_editorial_context(db, report.id, admin, "EXECUTIVE", True)
+    assert context["scope"]["show_id"] == str(show.id)
+    assert "private@test.local" not in str(context)
+    with pytest.raises(HTTPException):
+        build_report_editorial_context(db, report.id, outsider, "EXECUTIVE", True)
 
 
 def test_override_refresh_reset_and_stale_version(report_context):

@@ -76,6 +76,15 @@ test("report AI keeps generated copy as an explicit candidate", () => {
   assert.doesNotMatch(editor, /AI_API_KEY|OPENROUTER/);
 });
 
+test("editorial AI proposes the whole document and can be rolled back", () => {
+  const editor = read("components", "reports", "ReportBuilder.tsx");
+  const api = read("lib", "api", "reports.ts");
+  for (const pattern of [/Optimizar informe con IA/, /Dirección editorial con IA/, /Diseño actual/, /Aplicar propuesta reversible/, /Deshacer optimización IA/, /Se guardará automáticamente una revisión/, /Descartar propuesta/]) assert.match(editor, pattern);
+  assert.match(api, /ai-editorial-plan/);
+  assert.match(api, /applyReportEditorialPlan/);
+  assert.match(editor, /restoreReportRevision/);
+});
+
 test("premium PDF workflow uses exact preview and immutable publications", () => {
   const editor = read("components", "reports", "ReportBuilder.tsx");
   const api = read("lib", "api", "reports.ts");

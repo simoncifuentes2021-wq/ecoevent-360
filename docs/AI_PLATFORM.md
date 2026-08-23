@@ -18,6 +18,12 @@ Los valores efectivos de la sección, incluidas correcciones manuales, tienen pr
 
 Una generación es siempre un candidato: no modifica la sección. El usuario debe aceptar o descartar; al aceptar se usa el guardado normal del editor, con control de concurrencia y revisiones. `REGENERATE` fuerza un intento nuevo; las otras operaciones reutilizan caché cuando contexto, prompt, proveedor y modelo no cambiaron.
 
+### Dirección editorial integral
+
+`POST /api/v1/reports/{report_id}/ai-editorial-plan` analiza todas las secciones habilitadas y devuelve una propuesta tipada de título, orden, layout, agrupación por páginas y mejoras opcionales de texto. La IA solo elige componentes soportados por el renderizador; no genera HTML, CSS ni coordenadas arbitrarias.
+
+La propuesta no modifica el reporte. `POST /api/v1/reports/{report_id}/ai-editorial-plan/apply` valida nuevamente el alcance y la versión, crea primero una revisión completa con la nota `Antes de aplicar optimizacion editorial con IA` y recién después aplica el plan. El botón de deshacer restaura esa revisión; el mismo punto de retorno permanece en el historial aunque se recargue el navegador.
+
 ## Configuración
 
 ```env

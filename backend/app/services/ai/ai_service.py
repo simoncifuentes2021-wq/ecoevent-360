@@ -15,11 +15,12 @@ from app.models.ai import AIGeneration
 from app.models.core import User
 from app.services.ai.ai_router import build_provider
 from app.services.ai.contexts.environmental import CAPABILITY, build_environmental_context
-from app.services.ai.contexts.reports import CAPABILITY as REPORT_CAPABILITY, build_report_section_context
+from app.services.ai.contexts.reports import CAPABILITY as REPORT_CAPABILITY, EDITORIAL_CAPABILITY, build_report_editorial_context, build_report_section_context
 from app.services.ai.prompts.environmental import PROMPT_VERSION, SYSTEM_PROMPT
 from app.services.ai.prompts.reports import PROMPT_VERSION as REPORT_PROMPT_VERSION, SYSTEM_PROMPT as REPORT_SYSTEM_PROMPT
+from app.services.ai.prompts.report_editorial import PROMPT_VERSION as EDITORIAL_PROMPT_VERSION, SYSTEM_PROMPT as EDITORIAL_SYSTEM_PROMPT
 from app.services.ai.providers.base import AIProvider, AIProviderError
-from app.services.ai.schemas import AIInterpretation, AIInterpretationResponse, ProviderRequest, ReportAIDraft, ReportAIDraftResponse, ReportAIRequest
+from app.services.ai.schemas import AIInterpretation, AIInterpretationResponse, ProviderRequest, ReportAIDraft, ReportAIDraftResponse, ReportAIEditorialPlan, ReportAIEditorialPlanResponse, ReportAIEditorialRequest, ReportAIRequest
 
 
 class AIServiceError(RuntimeError):
@@ -68,6 +69,33 @@ def _parse_report_output(content: str) -> ReportAIDraft:
         return ReportAIDraft.model_validate(payload)
     except (json.JSONDecodeError, ValidationError, ValueError, TypeError) as exc:
         raise AIProviderError("invalid_output", "AI provider returned invalid structured output") from exc
+
+
+def _parse_editorial_output(content: str) -> ReportAIEditorialPlan:
+    candidate = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    if not candidate.startswith("{") or not candidate.endswith("}"):
+        start, end = candidate.find("{"), candidate.rfind("}")
+        if start >= 0 and end > start:
+            candidate = candidate[start : end + 1]
+    try:
+        payload = json.loads(candidate)
+        if isinstance(payload, dict):
+            cover_aliases = {
+                "HERO_IMAGE_TEXT": "FULL_PHOTO",
+                "TEXT_IMAGE": "SIDE_PHOTO",
+                "MINIMAL": "MINIMAL_PREMIUM",
+            }
+            payload["cover_style"] = cover_aliases.get(
+                payload.get("cover_style"), payload.get("cover_style")
+            )
+            payload["warnings"] = (payload.get("warnings") or [])[:8]
+            payload["used_data_keys"] = (payload.get("used_data_keys") or [])[:200]
+            payload["sections"] = (payload.get("sections") or [])[:50]
+        return ReportAIEditorialPlan.model_validate(payload)
+    except (json.JSONDecodeError, ValidationError, ValueError, TypeError) as exc:
+        raise AIProviderError(
+            "invalid_output", f"AI provider returned invalid editorial plan: {str(exc)[:500]}"
+        ) from exc
 
 
 def _validate_numbers(output: AIInterpretation, context: dict) -> None:
@@ -289,6 +317,81 @@ class AIService:
             db.commit()
             raise AIServiceError(exc.code, "No fue posible generar el borrador en este momento") from exc
 
+    async def generate_report_editorial_plan(
+        self, db: Session, report_id: UUID, user: User, options: ReportAIEditorialRequest
+    ) -> ReportAIEditorialPlanResponse:
+        if not self.config.ai_enabled or not self.config.ai_reports_enabled:
+            raise AIServiceError("disabled", "La asistencia de IA para reportes esta deshabilitada")
+        report, context = build_report_editorial_context(
+            db, report_id, user, options.style, options.include_text_rewrites
+        )
+        input_hash = _hash(context)
+        provider_name = self.config.ai_provider.strip().lower()
+        cached = None
+        if not options.force_refresh:
+            cached = db.scalar(select(AIGeneration).where(
+                AIGeneration.capability == EDITORIAL_CAPABILITY,
+                AIGeneration.subject_id == report_id,
+                AIGeneration.input_hash == input_hash,
+                AIGeneration.prompt_version == EDITORIAL_PROMPT_VERSION,
+                AIGeneration.provider == provider_name,
+                AIGeneration.model == self.config.ai_model,
+                AIGeneration.status == "SUCCEEDED",
+            ).order_by(AIGeneration.created_at.desc()))
+        if cached and cached.output:
+            return self._editorial_response(cached, True)
+        generation = AIGeneration(
+            capability=EDITORIAL_CAPABILITY, subject_type="Report", subject_id=report_id,
+            event_id=report.event_id, requested_by=user.id, provider=provider_name,
+            model=self.config.ai_model, prompt_version=EDITORIAL_PROMPT_VERSION,
+            input_hash=input_hash, input_snapshot=context, status="PENDING",
+        )
+        db.add(generation)
+        db.commit()
+        db.refresh(generation)
+        started = time.perf_counter()
+        try:
+            provider = self._provider or build_provider(self.config)
+            request = ProviderRequest(system_prompt=EDITORIAL_SYSTEM_PROMPT, context=context,
+                model=self.config.ai_model, temperature=self.config.ai_temperature,
+                max_output_tokens=max(self.config.ai_max_output_tokens, 3200))
+            allowed_keys = [item["section_key"] for item in context["sections"] if item["is_enabled"]]
+            for attempt in range(3):
+                result = await provider.generate(request)
+                try:
+                    output = _parse_editorial_output(result.content)
+                    normalized_order = []
+                    for key in [*output.section_order, *allowed_keys]:
+                        if key in allowed_keys and key not in normalized_order:
+                            normalized_order.append(key)
+                    output.section_order = normalized_order
+                    planned_keys = {item.section_key for item in output.sections}
+                    if not planned_keys.issubset(set(allowed_keys)):
+                        raise AIProviderError("invalid_output", "Editorial plan referenced an unknown section")
+                    _validate_numbers(output, context)
+                    break
+                except AIProviderError as exc:
+                    if attempt < 2:
+                        request = request.model_copy(update={"context": {**context, "validation_retry": str(exc)}})
+                        continue
+                    raise
+            generation.output = output.model_dump()
+            generation.effective_model = result.effective_model
+            generation.status = "SUCCEEDED"
+            generation.completed_at = _utcnow()
+            generation.latency_ms = int((time.perf_counter() - started) * 1000)
+            db.commit()
+            db.refresh(generation)
+            return self._editorial_response(generation, False)
+        except AIProviderError as exc:
+            generation.status = "FAILED"
+            generation.error_code = exc.code
+            generation.error_message = str(exc)[:2000]
+            generation.completed_at = _utcnow()
+            generation.latency_ms = int((time.perf_counter() - started) * 1000)
+            db.commit()
+            raise AIServiceError(exc.code, "No fue posible optimizar el informe en este momento") from exc
+
     @staticmethod
     def _response(generation: AIGeneration, cached: bool) -> AIInterpretationResponse:
         return AIInterpretationResponse(
@@ -312,5 +415,14 @@ class AIService:
             effective_model=generation.effective_model,
             prompt_version=generation.prompt_version,
             cached=cached,
+            generated_at=(generation.completed_at or generation.created_at).isoformat(),
+        )
+
+    @staticmethod
+    def _editorial_response(generation: AIGeneration, cached: bool) -> ReportAIEditorialPlanResponse:
+        return ReportAIEditorialPlanResponse(
+            **(generation.output or {}), generation_id=str(generation.id), provider=generation.provider,
+            model=generation.model, effective_model=generation.effective_model,
+            prompt_version=generation.prompt_version, cached=cached,
             generated_at=(generation.completed_at or generation.created_at).isoformat(),
         )

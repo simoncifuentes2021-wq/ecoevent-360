@@ -259,6 +259,11 @@ class ReportEditor(ReportRead):
     evidences: list[ReportEvidenceRead]
 
 
+class ReportAIEditorialApplyResponse(BaseModel):
+    revision_id: UUID
+    report: ReportEditor
+
+
 class AvailableEvidence(BaseModel):
     id: UUID
     file_type: str | None
