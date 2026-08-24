@@ -1518,3 +1518,48 @@ def test_freeform_chart_dataset_is_normalized_in_backend():
     assert (
         chart_dataset(SimpleNamespace(sections=[]), "carbon", "LINE")["availability"] == "NO_DATA"
     )
+
+
+def test_freeform_template_keeps_bindings_but_drops_private_evidence_values():
+    from app.services.report_template_layout_service import _snapshot_pages
+
+    common = dict(rotation=0, locked=False, visible=True, style={}, metadata_={})
+    image = SimpleNamespace(
+        type=SimpleNamespace(value="IMAGE"),
+        x=1,
+        y=2,
+        width=3,
+        height=4,
+        z_index=1,
+        content={"evidence_id": "private-id", "uri": "private-url", "caption": "Foto"},
+        data_binding=None,
+        **common,
+    )
+    kpi = SimpleNamespace(
+        type=SimpleNamespace(value="KPI"),
+        x=5,
+        y=6,
+        width=7,
+        height=8,
+        z_index=2,
+        content={"text": "4850"},
+        data_binding={"key": "waste.total_kg"},
+        **common,
+    )
+    report = SimpleNamespace(
+        pages=[
+            SimpleNamespace(
+                page_number=1,
+                name="A4",
+                width=1000,
+                height=1414,
+                background="#FFFFFF",
+                background_image=None,
+                is_enabled=True,
+                elements=[image, kpi],
+            )
+        ]
+    )
+    pages = _snapshot_pages(report)
+    assert pages[0]["elements"][0]["content"] == {"caption": "Foto"}
+    assert pages[0]["elements"][1]["data_binding"] == {"key": "waste.total_kg"}

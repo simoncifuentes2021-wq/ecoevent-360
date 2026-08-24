@@ -357,6 +357,23 @@ class ReportPageRead(BaseModel):
     elements: list[ReportElementRead] = Field(default_factory=list)
 
 
+class ReportTemplateLayoutCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class ReportTemplateLayoutRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    name: str
+    description: str | None
+    pages: list[dict]
+    is_system: bool
+    created_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class ReportPagePlanItem(BaseModel):
     number: int
     recipe: str

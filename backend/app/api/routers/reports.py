@@ -26,6 +26,8 @@ from app.schemas.report_schema import (
     ReportElementUpdate,
     ReportElementBatchUpdate,
     ReportElementRead,
+    ReportTemplateLayoutCreate,
+    ReportTemplateLayoutRead,
     ReportRead,
     ReportRevisionRead,
     ReportSectionRead,
@@ -204,6 +206,46 @@ def get_report_chart_data(
     report = report_builder_service.get_editor(db, report_id, current_user)
     report_service._ensure_admin(current_user)
     return chart_dataset(report, section_key, chart_type)
+
+
+@router.get("/layout-templates", response_model=list[ReportTemplateLayoutRead])
+def list_report_layout_templates(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)
+):
+    from app.services import report_template_layout_service
+
+    return report_template_layout_service.list_templates(db, current_user)
+
+
+@router.post(
+    "/{report_id}/layout-templates", response_model=ReportTemplateLayoutRead, status_code=201
+)
+def save_report_layout_template(
+    report_id: UUID,
+    payload: ReportTemplateLayoutCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_template_layout_service
+
+    return report_template_layout_service.save(db, report_id, payload, current_user)
+
+
+@router.post(
+    "/{report_id}/layout-templates/{template_id}/apply", response_model=list[ReportPageRead]
+)
+def apply_report_layout_template(
+    report_id: UUID,
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_template_layout_service
+
+    return [
+        _page_read(item)
+        for item in report_template_layout_service.apply(db, report_id, template_id, current_user)
+    ]
 
 
 @router.get("/{report_id}/html-preview", response_class=HTMLResponse)

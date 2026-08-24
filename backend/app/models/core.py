@@ -2148,6 +2148,22 @@ class ReportElement(Base):
     page: Mapped[ReportPage] = relationship(back_populates="elements")
 
 
+class ReportTemplateLayout(Base):
+    __tablename__ = "report_template_layouts"
+    __table_args__ = (UniqueConstraint("name", name="uq_report_template_layouts_name"),)
+    id: Mapped[UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500))
+    pages: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+    creator: Mapped[User | None] = relationship()
+
+
 class ReportEvidence(Base):
     __tablename__ = "report_evidences"
     __table_args__ = (
