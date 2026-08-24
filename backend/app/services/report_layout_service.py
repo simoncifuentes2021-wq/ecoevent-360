@@ -77,10 +77,12 @@ def sync_section_elements(db: Session, section) -> None:
     fields = {
         str(field.get("key")): field for field in (section.content or {}).get("fields", [])
     }
+    linked = []
     for element in elements:
         metadata = element.metadata_ or {}
         if metadata.get("section_id") != str(section.id):
             continue
+        linked.append(element)
         element.visible = section.is_enabled
         role = metadata.get("section_role")
         if role == "title":
@@ -102,6 +104,58 @@ def sync_section_elements(db: Session, section) -> None:
                     "text": display,
                     "label": field.get("label"),
                 }
+    _apply_section_variant(section, linked)
+
+
+def _apply_section_variant(section, elements: list[ReportElement]) -> None:
+    """Translate engine layout choices into positions of the same linked objects."""
+    container = next(
+        (item for item in elements if (item.metadata_ or {}).get("section_role") == "container"),
+        None,
+    )
+    if not container:
+        return
+    def role(item):
+        return (item.metadata_ or {}).get("section_role")
+    text = next((item for item in elements if role(item) == "text"), None)
+    fields = [item for item in elements if role(item) == "field"]
+    images = [item for item in elements if role(item) == "image"]
+    charts = [item for item in elements if role(item) == "chart"]
+    variant = getattr(section.layout_variant, "value", str(section.layout_variant))
+    left, top, width, height = container.x + 25, container.y + 105, container.width - 50, container.height - 130
+    media_mode = variant in {"HERO_IMAGE_TEXT", "TEXT_IMAGE", "PHOTO_GRID", "FEATURE_CHART"}
+    if text:
+        text.x = left
+        text.y = top
+        text.width = width * (0.46 if media_mode or variant == "TWO_COLUMN" else 1)
+        text.height = min(130, height)
+    field_top = top + (145 if text else 0)
+    if variant == "TWO_COLUMN":
+        field_left, field_width, columns = left + width * 0.53, width * 0.47, 1
+        field_top = top
+    else:
+        field_left, field_width = left, width * (0.48 if media_mode else 1)
+        columns = 2 if variant in {"KPI_GRID", "BIG_NUMBERS"} else max(1, len(fields))
+    gap = 12
+    card_width = max(80, (field_width - gap * (columns - 1)) / columns)
+    for index, element in enumerate(fields):
+        row, column = divmod(index, columns)
+        element.x = field_left + column * (card_width + gap)
+        element.y = field_top + row * 112
+        element.width = card_width
+        element.height = 100
+        element.style = {
+            **(element.style or {}),
+            "fontSize": 30 if variant == "BIG_NUMBERS" else 22,
+        }
+    for element in images:
+        element.visible = section.is_enabled and variant in {"HERO_IMAGE_TEXT", "TEXT_IMAGE", "PHOTO_GRID"}
+        element.x, element.y = left + width * 0.53, top
+        element.width, element.height = width * 0.47, height
+    for element in charts:
+        element.visible = section.is_enabled and variant == "FEATURE_CHART"
+        element.x, element.y = left + width * 0.53, top
+        element.width, element.height = width * 0.47, height
 
 
 def _sync_element_content_to_section(element: ReportElement, text: str) -> None:
