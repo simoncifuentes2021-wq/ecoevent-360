@@ -35,6 +35,7 @@ from app.models.enums import (
     EventStatus,
     IncidentStatus,
     ReportLayoutVariant,
+    ReportElementType,
     ReportPublicationStatus,
     ReportScope,
     ReportStatus,
@@ -47,6 +48,11 @@ from app.schemas.report_schema import (
     EvidenceAdd,
     ReportSectionContent,
     ReportUpdate,
+    ReportElementBatchItem,
+    ReportElementBatchUpdate,
+    ReportElementCreate,
+    ReportElementUpdate,
+    ReportPageCreate,
     SectionOrderUpdate,
     SectionUpdate,
 )
@@ -54,6 +60,7 @@ from app.services import (
     report_autofill_service,
     report_builder_service,
     report_publication_service,
+    report_layout_service,
     report_revision_service,
     report_service,
 )
@@ -67,9 +74,82 @@ from app.services.ai.providers.openrouter import OpenRouterProvider
 from app.services.ai.schemas import ProviderRequest
 
 
+def test_freeform_page_element_batch_persists_exact_geometry(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    page = report_layout_service.create_page(db, report.id, ReportPageCreate(), admin)
+    text_element = report_layout_service.create_element(
+        db,
+        report.id,
+        page.id,
+        ReportElementCreate(type=ReportElementType.TEXT, x=10, y=20, width=300, height=80),
+        admin,
+    )
+    kpi = report_layout_service.create_element(
+        db,
+        report.id,
+        page.id,
+        ReportElementCreate(type=ReportElementType.KPI, x=50, y=150, width=250, height=160),
+        admin,
+    )
+    report_layout_service.batch_update(
+        db,
+        report.id,
+        page.id,
+        ReportElementBatchUpdate(
+            elements=[
+                ReportElementBatchItem(
+                    id=text_element.id, x=123.25, y=45.5, width=333.75, height=90.125
+                ),
+                ReportElementBatchItem(id=kpi.id, x=600.5, y=900.25, width=250.5, height=180.75),
+            ]
+        ),
+        admin,
+    )
+    db.expire_all()
+    loaded = report_layout_service.list_pages(db, report.id, admin)[0]
+    geometry = {item.type: (item.x, item.y, item.width, item.height) for item in loaded.elements}
+    assert geometry[ReportElementType.TEXT] == (123.25, 45.5, 333.75, 90.125)
+    assert geometry[ReportElementType.KPI] == (600.5, 900.25, 250.5, 180.75)
+
+
+def test_freeform_layout_permissions_bounds_lock_layers_and_delete(report_context):
+    db, event, _, _, admin, client, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    page = report_layout_service.create_page(db, report.id, ReportPageCreate(), admin)
+    with pytest.raises(HTTPException) as forbidden:
+        report_layout_service.create_page(db, report.id, ReportPageCreate(), client)
+    assert forbidden.value.status_code == 403
+    with pytest.raises(HTTPException) as invalid:
+        report_layout_service.create_element(
+            db,
+            report.id,
+            page.id,
+            ReportElementCreate(type=ReportElementType.TEXT, x=950, y=0, width=100, height=40),
+            admin,
+        )
+    assert invalid.value.status_code == 422
+    element = report_layout_service.create_element(
+        db,
+        report.id,
+        page.id,
+        ReportElementCreate(type=ReportElementType.SHAPE, x=20, y=20, width=100, height=100),
+        admin,
+    )
+    updated = report_layout_service.update_element(
+        db, report.id, element.id, ReportElementUpdate(locked=True, z_index=7), admin
+    )
+    assert updated.locked is True and updated.z_index == 7
+    report_layout_service.delete_element(db, report.id, element.id, admin)
+    assert report_layout_service.list_pages(db, report.id, admin)[0].elements == []
+
+
 class ReportFakeAIProvider:
     def __init__(self, content: str | None = None):
-        self.content = content or '{"title_suggestion":"Balance","generated_text":"Se registraron tareas completadas.","key_points":["Tareas registradas"],"warnings":[],"used_data_keys":["effective_content.fields"]}'
+        self.content = (
+            content
+            or '{"title_suggestion":"Balance","generated_text":"Se registraron tareas completadas.","key_points":["Tareas registradas"],"warnings":[],"used_data_keys":["effective_content.fields"]}'
+        )
         self.requests = []
 
     async def generate(self, request):
@@ -89,21 +169,36 @@ class EditorialFakeAIProvider:
             "cover_style": "EDITORIAL",
             "section_order": [item["section_key"] for item in reversed(visible)],
             "sections": [
-                {"section_key": item["section_key"], "title_suggestion": item["title"],
-                 "layout_variant": "EDITORIAL", "page_mode": "AUTO", "group_with": None,
-                 "generated_text": None, "rationale": "Mejora la lectura"}
+                {
+                    "section_key": item["section_key"],
+                    "title_suggestion": item["title"],
+                    "layout_variant": "EDITORIAL",
+                    "page_mode": "AUTO",
+                    "group_with": None,
+                    "generated_text": None,
+                    "rationale": "Mejora la lectura",
+                }
                 for item in visible
             ],
             "overall_rationale": "Orden editorial coherente",
-            "warnings": [], "used_data_keys": ["sections"],
+            "warnings": [],
+            "used_data_keys": ["sections"],
         }
         return ProviderResult(content=json.dumps(output), effective_model="editorial-test-model")
 
 
 def report_ai_settings(**changes):
-    values = dict(ai_enabled=True, ai_reports_enabled=True, ai_provider="openrouter", ai_model="test",
-                  ai_api_key="key", ai_base_url=None, ai_timeout_seconds=5, ai_max_output_tokens=500,
-                  ai_temperature=0.1)
+    values = dict(
+        ai_enabled=True,
+        ai_reports_enabled=True,
+        ai_provider="openrouter",
+        ai_model="test",
+        ai_api_key="key",
+        ai_base_url=None,
+        ai_timeout_seconds=5,
+        ai_max_output_tokens=500,
+        ai_temperature=0.1,
+    )
     values.update(changes)
     return SimpleNamespace(**values)
 
@@ -129,15 +224,25 @@ def test_openrouter_free_falls_back_when_optional_parameters_return_400(monkeypa
             return httpx.Response(
                 200,
                 request=request,
-                json={"model": "free-model", "choices": [{"finish_reason": "stop", "message": {"content": "{}"}}]},
+                json={
+                    "model": "free-model",
+                    "choices": [{"finish_reason": "stop", "message": {"content": "{}"}}],
+                },
             )
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
     provider = OpenRouterProvider("key", "https://example.test", 5)
-    result = asyncio.run(provider.generate(ProviderRequest(
-        system_prompt="Return JSON", context={}, model="openrouter/free", temperature=0.1,
-        max_output_tokens=100,
-    )))
+    result = asyncio.run(
+        provider.generate(
+            ProviderRequest(
+                system_prompt="Return JSON",
+                context={},
+                model="openrouter/free",
+                temperature=0.1,
+                max_output_tokens=100,
+            )
+        )
+    )
     assert result.effective_model == "free-model"
     assert "response_format" in payloads[0] and "reasoning" in payloads[0]
     assert "response_format" not in payloads[1] and "reasoning" not in payloads[1]
@@ -147,11 +252,20 @@ def test_editorial_ai_normalizes_invalid_group_with_token():
     raw = {
         "cover_style": "HERO_IMAGE_TEXT",
         "section_order": ["event_info"],
-        "sections": [{"section_key": "event_info", "title_suggestion": None,
-                      "layout_variant": "EDITORIAL", "page_mode": "GROUP_WITH",
-                      "group_with": "GROUP_WITH", "generated_text": None,
-                      "rationale": "Lectura clara"}],
-        "overall_rationale": "Plan seguro", "warnings": [], "used_data_keys": [],
+        "sections": [
+            {
+                "section_key": "event_info",
+                "title_suggestion": None,
+                "layout_variant": "EDITORIAL",
+                "page_mode": "GROUP_WITH",
+                "group_with": "GROUP_WITH",
+                "generated_text": None,
+                "rationale": "Lectura clara",
+            }
+        ],
+        "overall_rationale": "Plan seguro",
+        "warnings": [],
+        "used_data_keys": [],
     }
     plan = _parse_editorial_output(json.dumps(raw))
     assert plan.cover_style == "FULL_PHOTO"
@@ -263,7 +377,9 @@ def test_report_ai_context_scope_manual_priority_and_no_pii(report_context):
     assert context["scope"] == {"type": "SHOW", "event_id": str(event.id), "show_id": str(show.id)}
     assert context["effective_content"]["text"] == "Correccion manual aprobada"
     assert "private@example.com" not in str(context)
-    summary = next(section for section in report.sections if section.section_key == "executive_summary")
+    summary = next(
+        section for section in report.sections if section.section_key == "executive_summary"
+    )
     tasks.is_enabled = False
     db.commit()
     _, summary_context = build_report_section_context(
@@ -284,9 +400,15 @@ def test_report_ai_candidate_cache_regenerate_and_persistence(report_context):
     options = ReportAIRequest(style="TECHNICAL", length="SHORT")
     first = asyncio.run(ai.generate_report_section_draft(db, report.id, tasks.id, admin, options))
     cached = asyncio.run(ai.generate_report_section_draft(db, report.id, tasks.id, admin, options))
-    regenerated = asyncio.run(ai.generate_report_section_draft(
-        db, report.id, tasks.id, admin, ReportAIRequest(operation="REGENERATE", style="TECHNICAL", length="SHORT")
-    ))
+    regenerated = asyncio.run(
+        ai.generate_report_section_draft(
+            db,
+            report.id,
+            tasks.id,
+            admin,
+            ReportAIRequest(operation="REGENERATE", style="TECHNICAL", length="SHORT"),
+        )
+    )
     assert first.cached is False and cached.cached is True
     assert cached.generation_id == first.generation_id
     assert regenerated.generation_id != first.generation_id and len(provider.requests) == 2
@@ -300,14 +422,20 @@ def test_report_ai_disabled_and_rejects_invented_figures(report_context):
     report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
     tasks = next(section for section in report.sections if section.section_key == "tasks")
     with pytest.raises(AIServiceError, match="deshabilitada"):
-        asyncio.run(AIService(report_ai_settings(ai_reports_enabled=False)).generate_report_section_draft(
-            db, report.id, tasks.id, admin, ReportAIRequest()
-        ))
-    provider = ReportFakeAIProvider('{"generated_text":"Se completaron 999 tareas.","key_points":[],"warnings":[],"used_data_keys":[]}')
+        asyncio.run(
+            AIService(report_ai_settings(ai_reports_enabled=False)).generate_report_section_draft(
+                db, report.id, tasks.id, admin, ReportAIRequest()
+            )
+        )
+    provider = ReportFakeAIProvider(
+        '{"generated_text":"Se completaron 999 tareas.","key_points":[],"warnings":[],"used_data_keys":[]}'
+    )
     with pytest.raises(AIServiceError) as exc:
-        asyncio.run(AIService(report_ai_settings(), provider).generate_report_section_draft(
-            db, report.id, tasks.id, admin, ReportAIRequest()
-        ))
+        asyncio.run(
+            AIService(report_ai_settings(), provider).generate_report_section_draft(
+                db, report.id, tasks.id, admin, ReportAIRequest()
+            )
+        )
     assert exc.value.code == "unsupported_numeric_claim"
 
 
@@ -317,11 +445,15 @@ def test_report_ai_normalizes_provider_lists_to_contract(report_context):
     tasks = next(section for section in report.sections if section.section_key == "tasks")
     points = ",".join(f'"Punto {letter}"' for letter in "ABCDEFGHIJ")
     provider = ReportFakeAIProvider(
-        '{"generated_text":"Texto seguro","key_points":[' + points + '],"warnings":[],"used_data_keys":[]}'
+        '{"generated_text":"Texto seguro","key_points":['
+        + points
+        + '],"warnings":[],"used_data_keys":[]}'
     )
-    result = asyncio.run(AIService(report_ai_settings(), provider).generate_report_section_draft(
-        db, report.id, tasks.id, admin, ReportAIRequest()
-    ))
+    result = asyncio.run(
+        AIService(report_ai_settings(), provider).generate_report_section_draft(
+            db, report.id, tasks.id, admin, ReportAIRequest()
+        )
+    )
     assert len(result.key_points) == 8
 
 
@@ -332,9 +464,11 @@ def test_report_ai_allows_numeric_indexes_only_in_traceability_keys(report_conte
     provider = ReportFakeAIProvider(
         '{"generated_text":"Texto seguro","key_points":[],"warnings":[],"used_data_keys":["effective_content.items.99"]}'
     )
-    result = asyncio.run(AIService(report_ai_settings(), provider).generate_report_section_draft(
-        db, report.id, tasks.id, admin, ReportAIRequest()
-    ))
+    result = asyncio.run(
+        AIService(report_ai_settings(), provider).generate_report_section_draft(
+            db, report.id, tasks.id, admin, ReportAIRequest()
+        )
+    )
     assert result.used_data_keys == ["effective_content.items.99"]
 
 
@@ -344,17 +478,25 @@ def test_editorial_ai_plan_applies_with_automatic_rollback_revision(report_conte
     original_title = report.title
     original_order = [section.section_key for section in report.sections]
     provider = EditorialFakeAIProvider()
-    proposal = asyncio.run(AIService(report_ai_settings(), provider).generate_report_editorial_plan(
-        db, report.id, admin, ReportAIEditorialRequest()
-    ))
+    proposal = asyncio.run(
+        AIService(report_ai_settings(), provider).generate_report_editorial_plan(
+            db, report.id, admin, ReportAIEditorialRequest()
+        )
+    )
     revision, updated = report_editorial_service.apply_plan(
         db, report, proposal.generation_id, report.edit_version, admin
     )
     assert updated.title == "Informe editorial optimizado"
     assert updated.editorial_config["cover_style"] == "EDITORIAL"
-    assert [section.section_key for section in updated.sections if section.is_enabled] == list(reversed([
-        key for key in original_order if next(item for item in report.sections if item.section_key == key).is_enabled
-    ]))
+    assert [section.section_key for section in updated.sections if section.is_enabled] == list(
+        reversed(
+            [
+                key
+                for key in original_order
+                if next(item for item in report.sections if item.section_key == key).is_enabled
+            ]
+        )
+    )
     assert revision.note == "Antes de aplicar optimizacion editorial con IA"
     report_revision_service.restore(db, updated, revision.id, updated.edit_version)
     restored = report_builder_service.get_editor(db, report.id, admin)
@@ -365,7 +507,10 @@ def test_editorial_ai_plan_applies_with_automatic_rollback_revision(report_conte
 def test_editorial_ai_context_is_scoped_and_sanitized(report_context):
     db, event, show, _, admin, _, outsider = report_context
     report = report_builder_service.create_draft(db, event.id, ReportScope.SHOW, show.id, admin)
-    report.sections[0].content = {**report.sections[0].content, "contact_email": "private@test.local"}
+    report.sections[0].content = {
+        **report.sections[0].content,
+        "contact_email": "private@test.local",
+    }
     db.commit()
     _, context = build_report_editorial_context(db, report.id, admin, "EXECUTIVE", True)
     assert context["scope"]["show_id"] == str(show.id)
@@ -378,9 +523,11 @@ def test_editorial_ai_uses_safe_fallback_for_invalid_provider_output(report_cont
     db, event, _, _, admin, _, _ = report_context
     report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
     provider = ReportFakeAIProvider("respuesta sin JSON")
-    proposal = asyncio.run(AIService(report_ai_settings(), provider).generate_report_editorial_plan(
-        db, report.id, admin, ReportAIEditorialRequest(force_refresh=True)
-    ))
+    proposal = asyncio.run(
+        AIService(report_ai_settings(), provider).generate_report_editorial_plan(
+            db, report.id, admin, ReportAIEditorialRequest(force_refresh=True)
+        )
+    )
     assert proposal.section_order
     assert all(section.generated_text is None for section in proposal.sections)
     assert any("planificador seguro" in warning for warning in proposal.warnings)

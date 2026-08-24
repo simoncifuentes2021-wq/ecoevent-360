@@ -19,6 +19,13 @@ from app.schemas.report_schema import (
     ReportEvidenceRead,
     ReportPublicationRead,
     ReportPagePlanRead,
+    ReportPageCreate,
+    ReportPageUpdate,
+    ReportPageRead,
+    ReportElementCreate,
+    ReportElementUpdate,
+    ReportElementBatchUpdate,
+    ReportElementRead,
     ReportRead,
     ReportRevisionRead,
     ReportSectionRead,
@@ -31,10 +38,142 @@ from app.schemas.report_schema import (
 )
 from app.services import report_service
 from app.services.ai.ai_service import AIService, AIServiceError
-from app.services.ai.schemas import ReportAIDraftResponse, ReportAIEditorialApplyRequest, ReportAIEditorialPlanResponse, ReportAIEditorialRequest, ReportAIRequest
+from app.services.ai.schemas import (
+    ReportAIDraftResponse,
+    ReportAIEditorialApplyRequest,
+    ReportAIEditorialPlanResponse,
+    ReportAIEditorialRequest,
+    ReportAIRequest,
+)
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+def _element_read(item):
+    return ReportElementRead.from_model(item)
+
+
+def _page_read(item):
+    data = ReportPageRead.model_validate(item)
+    data.elements = [_element_read(element) for element in item.elements]
+    return data
+
+
+@router.get("/{report_id}/pages", response_model=list[ReportPageRead])
+def list_report_pages(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_service
+
+    return [
+        _page_read(item) for item in report_layout_service.list_pages(db, report_id, current_user)
+    ]
+
+
+@router.post("/{report_id}/pages", response_model=ReportPageRead, status_code=201)
+def create_report_page(
+    report_id: UUID,
+    payload: ReportPageCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_service
+
+    return _page_read(report_layout_service.create_page(db, report_id, payload, current_user))
+
+
+@router.patch("/{report_id}/pages/{page_id}", response_model=ReportPageRead)
+def update_report_page(
+    report_id: UUID,
+    page_id: UUID,
+    payload: ReportPageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_service
+
+    return _page_read(
+        report_layout_service.update_page(db, report_id, page_id, payload, current_user)
+    )
+
+
+@router.delete("/{report_id}/pages/{page_id}", status_code=204)
+def delete_report_page(
+    report_id: UUID,
+    page_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_service
+
+    report_layout_service.delete_page(db, report_id, page_id, current_user)
+    return Response(status_code=204)
+
+
+@router.post(
+    "/{report_id}/pages/{page_id}/elements", response_model=ReportElementRead, status_code=201
+)
+def create_report_element(
+    report_id: UUID,
+    page_id: UUID,
+    payload: ReportElementCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_service
+
+    return _element_read(
+        report_layout_service.create_element(db, report_id, page_id, payload, current_user)
+    )
+
+
+@router.patch("/{report_id}/elements/{element_id}", response_model=ReportElementRead)
+def update_report_element(
+    report_id: UUID,
+    element_id: UUID,
+    payload: ReportElementUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_service
+
+    return _element_read(
+        report_layout_service.update_element(db, report_id, element_id, payload, current_user)
+    )
+
+
+@router.delete("/{report_id}/elements/{element_id}", status_code=204)
+def delete_report_element(
+    report_id: UUID,
+    element_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_service
+
+    report_layout_service.delete_element(db, report_id, element_id, current_user)
+    return Response(status_code=204)
+
+
+@router.put("/{report_id}/pages/{page_id}/elements/batch", response_model=list[ReportElementRead])
+def batch_update_report_elements(
+    report_id: UUID,
+    page_id: UUID,
+    payload: ReportElementBatchUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_service
+
+    return [
+        _element_read(item)
+        for item in report_layout_service.batch_update(
+            db, report_id, page_id, payload, current_user
+        )
+    ]
 
 
 @router.get("/{report_id}/html-preview", response_class=HTMLResponse)
@@ -84,7 +223,10 @@ def get_report_page_plan(
         report.template_key.value,
         report.editorial_config,
     )
-    return {"mode": (report.editorial_config or {}).get("mode", "AUTO"), "pages": [page.as_dict() for page in pages]}
+    return {
+        "mode": (report.editorial_config or {}).get("mode", "AUTO"),
+        "pages": [page.as_dict() for page in pages],
+    }
 
 
 @router.get("/{report_id}/pdf-preview")
@@ -310,9 +452,7 @@ def update_section(
     return result
 
 
-@router.post(
-    "/{report_id}/sections/{section_id}/ai-draft", response_model=ReportAIDraftResponse
-)
+@router.post("/{report_id}/sections/{section_id}/ai-draft", response_model=ReportAIDraftResponse)
 async def generate_section_ai_draft(
     report_id: UUID,
     section_id: UUID,
@@ -336,7 +476,9 @@ async def generate_section_ai_draft(
             code = status.HTTP_404_NOT_FOUND
         elif exc.code == "timeout":
             code = status.HTTP_504_GATEWAY_TIMEOUT
-        raise HTTPException(status_code=code, detail={"code": exc.code, "message": str(exc)}) from exc
+        raise HTTPException(
+            status_code=code, detail={"code": exc.code, "message": str(exc)}
+        ) from exc
     create_audit_log(
         db,
         user=current_user,
@@ -345,8 +487,13 @@ async def generate_section_ai_draft(
         entity_type="ReportSection",
         entity_id=section_id,
         event_id=report.event_id,
-        metadata={"generation_id": result.generation_id, "operation": payload.operation,
-                  "style": payload.style, "length": payload.length, "cached": result.cached},
+        metadata={
+            "generation_id": result.generation_id,
+            "operation": payload.operation,
+            "style": payload.style,
+            "length": payload.length,
+            "cached": result.cached,
+        },
         request=request,
     )
     return result
@@ -354,8 +501,11 @@ async def generate_section_ai_draft(
 
 @router.post("/{report_id}/ai-editorial-plan", response_model=ReportAIEditorialPlanResponse)
 async def generate_report_ai_editorial_plan(
-    report_id: UUID, payload: ReportAIEditorialRequest, request: Request,
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user),
+    report_id: UUID,
+    payload: ReportAIEditorialRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     from app.services import report_builder_service
 
@@ -363,20 +513,43 @@ async def generate_report_ai_editorial_plan(
     report_service._ensure_admin(current_user)
     enforce(request, "ai_report_editorial", str(current_user.id), settings.rate_limit_ai_reports)
     try:
-        result = await AIService().generate_report_editorial_plan(db, report_id, current_user, payload)
+        result = await AIService().generate_report_editorial_plan(
+            db, report_id, current_user, payload
+        )
     except AIServiceError as exc:
-        code = status.HTTP_504_GATEWAY_TIMEOUT if exc.code == "timeout" else status.HTTP_503_SERVICE_UNAVAILABLE
-        raise HTTPException(status_code=code, detail={"code": exc.code, "message": str(exc)}) from exc
-    create_audit_log(db, user=current_user, action="REPORT_AI_EDITORIAL_PLAN_REQUESTED",
-        module="reports", entity_type="Report", entity_id=report.id, event_id=report.event_id,
-        metadata={"generation_id": result.generation_id, "style": payload.style, "cached": result.cached}, request=request)
+        code = (
+            status.HTTP_504_GATEWAY_TIMEOUT
+            if exc.code == "timeout"
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        raise HTTPException(
+            status_code=code, detail={"code": exc.code, "message": str(exc)}
+        ) from exc
+    create_audit_log(
+        db,
+        user=current_user,
+        action="REPORT_AI_EDITORIAL_PLAN_REQUESTED",
+        module="reports",
+        entity_type="Report",
+        entity_id=report.id,
+        event_id=report.event_id,
+        metadata={
+            "generation_id": result.generation_id,
+            "style": payload.style,
+            "cached": result.cached,
+        },
+        request=request,
+    )
     return result
 
 
 @router.post("/{report_id}/ai-editorial-plan/apply", response_model=ReportAIEditorialApplyResponse)
 def apply_report_ai_editorial_plan(
-    report_id: UUID, payload: ReportAIEditorialApplyRequest, request: Request,
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user),
+    report_id: UUID,
+    payload: ReportAIEditorialApplyRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     from app.services import report_builder_service
     from app.services.ai import report_editorial_service
@@ -386,9 +559,20 @@ def apply_report_ai_editorial_plan(
     revision, updated = report_editorial_service.apply_plan(
         db, report, payload.generation_id, payload.edit_version, current_user
     )
-    create_audit_log(db, user=current_user, action="REPORT_AI_EDITORIAL_PLAN_APPLIED",
-        module="reports", entity_type="Report", entity_id=report.id, event_id=report.event_id,
-        metadata={"generation_id": str(payload.generation_id), "rollback_revision_id": str(revision.id)}, request=request)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="REPORT_AI_EDITORIAL_PLAN_APPLIED",
+        module="reports",
+        entity_type="Report",
+        entity_id=report.id,
+        event_id=report.event_id,
+        metadata={
+            "generation_id": str(payload.generation_id),
+            "rollback_revision_id": str(revision.id),
+        },
+        request=request,
+    )
     return {"revision_id": revision.id, "report": updated}
 
 
@@ -594,9 +778,7 @@ def remove_report_evidence(
     return Response(status_code=204)
 
 
-@router.patch(
-    "/{report_id}/evidences/{item_id}", response_model=ReportEvidenceRead
-)
+@router.patch("/{report_id}/evidences/{item_id}", response_model=ReportEvidenceRead)
 def update_report_evidence(
     report_id: UUID,
     item_id: UUID,

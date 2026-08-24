@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from app.models.enums import (
     ReportLayoutVariant,
+    ReportCompositionMode,
+    ReportElementType,
     ReportPublicationStatus,
     ReportScope,
     ReportSectionType,
@@ -239,6 +241,120 @@ class ReportRead(BaseModel):
     template_key: ReportTemplateKey = ReportTemplateKey.ENVIRONMENTAL_PREMIUM
     theme: dict = Field(default_factory=dict)
     editorial_config: dict = Field(default_factory=dict)
+    composition_mode: ReportCompositionMode = ReportCompositionMode.AUTO
+
+
+class ReportPageCreate(BaseModel):
+    name: str | None = Field(default=None, max_length=180)
+    width: float = Field(default=1000, gt=0, le=5000)
+    height: float = Field(default=1414, gt=0, le=7000)
+    background: Color = "#FFFFFF"
+    background_image: str | None = Field(default=None, max_length=2000)
+    is_enabled: bool = True
+
+
+class ReportPageUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=180)
+    page_number: int | None = Field(default=None, ge=1)
+    width: float | None = Field(default=None, gt=0, le=5000)
+    height: float | None = Field(default=None, gt=0, le=7000)
+    background: Color | None = None
+    background_image: str | None = Field(default=None, max_length=2000)
+    is_enabled: bool | None = None
+
+
+class ReportElementBase(BaseModel):
+    type: ReportElementType
+    x: float = Field(ge=0)
+    y: float = Field(ge=0)
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+    rotation: float = Field(default=0, ge=-360, le=360)
+    z_index: int = Field(default=0, ge=-10000, le=10000)
+    locked: bool = False
+    visible: bool = True
+    content: dict = Field(default_factory=dict)
+    style: dict = Field(default_factory=dict)
+    data_binding: dict | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class ReportElementCreate(ReportElementBase):
+    pass
+
+
+class ReportElementUpdate(BaseModel):
+    type: ReportElementType | None = None
+    x: float | None = Field(default=None, ge=0)
+    y: float | None = Field(default=None, ge=0)
+    width: float | None = Field(default=None, gt=0)
+    height: float | None = Field(default=None, gt=0)
+    rotation: float | None = Field(default=None, ge=-360, le=360)
+    z_index: int | None = Field(default=None, ge=-10000, le=10000)
+    locked: bool | None = None
+    visible: bool | None = None
+    content: dict | None = None
+    style: dict | None = None
+    data_binding: dict | None = None
+    metadata: dict | None = None
+
+
+class ReportElementBatchItem(ReportElementUpdate):
+    id: UUID
+
+
+class ReportElementBatchUpdate(BaseModel):
+    elements: list[ReportElementBatchItem] = Field(min_length=1, max_length=200)
+
+
+class ReportElementRead(ReportElementBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    page_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_model(cls, element):
+        values = {
+            column: getattr(element, column)
+            for column in (
+                "id",
+                "page_id",
+                "type",
+                "x",
+                "y",
+                "width",
+                "height",
+                "rotation",
+                "z_index",
+                "locked",
+                "visible",
+                "content",
+                "style",
+                "data_binding",
+                "created_at",
+                "updated_at",
+            )
+        }
+        values["metadata"] = element.metadata_
+        return cls.model_validate(values)
+
+
+class ReportPageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    report_id: UUID
+    page_number: int
+    name: str | None
+    width: float
+    height: float
+    background: str
+    background_image: str | None
+    is_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+    elements: list[ReportElementRead] = Field(default_factory=list)
 
 
 class ReportPagePlanItem(BaseModel):

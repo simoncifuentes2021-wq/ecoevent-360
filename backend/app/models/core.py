@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    Float,
     Numeric,
     String,
     Text,
@@ -42,6 +43,8 @@ from app.models.enums import (
     PurchaseDeliveryMode,
     PurchaseRequestStatus,
     ReportStatus,
+    ReportCompositionMode,
+    ReportElementType,
     ReportScope,
     ReportLayoutVariant,
     ReportPublicationStatus,
@@ -2027,6 +2030,14 @@ class Report(Base):
     publications: Mapped[list["ReportPublication"]] = relationship(
         back_populates="report", cascade="all, delete-orphan"
     )
+    pages: Mapped[list["ReportPage"]] = relationship(
+        back_populates="report", cascade="all, delete-orphan", order_by="ReportPage.page_number"
+    )
+    composition_mode: Mapped[ReportCompositionMode] = mapped_column(
+        Enum(ReportCompositionMode, name="report_composition_mode", native_enum=False),
+        nullable=False,
+        server_default=text("'AUTO'"),
+    )
     template_key: Mapped[ReportTemplateKey] = mapped_column(
         Enum(ReportTemplateKey, name="report_template_key", native_enum=False),
         nullable=False,
@@ -2072,6 +2083,69 @@ class ReportSection(Base):
     updated_at: Mapped[datetime] = updated_at_column()
     report: Mapped[Report] = relationship(back_populates="sections")
     evidences: Mapped[list["ReportEvidence"]] = relationship(back_populates="section")
+
+
+class ReportPage(Base):
+    __tablename__ = "report_pages"
+    __table_args__ = (
+        UniqueConstraint("report_id", "page_number", name="uq_report_pages_report_number"),
+        CheckConstraint("page_number > 0", name="ck_report_pages_number"),
+        CheckConstraint("width > 0 and height > 0", name="ck_report_pages_dimensions"),
+        Index("idx_report_pages_report_number", "report_id", "page_number"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    report_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False
+    )
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str | None] = mapped_column(String(180))
+    width: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("1000"))
+    height: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("1414"))
+    background: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'#FFFFFF'")
+    )
+    background_image: Mapped[str | None] = mapped_column(Text)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+    report: Mapped[Report] = relationship(back_populates="pages")
+    elements: Mapped[list["ReportElement"]] = relationship(
+        back_populates="page", cascade="all, delete-orphan", order_by="ReportElement.z_index"
+    )
+
+
+class ReportElement(Base):
+    __tablename__ = "report_elements"
+    __table_args__ = (
+        CheckConstraint("x >= 0 and y >= 0", name="ck_report_elements_position"),
+        CheckConstraint("width > 0 and height > 0", name="ck_report_elements_dimensions"),
+        CheckConstraint("rotation >= -360 and rotation <= 360", name="ck_report_elements_rotation"),
+        Index("idx_report_elements_page_z", "page_id", "z_index"),
+    )
+    id: Mapped[UUID] = uuid_pk()
+    page_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("report_pages.id", ondelete="CASCADE"), nullable=False
+    )
+    type: Mapped[ReportElementType] = mapped_column(
+        Enum(ReportElementType, name="report_element_type", native_enum=False), nullable=False
+    )
+    x: Mapped[float] = mapped_column(Float, nullable=False)
+    y: Mapped[float] = mapped_column(Float, nullable=False)
+    width: Mapped[float] = mapped_column(Float, nullable=False)
+    height: Mapped[float] = mapped_column(Float, nullable=False)
+    rotation: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
+    z_index: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    locked: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    visible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    style: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    data_binding: Mapped[dict | None] = mapped_column(JSONB)
+    metadata_: Mapped[dict] = mapped_column(
+        "metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+    page: Mapped[ReportPage] = relationship(back_populates="elements")
 
 
 class ReportEvidence(Base):

@@ -285,6 +285,20 @@ class ReportScope(StrEnum):
     SHOW = "SHOW"
 
 
+class ReportCompositionMode(StrEnum):
+    AUTO = "AUTO"
+    FREEFORM = "FREEFORM"
+
+
+class ReportElementType(StrEnum):
+    TEXT = "TEXT"
+    TITLE = "TITLE"
+    KPI = "KPI"
+    IMAGE = "IMAGE"
+    CHART = "CHART"
+    SHAPE = "SHAPE"
+
+
 class ReportSectionType(StrEnum):
     COVER = "COVER"
     EXECUTIVE_SUMMARY = "EXECUTIVE_SUMMARY"
