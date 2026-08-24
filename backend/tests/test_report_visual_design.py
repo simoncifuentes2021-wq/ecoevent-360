@@ -1,6 +1,6 @@
 from app.schemas.report_schema import ReportEditorialConfig
 from app.services.report_render_service import _editable_attr
-from app.services.report_visual_design_service import icon_svg, normalized, section_enrichment
+from app.services.report_visual_design_service import SECTION_ICONS, icon_svg, normalized, section_enrichment
 
 
 def test_visual_config_is_controlled_and_defaults_to_original_design():
@@ -14,6 +14,9 @@ def test_internal_icon_allowlist_never_renders_input_as_markup():
     rendered = icon_svg('<script>alert("x")</script>')
     assert "script" not in rendered
     assert rendered.startswith('<svg aria-hidden="true"')
+    assert SECTION_ICONS["INCIDENTS"] == "ALERT"
+    assert SECTION_ICONS["TASKS"] == "CHECK"
+    assert SECTION_ICONS["FORMS"] == "CHART"
 
 
 def test_auto_is_byte_neutral_and_preset_uses_official_visible_data():

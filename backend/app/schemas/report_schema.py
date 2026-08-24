@@ -124,7 +124,7 @@ class ReportSectionVisualConfig(BaseModel):
     variant: ReportVisualVariant = "AUTO"
     icon_key: Literal[
         "LEAF", "RECYCLE", "BICYCLE", "CARBON", "ENERGY", "WATER", "PEOPLE",
-        "LOCATION", "CALENDAR", "CHART", "CHECK", "LIGHTBULB", "CAMERA", "TARGET",
+        "LOCATION", "CALENDAR", "CHART", "CHECK", "ALERT", "LIGHTBULB", "CAMERA", "TARGET",
     ] | None = None
     show_icon: bool = True
     show_trend: bool = True
