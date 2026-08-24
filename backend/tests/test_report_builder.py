@@ -1623,6 +1623,40 @@ def test_report_binding_registry_is_allowlisted_and_returns_no_data():
         canonical_key({"key": "sql.select_all"})
 
 
+def test_canonical_renderer_marks_textual_components_and_resizes_boxes_without_font_scale():
+    from app.services.report_render_service import (
+        _apply_layout_overrides,
+        _conclusion_html,
+        _evidence_html,
+        _summary_html,
+        normalize_theme,
+    )
+
+    section = {
+        "section_key": "recommendations",
+        "section_type": "RECOMMENDATIONS",
+        "title": "Recomendaciones",
+        "layout_variant": "PHOTO_GRID",
+        "content": {"text": "Texto conectado", "fields": [], "items": []},
+    }
+    summary = _summary_html([section], [], normalize_theme({}))
+    evidence = _evidence_html(section, [])
+    conclusion = _conclusion_html([section], normalize_theme({}))
+    html = summary + evidence + conclusion
+    assert 'data-report-element-type="SECTION_TITLE"' in html
+    assert 'data-report-element-type="TEXT_BLOCK"' in html
+    assert 'data-report-element-type="HIGHLIGHT"' in html
+    assert 'data-report-resize-mode="box"' in html
+    baseline = '<h2 data-report-element-key="section.test.title">Título</h2>'
+    assert _apply_layout_overrides(baseline, tuple()) == baseline
+    changed = _apply_layout_overrides(
+        baseline,
+        ({"element_key": "section.test.title", "box_width": 420, "box_height": 90},),
+    )
+    assert "width:420.0000px" in changed and "height:90.0000px" in changed
+    assert "scale(1.000000,1.000000)" in changed
+
+
 def test_freeform_chart_dataset_is_normalized_in_backend():
     from app.services.report_visual_data_service import chart_dataset
 

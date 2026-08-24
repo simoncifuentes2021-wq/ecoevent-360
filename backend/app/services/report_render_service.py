@@ -151,8 +151,18 @@ def _stable_part(value: Any) -> str:
     return re.sub(r"[^a-z0-9_.:-]+", "-", str(value or "item").lower()).strip("-")
 
 
-def _editable_attr(element_key: str) -> str:
-    return f' data-report-element-key="{escape(element_key)}"'
+def _editable_attr(
+    element_key: str, element_type: str = "COMPONENT", resize_mode: str = "scale"
+) -> str:
+    return (
+        f' data-report-element-key="{escape(element_key)}"'
+        f' data-report-element-type="{escape(element_type)}"'
+        f' data-report-resize-mode="{escape(resize_mode)}"'
+    )
+
+
+def _section_part(section: dict | None) -> str:
+    return _stable_part((section or {}).get("section_key"))
 
 
 def _apply_layout_overrides(html: str, overrides: tuple[dict[str, Any], ...]) -> str:
@@ -172,6 +182,10 @@ def _apply_layout_overrides(html: str, overrides: tuple[dict[str, Any], ...]) ->
             f"z-index:{int(item.get('z_index', 0))};"
             f"visibility:{'visible' if item.get('visible', True) else 'hidden'};"
         )
+        if item.get("box_width") is not None:
+            styles += f"width:{float(item['box_width']):.4f}px;max-width:none;"
+        if item.get("box_height") is not None:
+            styles += f"height:{float(item['box_height']):.4f}px;overflow:hidden;"
 
         def inject(match: re.Match[str]) -> str:
             opening = match.group(1)
@@ -381,7 +395,7 @@ def _cover_html(document: ReportRenderDocument, photos: list[dict]) -> str:
         if document.show
         else "<strong>Reporte integral</strong>Alcance evento"
     )
-    return f'''<section class="cover {class_name}"{style}><div class="brand">EcoEvent 360 · {escape(str(subtitle))}</div><div class="cover-copy"><div class="cover-line"></div><h1>{escape(title)}</h1><div class="cover-meta"><div><strong>{escape(client)}</strong>{escape(event)}</div><div>{show}<br>{escape(date)}<br>{escape(venue)}</div></div></div></section>'''
+    return f'''<section class="cover {class_name}"{style}><div class="brand"{_editable_attr("cover.subtitle", "COVER_SUBTITLE", "box")}>EcoEvent 360 · {escape(str(subtitle))}</div><div class="cover-copy"><div class="cover-line"></div><h1{_editable_attr("cover.title", "COVER_TITLE", "box")}>{escape(title)}</h1><div class="cover-meta"{_editable_attr("cover.metadata", "METADATA", "box")}><div><strong>{escape(client)}</strong>{escape(event)}</div><div>{show}<br>{escape(date)}<br>{escape(venue)}</div></div></div></section>'''
 
 
 def _page_html(
@@ -417,7 +431,7 @@ def _page_html(
     elif recipe == "EDITORIAL_CLOSE":
         content = _conclusion_html(sections, theme)
     elif recipe == "EMPTY":
-        content = '<div class="quote">Este reporte está preparado para crecer con la información del evento.</div>'
+        content = f'<div class="quote"{_editable_attr("page.empty.highlight", "HIGHLIGHT", "box")}>Este reporte está preparado para crecer con la información del evento.</div>'
     else:
         content = _mixed_html(sections, photos, theme)
     return f"""<section class="page recipe-{recipe.lower()}"><header class="page-head"><span class="chapter">{escape(title)}</span><span>EcoEvent 360</span></header>{content}<footer class="folio"><span>Impacto · operación · evidencia</span><b>{number:02d}</b></footer></section>"""
@@ -432,19 +446,20 @@ def _environmental_management_html(sections: list[dict], photos: list[dict]) -> 
     bike_fields = (bike_content.get("fields") or [])[:3]
     return (
         '<div class="environmental-story">'
-        '<div class="environmental-title"><span>Reporte de impacto</span>'
-        "<h2>Gestión<br>Ambiental</h2></div>"
+        f'<div class="environmental-title"><span{_editable_attr("environmental-management.subtitle", "HIGHLIGHT", "box")}>Reporte de impacto</span>'
+        f'<h2{_editable_attr("environmental-management.title", "SECTION_TITLE", "box")}>Gestión<br>Ambiental</h2></div>'
         f"{_photos(photos[:2], 'environmental-portraits', 'environmental-management')}"
         '<div class="environmental-panels">'
-        f'<article class="environmental-panel waste-panel"><h3>Reciclaje</h3>{_items(waste_values) if waste_values else _metrics((waste_content.get("fields") or [])[:8])}</article>'
-        f'<article class="environmental-panel bike-panel"><h3>Bicicletero</h3>{_kpis(bike_fields, _stable_part((bike or {}).get("section_key")))}'
-        f"<p>{_safe_text(bike_content.get('text') or 'Movilidad sustentable durante el evento.')}</p></article>"
+        f'<article class="environmental-panel waste-panel"><h3{_editable_attr("section.waste.title", "SECTION_TITLE", "box")}>Reciclaje</h3>{_items(waste_values, "section.waste.items") if waste_values else _metrics((waste_content.get("fields") or [])[:8], "section.waste.metrics")}</article>'
+        f'<article class="environmental-panel bike-panel"><h3{_editable_attr("section.bike-zone.title", "SECTION_TITLE", "box")}>Bicicletero</h3>{_kpis(bike_fields, _stable_part((bike or {}).get("section_key")))}'
+        f'<p{_editable_attr("section.bike-zone.text.summary", "TEXT_BLOCK", "box")}>{_safe_text(bike_content.get("text") or "Movilidad sustentable durante el evento.")}</p></article>'
         "</div></div>"
     )
 
 
 def _environmental_impact_html(sections: list[dict]) -> str:
     section = sections[0]
+    section_key = f"section.{_section_part(section)}"
     content = section.get("content") or {}
     snapshot = section.get("source_snapshot") or {}
     official = snapshot.get("official_data") or content.get("official_data") or {}
@@ -536,7 +551,7 @@ def _environmental_impact_html(sections: list[dict]) -> str:
     disclaimer = official.get("disclaimer") or content.get("text") or ""
     show_traceability = content.get("show_traceability") is not False
     traceability_html = (
-        "<aside class='impact-trace'><h3>Trazabilidad aprobada</h3>"
+        f"<aside class='impact-trace'{_editable_attr(f'{section_key}.traceability', 'TEXT_BLOCK', 'box')}><h3>Trazabilidad aprobada</h3>"
         f"<p>{escape(str(len(actions)))} acciones aprobadas. Solo estos resultados forman parte del reporte oficial.</p>"
         f"<ul>{action_list}</ul><p><b>Fuentes documentadas</b></p><ul>{source_list}</ul>"
         "</aside>"
@@ -560,11 +575,11 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         else ""
     )
     return (
-        "<h2>Impacto ambiental evitado</h2>"
-        f'<div class="impact-official{"" if show_traceability else " no-trace"}"><div class="impact-kpis">'
+        f'<h2{_editable_attr(f"{section_key}.title", "SECTION_TITLE", "box")}>Impacto ambiental evitado</h2>'
+        f'<div class="impact-official{"" if show_traceability else " no-trace"}"><div class="impact-kpis"{_editable_attr(f"{section_key}.big-numbers", "BIG_NUMBERS", "box")}>'
         f"{cards}</div>{traceability_html}</div>"
         f"{details_html}"
-        f'<div class="impact-disclaimer">{escape(str(disclaimer))}</div>'
+        f'<div class="impact-disclaimer"{_editable_attr(f"{section_key}.text.disclaimer", "TEXT_BLOCK", "box")}>{escape(str(disclaimer))}</div>'
     )
 
 
@@ -601,10 +616,10 @@ def _carbon_equivalences_html(sections: list[dict], photos: list[dict]) -> str:
     )
     return (
         '<div class="carbon-story">'
-        '<article class="carbon-panel"><h2>Huella de<br>Carbono</h2>'
+        f'<article class="carbon-panel"><h2{_editable_attr("section.carbon.title", "SECTION_TITLE", "box")}>Huella de<br>Carbono</h2>'
         f"{_carbon_cards(carbon_content.get('fields') or [], carbon_content.get('items') or [])}</article>"
-        '<article class="equivalence-panel"><h3>Eco-<br>equivalencias</h3>'
-        f"{_metrics(equivalent_fields)}<p>{_safe_text(equivalent_text)}</p></article>"
+        f'<article class="equivalence-panel"><h3{_editable_attr("section.eco-equivalences.title", "SECTION_TITLE", "box")}>Eco-<br>equivalencias</h3>'
+        f'{_metrics(equivalent_fields, "section.eco-equivalences.metrics")}<p{_editable_attr("section.eco-equivalences.text.summary", "TEXT_BLOCK", "box")}>{_safe_text(equivalent_text)}</p></article>'
         f'<aside class="carbon-visual">{_photos(photos[:1], "carbon-photo", "carbon")}</aside></div>'
     )
 
@@ -635,7 +650,7 @@ def _carbon_cards(fields: list[dict], items: list[dict]) -> str:
             '<article class="carbon-card"><span class="carbon-check">✓</span>'
             f"<div><h4>{escape(str(item.get('label') or 'Indicador'))}</h4>{body}</div></article>"
         )
-    return f'<div class="carbon-cards">{"".join(cards)}</div>'
+    return f'<div class="carbon-cards"{_editable_attr("section.carbon.big-numbers", "BIG_NUMBERS", "box")}>{"".join(cards)}</div>'
 
 
 def _summary_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
@@ -653,7 +668,7 @@ def _summary_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
     items = [
         item for section in sections for item in (section.get("content") or {}).get("items", [])
     ]
-    return f'<h2>El impacto,<br>en perspectiva.</h2><p class="lead">{_safe_text(text)}</p>{_kpis(fields[:6], "executive")}{_metrics(fields[6:])}{_items(items)}{_photos(photos[:2], "photos", "executive")}'
+    return f'<h2{_editable_attr("section.executive.title", "SECTION_TITLE", "box")}>El impacto,<br>en perspectiva.</h2><p class="lead"{_editable_attr("section.executive.text.summary", "TEXT_BLOCK", "box")}>{_safe_text(text)}</p>{_kpis(fields[:6], "executive")}{_metrics(fields[6:], "section.executive.metrics")}{_items(items, "section.executive.items")}{_photos(photos[:2], "photos", "executive", "section.executive.gallery")}'
 
 
 def _evidence_html(section: dict, photos: list[dict]) -> str:
@@ -662,12 +677,13 @@ def _evidence_html(section: dict, photos: list[dict]) -> str:
         or "Una mirada cercana a la operación, las personas y los resultados que hicieron posible el evento."
     )
     gallery = (
-        _photos(photos[:4], "photos", _stable_part(section.get("section_key")))
+        _photos(photos[:4], "photos", _stable_part(section.get("section_key")), f"section.{_section_part(section)}.gallery")
         or '<div class="warning">Las nuevas evidencias aparecerán aquí al ser incorporadas.</div>'
     )
     content = section.get("content") or {}
     variant = str(section.get("layout_variant") or "PHOTO_GRID").lower().replace("_", "-")
-    return f'<div class="feature layout-{variant}"><div class="section-rule"></div><h2>{escape(section["title"])}</h2><p class="lead">{_safe_text(text)}</p>{_metrics(content.get("fields") or [])}{_items(content.get("items") or [])}{gallery}</div>'
+    key = f"section.{_section_part(section)}"
+    return f'<div class="feature layout-{variant}"><div class="section-rule"></div><h2{_editable_attr(f"{key}.title", "SECTION_TITLE", "box")}>{escape(section["title"])}</h2><p class="lead"{_editable_attr(f"{key}.text.summary", "TEXT_BLOCK", "box")}>{_safe_text(text)}</p>{_metrics(content.get("fields") or [], f"{key}.metrics")}{_items(content.get("items") or [], f"{key}.items")}{gallery}</div>'
 
 
 def _feature_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
@@ -680,13 +696,13 @@ def _feature_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
     intro = _safe_text(content.get("text") or _feature_intro(section_type))
     chart = report_chart_service.bar_chart(items, theme["accent_color"])
     section_key = _stable_part(section.get("section_key"))
-    photo_html = _photos(photos[:2], "photos", section_key)
-    chart_html = f'<div class="chart-panel"{_editable_attr(f"{section_key}.chart.main")}>{chart}</div>' if chart else ""
+    photo_html = _photos(photos[:2], "photos", section_key, f"section.{section_key}.gallery")
+    chart_html = f'<div class="chart-panel"{_editable_attr(f"{section_key}.chart.main", "CHART")}>{chart}</div>' if chart else ""
     visual = f'<div class="feature-visual">{photo_html}{chart_html}</div>'
     if not visual:
         visual = '<div class="chart-panel"><div class="warning">Los indicadores se actualizarán al incorporar nuevos registros.</div></div>'
     lead = fields[0] if fields else None
-    number = f'<div class="feature-number">{escape(str(lead.get("value") if lead and lead.get("value") is not None else "—"))}<small> {escape(str(lead.get("unit") or "")) if lead else ""}</small><span>{escape(str(lead.get("label") or "")) if lead else ""}</span></div>'
+    number = f'<div class="feature-number"{_editable_attr(f"section.{section_key}.big-number", "BIG_NUMBER", "box")}>{escape(str(lead.get("value") if lead and lead.get("value") is not None else "—"))}<small> {escape(str(lead.get("unit") or "")) if lead else ""}</small><span>{escape(str(lead.get("label") or "")) if lead else ""}</span></div>'
     companions = "".join(
         f'<article class="editorial-block"><h3>{escape(item["title"])}</h3>{_metrics((item.get("content") or {}).get("fields") or [])}</article>'
         for item in sections[1:]
@@ -696,51 +712,55 @@ def _feature_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
         if section.get("layout_variant") == "KPI_GRID"
         else f"{number}{_metrics(fields[1:])}"
     )
-    return f'<div class="feature layout-{variant}"><div class="section-rule"></div><h2>{escape(section["title"])}</h2><div class="feature-grid"><div>{indicators}<p class="lead">{intro}</p>{_items(items)}{companions}</div><div>{visual}</div></div></div>'
+    return f'<div class="feature layout-{variant}"><div class="section-rule"></div><h2{_editable_attr(f"section.{section_key}.title", "SECTION_TITLE", "box")}>{escape(section["title"])}</h2><div class="feature-grid"><div>{indicators}<p class="lead"{_editable_attr(f"section.{section_key}.text.summary", "TEXT_BLOCK", "box")}>{intro}</p>{_items(items, f"section.{section_key}.items")}{companions}</div><div>{visual}</div></div></div>'
 
 
 def _mixed_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
     blocks = []
     for section in sections:
+        section_key = f"section.{_section_part(section)}"
         content = section.get("content") or {}
         fields = content.get("fields") or []
         items = content.get("items") or []
         copy = (
-            f'<div class="section-copy"><p>{_safe_text(content.get("text"))}</p></div>'
+            f'<div class="section-copy"{_editable_attr(f"{section_key}.text.summary", "TEXT_BLOCK", "box")}><p>{_safe_text(content.get("text"))}</p></div>'
             if content.get("text")
             else '<div class="section-copy"></div>'
         )
         fields_html = (
             _kpis(fields[:4], _stable_part(section.get("section_key")))
             if section.get("layout_variant") in {"KPI_GRID", "BIG_NUMBERS"}
-            else _metrics(fields)
+            else _metrics(fields, f"{section_key}.metrics")
         )
         media = ""
         if section.get("layout_variant") in {"HERO_IMAGE_TEXT", "TEXT_IMAGE", "PHOTO_GRID"}:
             amount = 4 if section.get("layout_variant") == "PHOTO_GRID" else 1
-            media = f'<div class="section-media">{_photos(photos[:amount], "photos", _stable_part(section.get("section_key")))}</div>'
+            media = f'<div class="section-media">{_photos(photos[:amount], "photos", _stable_part(section.get("section_key")), f"{section_key}.gallery")}</div>'
         chart = report_chart_service.bar_chart(items, theme["accent_color"])
         if section.get("layout_variant") == "FEATURE_CHART" and chart:
             key = f'{_stable_part(section.get("section_key"))}.chart.main'
-            media = f'<div class="section-media chart-panel"{_editable_attr(key)}>{chart}</div>'
-        body = f'<div class="section-body">{copy}<div class="section-fields">{fields_html}{_items(items)}</div>{media}</div>'
+            media = f'<div class="section-media chart-panel"{_editable_attr(key, "CHART")}>{chart}</div>'
+        body = f'<div class="section-body">{copy}<div class="section-fields">{fields_html}{_items(items, f"{section_key}.items")}</div>{media}</div>'
         variant = str(section.get("layout_variant") or "EDITORIAL").lower().replace("_", "-")
         blocks.append(
-            f'<article class="editorial-block compact layout-{variant}"><div class="section-rule"></div><h3>{escape(section["title"])}</h3>{body}</article>'
+            f'<article class="editorial-block compact layout-{variant}"><div class="section-rule"></div><h3{_editable_attr(f"{section_key}.title", "SECTION_TITLE", "box")}>{escape(section["title"])}</h3>{body}</article>'
         )
     columns = "two-up" if len(blocks) > 1 else ""
-    photo_html = _photos(photos[:3], "photo-strip", "mixed-strip") if photos else ""
-    return f'<h2>Resultados que<br>construyen historia.</h2>{photo_html}<div class="blocks {columns}">{"".join(blocks)}</div>'
+    page_key = _section_part(sections[0]) if sections else "results"
+    photo_html = _photos(photos[:3], "photo-strip", "mixed-strip", f"page.{page_key}.gallery") if photos else ""
+    return f'<h2{_editable_attr(f"page.{page_key}.title", "SECTION_TITLE", "box")}>Resultados que<br>construyen historia.</h2>{photo_html}<div class="blocks {columns}">{"".join(blocks)}</div>'
 
 
 def _conclusion_html(sections: list[dict], theme: dict) -> str:
     blocks = []
     for section in sections:
+        key = f"section.{_section_part(section)}"
         content = section.get("content") or {}
         blocks.append(
-            f'<article><h3>{escape(section["title"])}</h3><div class="quote">{_safe_text(content.get("text") or "Los resultados abren oportunidades concretas para la próxima edición.")}</div>{_metrics(content.get("fields") or [])}</article>'
+            f'<article><h3{_editable_attr(f"{key}.title", "SECTION_TITLE", "box")}>{escape(section["title"])}</h3><div class="quote"{_editable_attr(f"{key}.highlight", "HIGHLIGHT", "box")}>{_safe_text(content.get("text") or "Los resultados abren oportunidades concretas para la próxima edición.")}</div>{_metrics(content.get("fields") or [], f"{key}.metrics")}</article>'
         )
-    return f'<h2>Lo logrado es<br>el punto de partida.</h2><div class="blocks two-up">{"".join(blocks)}</div>'
+    page_key = _section_part(sections[0]) if sections else "conclusion"
+    return f'<h2{_editable_attr(f"page.{page_key}.title", "SECTION_TITLE", "box")}>Lo logrado es<br>el punto de partida.</h2><div class="blocks two-up">{"".join(blocks)}</div>'
 
 
 def _kpis(fields: list[dict], key_prefix: str | None = None) -> str:
@@ -749,24 +769,25 @@ def _kpis(fields: list[dict], key_prefix: str | None = None) -> str:
     cards = []
     for item in fields:
         key = f"{_stable_part(key_prefix)}.kpi.{_stable_part(item.get('key') or item.get('label'))}"
-        attribute = _editable_attr(key) if key_prefix else ""
+        attribute = _editable_attr(key, "KPI") if key_prefix else ""
         value = escape(str(item.get("value") if item.get("value") is not None else "—"))
         label = f"{escape(str(item.get('unit') or ''))} {escape(str(item.get('label') or ''))}"
         cards.append(f'<div class="kpi"{attribute}><strong>{value}</strong><span>{label}</span></div>')
     return f'<div class="kpis">{"".join(cards)}</div>'
 
 
-def _metrics(fields: list[dict]) -> str:
+def _metrics(fields: list[dict], element_key: str | None = None) -> str:
     if not fields:
         return ""
     rows = "".join(
         f'<div class="metric"><span>{escape(str(field.get("label") or ""))}</span><strong>{escape(str(field.get("value") if field.get("value") is not None else "—"))} {escape(str(field.get("unit") or ""))}</strong></div>'
         for field in fields[:12]
     )
-    return f'<div class="metrics">{rows}</div>'
+    attribute = _editable_attr(element_key, "METRIC_LIST", "box") if element_key else ""
+    return f'<div class="metrics"{attribute}>{rows}</div>'
 
 
-def _items(items: list[dict]) -> str:
+def _items(items: list[dict], element_key: str | None = None) -> str:
     if not items:
         return ""
     rows = []
@@ -786,10 +807,16 @@ def _items(items: list[dict]) -> str:
         rows.append(
             f'<div class="list-row"><span>{escape(str(label))}</span><strong>{escape(value)}</strong></div>'
         )
-    return f'<div class="list">{"".join(rows)}</div>'
+    attribute = _editable_attr(element_key, "LIST", "box") if element_key else ""
+    return f'<div class="list"{attribute}>{"".join(rows)}</div>'
 
 
-def _photos(photos: list[dict], css_class: str, key_prefix: str | None = None) -> str:
+def _photos(
+    photos: list[dict],
+    css_class: str,
+    key_prefix: str | None = None,
+    gallery_key: str | None = None,
+) -> str:
     if not photos:
         return ""
     figures = []
@@ -797,9 +824,10 @@ def _photos(photos: list[dict], css_class: str, key_prefix: str | None = None) -
         key = f"{_stable_part(key_prefix or photo.get('section_key') or 'report')}.image.{_stable_part(photo.get('evidence_id'))}"
         caption = escape(str(photo.get("caption") or "Evidencia del evento"))
         figures.append(
-            f'<figure{_editable_attr(key)}><img src="{photo["uri"]}"><figcaption>{caption}</figcaption></figure>'
+            f'<figure{_editable_attr(key, "IMAGE")}><img src="{photo["uri"]}"><figcaption>{caption}</figcaption></figure>'
         )
-    return f'<div class="{css_class}">{"".join(figures)}</div>'
+    attribute = _editable_attr(gallery_key, "PHOTO_GRID", "box") if gallery_key else ""
+    return f'<div class="{css_class}"{attribute}>{"".join(figures)}</div>'
 
 
 def _safe_text(value: Any) -> str:
