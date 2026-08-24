@@ -99,6 +99,7 @@ def main() -> None:
         page.keyboard.press("Control+z")
         page.keyboard.press("Control+y")
         page.get_by_role("button", name="Alinear izquierda").click()
+        page.get_by_role("button", name="Distribuir horizontalmente").click()
         page.wait_for_timeout(400)
         page.screenshot(path=OUTPUT / "aligned.png", full_page=True)
 
@@ -123,8 +124,22 @@ def main() -> None:
         final_pdf = request(f"/reports/{REPORT_ID}/pdf-preview", token)
         assert final_pdf.startswith(b"%PDF-") and len(final_pdf) > 10_000
         (OUTPUT / "final-pdf.pdf").write_bytes(final_pdf)
-
-        request(f"/reports/{REPORT_ID}/layout-overrides", token, "DELETE")
+        page.get_by_role("button", name="Editar posiciones", exact=True).click()
+        frame = page.locator('iframe[title="Vista previa exacta y editable del reporte"]').content_frame
+        reset_choices = [
+            frame.locator('[data-report-element-type="KPI"]').first,
+            frame.locator('[data-report-element-type="SECTION_TITLE"]').first,
+            frame.locator('[data-report-element-type="TEXT_BLOCK"]').first,
+        ]
+        reset_choices[0].evaluate("node => node.click()")
+        for choice in reset_choices[1:]:
+            choice.evaluate("node => node.dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))")
+        page.get_by_role("button", name="Restablecer seleccionados", exact=True).click()
+        page.wait_for_timeout(500)
+        after_selected_reset = json.loads(request(f"/reports/{REPORT_ID}/layout-overrides", token))
+        assert len(after_selected_reset) < len(reloaded)
+        page.get_by_role("button", name="Restablecer todo", exact=True).click()
+        page.wait_for_timeout(500)
         reset_html = request(f"/reports/{REPORT_ID}/html-preview", token).decode()
         assert reset_html == baseline
         page.reload(wait_until="networkidle")
