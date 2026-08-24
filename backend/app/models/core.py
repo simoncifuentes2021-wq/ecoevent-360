@@ -2059,6 +2059,8 @@ class ReportLayoutOverride(Base):
         CheckConstraint("width_scale >= 0.1 and width_scale <= 5", name="ck_report_layout_overrides_width_scale"),
         CheckConstraint("height_scale >= 0.1 and height_scale <= 5", name="ck_report_layout_overrides_height_scale"),
         CheckConstraint("rotation >= -360 and rotation <= 360", name="ck_report_layout_overrides_rotation"),
+        CheckConstraint("box_width is null or (box_width >= 24 and box_width <= 2000)", name="ck_report_layout_overrides_box_width"),
+        CheckConstraint("box_height is null or (box_height >= 16 and box_height <= 3000)", name="ck_report_layout_overrides_box_height"),
         Index("idx_report_layout_overrides_report", "report_id"),
     )
 
@@ -2072,6 +2074,8 @@ class ReportLayoutOverride(Base):
     y_offset: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
     width_scale: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("1"))
     height_scale: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("1"))
+    box_width: Mapped[float | None] = mapped_column(Float)
+    box_height: Mapped[float | None] = mapped_column(Float)
     rotation: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
     z_index: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     locked: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))

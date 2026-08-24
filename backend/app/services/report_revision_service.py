@@ -37,6 +37,8 @@ def snapshot(report: Report) -> dict:
                 "y_offset": item.y_offset,
                 "width_scale": item.width_scale,
                 "height_scale": item.height_scale,
+                "box_width": item.box_width,
+                "box_height": item.box_height,
                 "rotation": item.rotation,
                 "z_index": item.z_index,
                 "locked": item.locked,

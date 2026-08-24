@@ -251,6 +251,8 @@ class ReportLayoutOverrideBase(BaseModel):
     y_offset: float = Field(default=0, ge=-3000, le=3000)
     width_scale: float = Field(default=1, ge=0.1, le=5)
     height_scale: float = Field(default=1, ge=0.1, le=5)
+    box_width: float | None = Field(default=None, ge=24, le=2000)
+    box_height: float | None = Field(default=None, ge=16, le=3000)
     rotation: float = Field(default=0, ge=-360, le=360)
     z_index: int = Field(default=0, ge=-10000, le=10000)
     locked: bool = False
