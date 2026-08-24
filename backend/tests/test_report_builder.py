@@ -1300,7 +1300,10 @@ def test_environmental_impact_renderer_respects_item_and_traceability_visibility
             {
                 "content": {
                     "show_traceability": False,
-                    "fields": [],
+                    "fields": [
+                        {"key": "hidden", "label": "Indicador oculto", "value": 999, "is_visible": False},
+                        {"key": "shown", "label": "Indicador visible", "value": 12, "is_visible": True},
+                    ],
                     "items": [
                         {"label": "Gasolina", "_is_visible": False},
                         {"label": "Bosque", "_is_visible": True},
@@ -1329,6 +1332,8 @@ def test_environmental_impact_renderer_respects_item_and_traceability_visibility
 
     assert "Trazabilidad aprobada" not in html
     assert "no-trace" in html
+    assert "Indicador oculto" not in html
+    assert "Indicador visible" in html
     assert "Gasolina" not in html
     assert "Bosque: 0,02 acre-año" in html
     assert "Show 1: 21,04 kg CO2e" not in html

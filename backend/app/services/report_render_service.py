@@ -473,7 +473,11 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         "pm10_avoided_kg": 5,
         "nox_avoided_kg": 5,
     }
-    fields = content.get("fields") or []
+    fields = [
+        field
+        for field in (content.get("fields") or [])
+        if field.get("is_visible", True) is not False
+    ]
     cards = "".join(
         '<article class="impact-card">'
         f"<span>{escape(str(field.get('label') or 'Indicador'))}</span>"
