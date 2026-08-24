@@ -5,6 +5,7 @@ export type ReportStatus = "DRAFT" | "GENERATED" | "DELIVERED" | "ARCHIVED" | "F
 export type ReportScope = "EVENT" | "SHOW";
 export type ReportCompositionMode = "AUTO" | "FREEFORM";
 export type ReportElementType = "TEXT" | "TITLE" | "KPI" | "IMAGE" | "CHART" | "SHAPE";
+export type ReportBinding = { key: string; label: string; value: string | number | boolean | null; unit?: string | null; source: string; availability: "AVAILABLE" | "NO_DATA" };
 export type ReportElement = { id: string; page_id: string; type: ReportElementType; x: number; y: number; width: number; height: number; rotation: number; z_index: number; locked: boolean; visible: boolean; content: Record<string, unknown>; style: Record<string, unknown>; data_binding?: Record<string, unknown> | null; metadata: Record<string, unknown>; created_at: string; updated_at: string };
 export type ReportPage = { id: string; report_id: string; page_number: number; name?: string | null; width: number; height: number; background: string; background_image?: string | null; is_enabled: boolean; created_at: string; updated_at: string; elements: ReportElement[] };
 export type ReportDataAvailability = "AVAILABLE" | "NO_DATA" | "EVENT_LEVEL_ONLY" | "NOT_APPLICABLE";

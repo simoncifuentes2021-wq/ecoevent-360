@@ -38,6 +38,20 @@ def prepare_document(
     if len(report.sections) > 50 or len(report.evidences) > 100:
         raise HTTPException(413, "Report exceeds rendering limits")
     snapshot = report_revision_service.snapshot(report)
+    from app.services.report_data_binding_registry import resolve as resolve_binding
+
+    for page in snapshot.get("pages", []):
+        for element in page.get("elements", []):
+            resolved = resolve_binding(report, element.get("data_binding"))
+            if resolved:
+                element["resolved_binding"] = resolved
+                element["content"] = {
+                    **(element.get("content") or {}),
+                    "text": resolved["value"]
+                    if resolved["availability"] == "AVAILABLE"
+                    else "Sin datos",
+                    "unit": resolved["unit"],
+                }
     event = report.event
     client = event.client
     section_key = {section.id: section.section_key for section in report.sections}

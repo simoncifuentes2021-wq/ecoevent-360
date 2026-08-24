@@ -1467,3 +1467,23 @@ def test_freeform_renderer_preserves_exact_logical_geometry_and_escapes_content(
     assert "width:50.00000000%" in html and "height:20.00000000%" in html
     assert "&lt;script&gt;unsafe&lt;/script&gt;" in html
     assert "<script>unsafe</script>" not in html
+
+
+def test_report_binding_registry_is_allowlisted_and_returns_no_data():
+    from app.services.report_data_binding_registry import canonical_key, resolve
+
+    report = SimpleNamespace(
+        event=SimpleNamespace(
+            name="Evento",
+            client=SimpleNamespace(business_name="Cliente"),
+            start_date=datetime(2026, 8, 1),
+            end_date=datetime(2026, 8, 2),
+        ),
+        session=None,
+        sections=[],
+    )
+    assert resolve(report, {"key": "event.name"})["value"] == "Evento"
+    missing = resolve(report, {"source": "waste", "metric": "total_kg"})
+    assert missing["availability"] == "NO_DATA" and missing["value"] is None
+    with pytest.raises(ValueError):
+        canonical_key({"key": "sql.select_all"})

@@ -14,6 +14,7 @@ from app.schemas.report_schema import (
     ReportPageUpdate,
 )
 from app.services.report_service import _ensure_admin, ensure_can_access_report
+from app.services.report_data_binding_registry import canonical_key
 
 
 def _editable_report(db: Session, report_id: UUID, user: User) -> Report:
@@ -50,6 +51,15 @@ def _validate_bounds(page: ReportPage, values: dict, current: ReportElement | No
         or resolved["y"] + resolved["height"] > page.height
     ):
         raise HTTPException(422, "Element must remain inside the page")
+
+
+def _validate_binding(values: dict) -> None:
+    if "data_binding" not in values or values["data_binding"] is None:
+        return
+    try:
+        canonical_key(values["data_binding"])
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 def list_pages(db: Session, report_id: UUID, user: User) -> list[ReportPage]:
@@ -125,6 +135,7 @@ def create_element(
     page = _page(db, report_id, page_id)
     values = payload.model_dump()
     _validate_bounds(page, values)
+    _validate_binding(values)
     values["metadata_"] = values.pop("metadata")
     element = ReportElement(page_id=page.id, **values)
     db.add(element)
@@ -140,6 +151,7 @@ def update_element(
     element = _element(db, report_id, element_id)
     values = payload.model_dump(exclude_unset=True)
     _validate_bounds(element.page, values, element)
+    _validate_binding(values)
     if "metadata" in values:
         values["metadata_"] = values.pop("metadata")
     for key, value in values.items():
@@ -173,6 +185,7 @@ def batch_update(
         element = lookup[change.id]
         values = change.model_dump(exclude={"id"}, exclude_unset=True)
         _validate_bounds(page, values, element)
+        _validate_binding(values)
         if "metadata" in values:
             values["metadata_"] = values.pop("metadata")
         for key, value in values.items():

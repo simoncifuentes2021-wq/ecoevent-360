@@ -176,6 +176,20 @@ def batch_update_report_elements(
     ]
 
 
+@router.get("/{report_id}/bindings")
+def list_report_bindings(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_builder_service
+    from app.services.report_data_binding_registry import catalog
+
+    report = report_builder_service.get_editor(db, report_id, current_user)
+    report_service._ensure_admin(current_user)
+    return catalog(report)
+
+
 @router.get("/{report_id}/html-preview", response_class=HTMLResponse)
 def preview_report_html(
     report_id: UUID,
