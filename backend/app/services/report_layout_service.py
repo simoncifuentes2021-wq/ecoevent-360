@@ -50,6 +50,24 @@ def _field_binding(section_key: str, field_key: str) -> dict | None:
     return {"key": match.key} if match else None
 
 
+def _is_legacy_placeholder_layout(pages: list[ReportPage]) -> bool:
+    """Recognize only untouched canvases created by the first experimental editor."""
+    if not pages:
+        return False
+    defaults = {"", "Título de página", "Escribe aquí", "Sin datos"}
+    elements = [element for page in pages for element in page.elements]
+    return (
+        all(page.background == "#FFFFFF" and (page.name or "").startswith("Página") for page in pages)
+        and all(
+            not element.metadata_
+            and not element.data_binding
+            and set((element.content or {}).keys()) <= {"text"}
+            and str((element.content or {}).get("text") or "") in defaults
+            for element in elements
+        )
+    )
+
+
 def _materialize_section(
     db: Session, report: Report, page: ReportPage, section, top: float, height: float, z: int
 ) -> list[ReportElement]:
@@ -171,8 +189,12 @@ def materialize_auto_layout(db: Session, report_id: UUID, user: User) -> list[Re
             .order_by(ReportPage.page_number)
         ).unique()
     )
-    if existing:
+    if existing and not _is_legacy_placeholder_layout(existing):
         return existing
+    if existing:
+        for page in existing:
+            db.delete(page)
+        db.flush()
 
     from app.services.report_page_planner import plan_pages
 

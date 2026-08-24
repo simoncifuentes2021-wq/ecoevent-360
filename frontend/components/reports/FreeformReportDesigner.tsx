@@ -43,8 +43,8 @@ export function FreeformReportDesigner({ reportId, onClose }: { reportId: string
   const scale = zoom / 100;
   const snapshot = useCallback(() => structuredClone(pages), [pages]);
 
-  const load = useCallback(async () => { const [stored, available] = await Promise.all([getReportPages(reportId), getAvailableReportEvidences(reportId)]); const loaded = stored.length ? stored : await materializeAutoReportPages(reportId); setEvidences(available); setPages(loaded); setPageId(current => current && loaded.some(item => item.id === current) ? current : loaded[0]?.id); }, [reportId]);
-  useEffect(() => { void load().catch(cause => setError(cause instanceof Error ? cause.message : "No se pudo abrir el diseño")); }, [load]);
+  const load = useCallback(async (initializeFromAuto = false) => { const [loaded, available] = await Promise.all([initializeFromAuto ? materializeAutoReportPages(reportId) : getReportPages(reportId), getAvailableReportEvidences(reportId)]); setEvidences(available); setPages(loaded); setPageId(current => current && loaded.some(item => item.id === current) ? current : loaded[0]?.id); }, [reportId]);
+  useEffect(() => { void load(true).catch(cause => setError(cause instanceof Error ? cause.message : "No se pudo abrir el diseño")); }, [load]);
 
   function remember() { setHistory(items => [...items.slice(-29), snapshot()]); setFuture([]); }
   function replaceElement(id: string, patch: Partial<ReportElement>) { setPages(items => items.map(item => item.id !== page?.id ? item : ({ ...item, elements: item.elements.map(element => element.id === id ? { ...element, ...patch } : element) }))); }

@@ -176,6 +176,59 @@ def test_auto_report_materializes_once_as_editable_freeform(report_context):
     assert report.composition_mode == ReportCompositionMode.FREEFORM
 
 
+def test_auto_materialization_replaces_only_untouched_legacy_placeholders(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    legacy = report_layout_service.create_page(
+        db, report.id, ReportPageCreate(name="Página 1"), admin
+    )
+    report_layout_service.create_element(
+        db,
+        report.id,
+        legacy.id,
+        ReportElementCreate(
+            type=ReportElementType.TITLE,
+            x=80,
+            y=100,
+            width=700,
+            height=100,
+            content={"text": "Título de página"},
+        ),
+        admin,
+    )
+
+    converted = report_layout_service.materialize_auto_layout(db, report.id, admin)
+
+    assert legacy.id not in {page.id for page in converted}
+    assert converted[0].name == "Portada"
+    assert converted[0].background != "#FFFFFF"
+
+    custom_report = report_builder_service.create_draft(
+        db, event.id, ReportScope.EVENT, None, admin
+    )
+    custom_page = report_layout_service.create_page(
+        db, custom_report.id, ReportPageCreate(name="Mi diseño"), admin
+    )
+    report_layout_service.create_element(
+        db,
+        custom_report.id,
+        custom_page.id,
+        ReportElementCreate(
+            type=ReportElementType.TEXT,
+            x=20,
+            y=20,
+            width=300,
+            height=80,
+            content={"text": "Contenido personalizado"},
+        ),
+        admin,
+    )
+    preserved = report_layout_service.materialize_auto_layout(
+        db, custom_report.id, admin
+    )
+    assert [page.id for page in preserved] == [custom_page.id]
+
+
 class ReportFakeAIProvider:
     def __init__(self, content: str | None = None):
         self.content = (
