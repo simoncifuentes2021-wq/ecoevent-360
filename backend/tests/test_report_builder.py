@@ -35,6 +35,7 @@ from app.models.enums import (
     EventStatus,
     IncidentStatus,
     ReportLayoutVariant,
+    ReportCompositionMode,
     ReportElementType,
     ReportPublicationStatus,
     ReportScope,
@@ -146,6 +147,33 @@ def test_freeform_layout_permissions_bounds_lock_layers_and_delete(report_contex
     assert updated.locked is True and updated.z_index == 7
     report_layout_service.delete_element(db, report.id, element.id, admin)
     assert report_layout_service.list_pages(db, report.id, admin)[0].elements == []
+
+
+def test_auto_report_materializes_once_as_editable_freeform(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+
+    pages = report_layout_service.materialize_auto_layout(db, report.id, admin)
+
+    assert pages
+    assert pages[0].name == "Portada"
+    assert any(
+        element.type == ReportElementType.TITLE and element.content.get("text") == report.title
+        for element in pages[0].elements
+    )
+    assert any(element.data_binding for page in pages for element in page.elements)
+    assert all(
+        element.x + element.width <= page.width and element.y + element.height <= page.height
+        for page in pages
+        for element in page.elements
+    )
+    first_ids = [[element.id for element in page.elements] for page in pages]
+
+    repeated = report_layout_service.materialize_auto_layout(db, report.id, admin)
+
+    assert [[element.id for element in page.elements] for page in repeated] == first_ids
+    db.refresh(report)
+    assert report.composition_mode == ReportCompositionMode.FREEFORM
 
 
 class ReportFakeAIProvider:

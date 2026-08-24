@@ -126,6 +126,19 @@ test("freeform editor supports keyboard, layers, duplicate, lock and undo", () =
   assert.doesNotMatch(editor, /window\.(alert|confirm)/);
 });
 
+test("freeform editor starts from the existing automatic report", () => {
+  const editor = read("components", "reports", "FreeformReportDesigner.tsx");
+  const api = read("lib", "api", "reports.ts");
+  for (const pattern of [
+    /materializeAutoReportPages/,
+    /pages\/materialize-auto/,
+    /Editar dise.o del reporte/,
+    /FreeformChart/,
+    /FreeformImage/,
+    /getAvailableReportEvidences/,
+  ]) assert.match(`${editor}\n${api}`, pattern);
+});
+
 test("client portal lists only delivered authenticated publications", () => {
   const source = read("components", "client", "ClientReportsTab.tsx");
   assert.match(source, /status === "DELIVERED"/);

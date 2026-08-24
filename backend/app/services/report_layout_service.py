@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.core import Report, ReportElement, ReportPage, User
-from app.models.enums import ReportCompositionMode
+from app.models.enums import ReportCompositionMode, ReportElementType
 from app.schemas.report_schema import (
     ReportElementBatchUpdate,
     ReportElementCreate,
@@ -15,6 +15,226 @@ from app.schemas.report_schema import (
 )
 from app.services.report_service import _ensure_admin, ensure_can_access_report
 from app.services.report_data_binding_registry import canonical_key
+
+
+PAGE_WIDTH = 1000.0
+PAGE_HEIGHT = 1414.0
+
+
+def _auto_element(page: ReportPage, kind: ReportElementType, **values) -> ReportElement:
+    return ReportElement(
+        page_id=page.id,
+        type=kind,
+        rotation=0,
+        locked=False,
+        visible=True,
+        metadata_={"materialized_from_auto": True},
+        data_binding=values.pop("data_binding", None),
+        content=values.pop("content", {}),
+        style=values.pop("style", {}),
+        **values,
+    )
+
+
+def _field_binding(section_key: str, field_key: str) -> dict | None:
+    from app.services.report_data_binding_registry import REGISTRY
+
+    match = next(
+        (
+            definition
+            for definition in REGISTRY.values()
+            if definition.source == section_key and definition.key.rsplit(".", 1)[-1] == field_key
+        ),
+        None,
+    )
+    return {"key": match.key} if match else None
+
+
+def _materialize_section(
+    db: Session, report: Report, page: ReportPage, section, top: float, height: float, z: int
+) -> list[ReportElement]:
+    from app.services.report_visual_data_service import chart_dataset
+
+    theme = report.theme or {}
+    primary = str(theme.get("primary_color") or "#12372A")
+    accent = str(theme.get("accent_color") or "#95D5B2")
+    content = section.content or {}
+    elements = [
+        _auto_element(
+            page,
+            ReportElementType.SHAPE,
+            x=50,
+            y=top,
+            width=900,
+            height=height,
+            z_index=z,
+            style={"background": "#F4F7F5", "borderRadius": 18, "opacity": 1},
+        ),
+        _auto_element(
+            page,
+            ReportElementType.TITLE,
+            x=75,
+            y=top + 24,
+            width=850,
+            height=64,
+            z_index=z + 1,
+            content={"text": section.title},
+            style={"fontSize": 28, "fontWeight": "700", "color": primary},
+        ),
+    ]
+    cursor = top + 96
+    text_value = content.get("text")
+    if text_value:
+        elements.append(
+            _auto_element(
+                page,
+                ReportElementType.TEXT,
+                x=75,
+                y=cursor,
+                width=850,
+                height=min(120, max(70, height * 0.2)),
+                z_index=z + 1,
+                content={"text": str(text_value)},
+                style={"fontSize": 16, "color": "#334155"},
+            )
+        )
+        cursor += min(135, max(85, height * 0.22))
+    fields = [item for item in (content.get("fields") or []) if item.get("is_visible", True)][:4]
+    if fields:
+        card_width = (850 - (len(fields) - 1) * 14) / len(fields)
+        for index, field in enumerate(fields):
+            value = field.get("value")
+            display = "Sin datos" if value is None else str(value)
+            if field.get("unit") and value is not None:
+                display += f" {field['unit']}"
+            elements.append(
+                _auto_element(
+                    page,
+                    ReportElementType.KPI,
+                    x=75 + index * (card_width + 14),
+                    y=cursor,
+                    width=card_width,
+                    height=min(125, max(90, height - (cursor - top) - 24)),
+                    z_index=z + 1,
+                    content={"text": display, "label": field.get("label")},
+                    data_binding=_field_binding(section.section_key, str(field.get("key") or "")),
+                    style={"fontSize": 22, "fontWeight": "700", "color": primary, "background": "#FFFFFF", "borderRadius": 12},
+                )
+            )
+        cursor += min(140, max(105, height - (cursor - top) - 24))
+    dataset = chart_dataset(report, section.section_key, "BAR")
+    if dataset.get("availability") == "AVAILABLE" and height - (cursor - top) >= 150:
+        elements.append(
+            _auto_element(
+                page,
+                ReportElementType.CHART,
+                x=75,
+                y=cursor,
+                width=520,
+                height=height - (cursor - top) - 24,
+                z_index=z + 1,
+                content={"source": section.section_key, "chart_type": "BAR", "dataset": dataset},
+                style={"color": accent, "background": "#FFFFFF", "borderRadius": 12},
+            )
+        )
+    evidence = next(
+        (item for item in report.evidences if item.is_enabled and item.section_id == section.id),
+        None,
+    )
+    if evidence and height - (cursor - top) >= 150:
+        elements.append(
+            _auto_element(
+                page,
+                ReportElementType.IMAGE,
+                x=615,
+                y=cursor,
+                width=310,
+                height=height - (cursor - top) - 24,
+                z_index=z + 2,
+                content={"evidence_id": str(evidence.evidence_id), "caption": evidence.caption or evidence.evidence.description},
+                style={"objectFit": "cover", "borderRadius": 12},
+            )
+        )
+    return elements
+
+
+def materialize_auto_layout(db: Session, report_id: UUID, user: User) -> list[ReportPage]:
+    """Create an editable FREEFORM copy of the current AUTO layout exactly once."""
+    _ensure_admin(user)
+    db.execute(select(Report.id).where(Report.id == report_id).with_for_update())
+    report = ensure_can_access_report(db, user, report_id)
+    existing = list(
+        db.scalars(
+            select(ReportPage)
+            .options(selectinload(ReportPage.elements))
+            .where(ReportPage.report_id == report_id)
+            .order_by(ReportPage.page_number)
+        ).unique()
+    )
+    if existing:
+        return existing
+
+    from app.services.report_page_planner import plan_pages
+
+    visible = [section for section in report.sections if section.is_enabled]
+    by_key = {section.section_key: section for section in visible}
+    plans = plan_pages(
+        [
+            {
+                "section_key": section.section_key,
+                "section_type": section.section_type.value,
+                "title": section.title,
+                "is_enabled": section.is_enabled,
+                "sort_order": section.sort_order,
+                "content": section.content,
+            }
+            for section in visible
+        ],
+        report.template_key.value,
+        report.editorial_config,
+    )
+    pages: list[ReportPage] = []
+    for plan in plans:
+        page = ReportPage(
+            report_id=report.id,
+            page_number=plan.number,
+            name=plan.title,
+            width=PAGE_WIDTH,
+            height=PAGE_HEIGHT,
+            background="#FFFFFF",
+            is_enabled=True,
+        )
+        db.add(page)
+        db.flush()
+        pages.append(page)
+        if plan.recipe.value == "COVER_HERO":
+            primary = str((report.theme or {}).get("primary_color") or "#12372A")
+            page.background = primary
+            page.elements.extend(
+                [
+                    _auto_element(page, ReportElementType.TITLE, x=70, y=190, width=860, height=220, z_index=2, content={"text": report.title}, style={"fontSize": 52, "fontWeight": "700", "color": "#FFFFFF"}),
+                    _auto_element(page, ReportElementType.TEXT, x=70, y=440, width=700, height=90, z_index=2, content={"text": report.event.name}, data_binding={"key": "event.name"}, style={"fontSize": 26, "color": "#FFFFFF"}),
+                    _auto_element(page, ReportElementType.TEXT, x=70, y=550, width=700, height=70, z_index=2, content={"text": report.event.client.business_name}, data_binding={"key": "event.client"}, style={"fontSize": 18, "color": "#D1FAE5"}),
+                ]
+            )
+            evidence = next((item for item in report.evidences if item.is_enabled), None)
+            if evidence:
+                page.elements.append(
+                    _auto_element(page, ReportElementType.IMAGE, x=570, y=760, width=360, height=500, z_index=1, content={"evidence_id": str(evidence.evidence_id), "caption": evidence.caption or evidence.evidence.description}, style={"objectFit": "cover", "borderRadius": 18})
+                )
+            continue
+        sections = [by_key[key] for key in plan.section_keys if key in by_key]
+        if not sections:
+            continue
+        block_height = min(1160 / len(sections), 570)
+        for index, section in enumerate(sections):
+            page.elements.extend(
+                _materialize_section(db, report, page, section, 120 + index * (block_height + 20), block_height, index * 20)
+            )
+    report.composition_mode = ReportCompositionMode.FREEFORM
+    report.edit_version += 1
+    db.commit()
+    return list_pages(db, report_id, user)
 
 
 def _editable_report(db: Session, report_id: UUID, user: User) -> Report:

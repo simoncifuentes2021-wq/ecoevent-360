@@ -111,6 +111,7 @@ export function getReportPublications(reportId: string) { return api.get<ReportP
 export function generateReportPublication(reportId: string, idempotencyKey: string) { return api.post<ReportPublication>(`/reports/${reportId}/publications`, { idempotency_key: idempotencyKey }); }
 export function deliverReportPublication(publicationId: string) { return api.post<ReportPublication>(`/reports/publications/${publicationId}/deliver`, {}); }
 export function getReportPages(reportId: string) { return api.get<ReportPage[]>(`/reports/${reportId}/pages`); }
+export function materializeAutoReportPages(reportId: string) { return api.post<ReportPage[]>(`/reports/${reportId}/pages/materialize-auto`, {}); }
 export function getReportBindings(reportId: string) { return api.get<import("@/types/report").ReportBinding[]>(`/reports/${reportId}/bindings`); }
 export function createReportPage(reportId: string, body: Partial<Pick<ReportPage, "name" | "width" | "height" | "background" | "background_image" | "is_enabled">> = {}) { return api.post<ReportPage>(`/reports/${reportId}/pages`, body); }
 export function updateReportPage(reportId: string, pageId: string, body: Partial<ReportPage>) { return api.patch<ReportPage>(`/reports/${reportId}/pages/${pageId}`, body); }

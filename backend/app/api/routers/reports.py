@@ -73,6 +73,20 @@ def list_report_pages(
     ]
 
 
+@router.post("/{report_id}/pages/materialize-auto", response_model=list[ReportPageRead])
+def materialize_auto_report_pages(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_service
+
+    return [
+        _page_read(item)
+        for item in report_layout_service.materialize_auto_layout(db, report_id, current_user)
+    ]
+
+
 @router.post("/{report_id}/pages", response_model=ReportPageRead, status_code=201)
 def create_report_page(
     report_id: UUID,
