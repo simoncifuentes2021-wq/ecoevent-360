@@ -62,6 +62,22 @@ def _validate_binding(values: dict) -> None:
         raise HTTPException(422, str(exc)) from exc
 
 
+def _validate_content(
+    db: Session, report: Report, values: dict, current: ReportElement | None = None
+) -> None:
+    element_type = values.get("type", current.type if current else None)
+    content = values.get("content", current.content if current else {}) or {}
+    if getattr(element_type, "value", element_type) == "IMAGE" and content.get("evidence_id"):
+        from app.services.report_visual_data_service import validate_evidence
+
+        validate_evidence(db, report, UUID(str(content["evidence_id"])))
+    if getattr(element_type, "value", element_type) == "CHART":
+        from app.services.report_visual_data_service import CHART_TYPES
+
+        if content.get("chart_type", "BAR") not in CHART_TYPES:
+            raise HTTPException(422, "Unsupported chart type")
+
+
 def list_pages(db: Session, report_id: UUID, user: User) -> list[ReportPage]:
     _editable_report(db, report_id, user)
     return list(
@@ -75,14 +91,13 @@ def list_pages(db: Session, report_id: UUID, user: User) -> list[ReportPage]:
 
 
 def create_page(db: Session, report_id: UUID, payload: ReportPageCreate, user: User) -> ReportPage:
-    _editable_report(db, report_id, user)
+    report = _editable_report(db, report_id, user)
     number = (
         db.scalar(select(func.max(ReportPage.page_number)).where(ReportPage.report_id == report_id))
         or 0
     ) + 1
     page = ReportPage(report_id=report_id, page_number=number, **payload.model_dump())
     db.add(page)
-    report = db.get(Report, report_id)
     report.composition_mode = ReportCompositionMode.FREEFORM
     db.commit()
     db.refresh(page)
@@ -131,11 +146,12 @@ def delete_page(db: Session, report_id: UUID, page_id: UUID, user: User) -> None
 def create_element(
     db: Session, report_id: UUID, page_id: UUID, payload: ReportElementCreate, user: User
 ) -> ReportElement:
-    _editable_report(db, report_id, user)
+    report = _editable_report(db, report_id, user)
     page = _page(db, report_id, page_id)
     values = payload.model_dump()
     _validate_bounds(page, values)
     _validate_binding(values)
+    _validate_content(db, report, values)
     values["metadata_"] = values.pop("metadata")
     element = ReportElement(page_id=page.id, **values)
     db.add(element)
@@ -147,11 +163,12 @@ def create_element(
 def update_element(
     db: Session, report_id: UUID, element_id: UUID, payload: ReportElementUpdate, user: User
 ) -> ReportElement:
-    _editable_report(db, report_id, user)
+    report = _editable_report(db, report_id, user)
     element = _element(db, report_id, element_id)
     values = payload.model_dump(exclude_unset=True)
     _validate_bounds(element.page, values, element)
     _validate_binding(values)
+    _validate_content(db, report, values, element)
     if "metadata" in values:
         values["metadata_"] = values.pop("metadata")
     for key, value in values.items():
@@ -170,7 +187,7 @@ def delete_element(db: Session, report_id: UUID, element_id: UUID, user: User) -
 def batch_update(
     db: Session, report_id: UUID, page_id: UUID, payload: ReportElementBatchUpdate, user: User
 ) -> list[ReportElement]:
-    _editable_report(db, report_id, user)
+    report = _editable_report(db, report_id, user)
     page = _page(db, report_id, page_id)
     ids = [item.id for item in payload.elements]
     elements = list(
@@ -186,6 +203,7 @@ def batch_update(
         values = change.model_dump(exclude={"id"}, exclude_unset=True)
         _validate_bounds(page, values, element)
         _validate_binding(values)
+        _validate_content(db, report, values, element)
         if "metadata" in values:
             values["metadata_"] = values.pop("metadata")
         for key, value in values.items():

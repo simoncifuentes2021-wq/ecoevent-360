@@ -1487,3 +1487,34 @@ def test_report_binding_registry_is_allowlisted_and_returns_no_data():
     assert missing["availability"] == "NO_DATA" and missing["value"] is None
     with pytest.raises(ValueError):
         canonical_key({"key": "sql.select_all"})
+
+
+def test_freeform_chart_dataset_is_normalized_in_backend():
+    from app.services.report_visual_data_service import chart_dataset
+
+    report = SimpleNamespace(
+        sections=[
+            SimpleNamespace(
+                section_key="waste",
+                title="Residuos",
+                content={
+                    "items": [
+                        {"label": "Reciclaje", "weight_kg": 42},
+                        {"label": "Compost", "weight_kg": 18},
+                    ]
+                },
+            )
+        ]
+    )
+    dataset = chart_dataset(report, "waste", "DONUT")
+    assert dataset == {
+        "chart_type": "DONUT",
+        "labels": ["Reciclaje", "Compost"],
+        "series": [{"name": "Residuos", "data": [42, 18]}],
+        "points": [{"label": "Reciclaje", "value": 42}, {"label": "Compost", "value": 18}],
+        "availability": "AVAILABLE",
+        "source": "waste",
+    }
+    assert (
+        chart_dataset(SimpleNamespace(sections=[]), "carbon", "LINE")["availability"] == "NO_DATA"
+    )

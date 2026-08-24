@@ -52,6 +52,35 @@ def prepare_document(
                     else "Sin datos",
                     "unit": resolved["unit"],
                 }
+            if element.get("type") == "IMAGE" and (element.get("content") or {}).get("evidence_id"):
+                evidence_id = str(element["content"]["evidence_id"])
+                selected = next(
+                    (
+                        item.evidence
+                        for item in report.evidences
+                        if str(item.evidence_id) == evidence_id and item.is_enabled
+                    ),
+                    None,
+                )
+                if selected:
+                    uri, warning = evidence_asset(selected.file_url, selected.file_type)
+                    element["content"] = {**element["content"], "uri": uri, "warning": warning}
+                else:
+                    element["content"] = {
+                        **element["content"],
+                        "uri": None,
+                        "warning": "Evidencia no seleccionada",
+                    }
+            if element.get("type") == "CHART":
+                from app.services.report_visual_data_service import chart_dataset
+
+                content = element.get("content") or {}
+                element["content"] = {
+                    **content,
+                    "dataset": chart_dataset(
+                        report, content.get("source", "waste"), content.get("chart_type", "BAR")
+                    ),
+                }
     event = report.event
     client = event.client
     section_key = {section.id: section.section_key for section in report.sections}

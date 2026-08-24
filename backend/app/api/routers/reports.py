@@ -190,6 +190,22 @@ def list_report_bindings(
     return catalog(report)
 
 
+@router.get("/{report_id}/chart-data/{section_key}")
+def get_report_chart_data(
+    report_id: UUID,
+    section_key: str,
+    chart_type: str = "BAR",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_builder_service
+    from app.services.report_visual_data_service import chart_dataset
+
+    report = report_builder_service.get_editor(db, report_id, current_user)
+    report_service._ensure_admin(current_user)
+    return chart_dataset(report, section_key, chart_type)
+
+
 @router.get("/{report_id}/html-preview", response_class=HTMLResponse)
 def preview_report_html(
     report_id: UUID,

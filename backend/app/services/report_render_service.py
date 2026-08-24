@@ -202,7 +202,9 @@ def _freeform_element_html(element: dict[str, Any], page_width: float, page_heig
     if kind == "KPI":
         body = f'<small style="display:block">KPI</small><strong style="font-size:1.8em">{text}</strong>'
     elif kind == "CHART":
-        body = f'<div style="height:100%;display:grid;place-items:center;border:1px dashed #94a3b8">{text}</div>'
+        body = _freeform_chart_html(
+            content.get("dataset") or {}, str(style.get("color", "#2D6A4F"))
+        )
     elif kind == "IMAGE":
         uri = content.get("uri")
         body = (
@@ -213,6 +215,18 @@ def _freeform_element_html(element: dict[str, Any], page_width: float, page_heig
     else:
         body = text
     return f'<div class="freeform-element" data-element-id="{escape(str(element.get("id", "")))}" style="{";".join(css)}">{body}</div>'
+
+
+def _freeform_chart_html(dataset: dict, color: str) -> str:
+    points = dataset.get("points") or []
+    if not points:
+        return '<div style="height:100%;display:grid;place-items:center;border:1px dashed #94a3b8">Sin datos</div>'
+    maximum = max(float(item.get("value") or 0) for item in points) or 1
+    bars = "".join(
+        f'<div style="display:grid;grid-template-columns:28% 1fr 15%;gap:2%;align-items:center"><span>{escape(str(item.get("label", "Dato")))}</span><i style="display:block;height:4mm;width:{float(item.get("value") or 0) / maximum * 100:.3f}%;background:{escape(color)}"></i><b>{float(item.get("value") or 0):g}</b></div>'
+        for item in points[:12]
+    )
+    return f'<div data-chart-type="{escape(str(dataset.get("chart_type", "BAR")))}" style="display:grid;gap:2mm;height:100%;align-content:center">{bars}</div>'
 
 
 def _styles(document: ReportRenderDocument) -> str:
