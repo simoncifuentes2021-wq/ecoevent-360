@@ -95,6 +95,37 @@ test("premium PDF workflow uses exact preview and immutable publications", () =>
   assert.doesNotMatch(editor, /window\.confirm/);
 });
 
+test("freeform editor keeps A4 logical geometry and batches drag or resize", () => {
+  const editor = read("components", "reports", "FreeformReportDesigner.tsx");
+  const api = read("lib", "api", "reports.ts");
+  for (const pattern of [
+    /freeform-a4-canvas/,
+    /width: page\.width \* scale/,
+    /height: page\.height \* scale/,
+    /onPointerDown/,
+    /kind: "move" \| "resize"/,
+    /setPointerCapture/,
+    /batchUpdateReportElements/,
+    /pointerUp/,
+  ]) assert.match(`${editor}\n${api}`, pattern);
+  assert.doesNotMatch(editor, /onPointerMove=.*batchUpdateReportElements/);
+});
+
+test("freeform editor supports keyboard, layers, duplicate, lock and undo", () => {
+  const editor = read("components", "reports", "FreeformReportDesigner.tsx");
+  for (const pattern of [
+    /ArrowLeft/,
+    /event\.shiftKey \? 10 : 1/,
+    /Duplicar/,
+    /Bloquear/,
+    /Adelante/,
+    /Atrás/,
+    /Deshacer/,
+    /Rehacer/,
+  ]) assert.match(editor, pattern);
+  assert.doesNotMatch(editor, /window\.(alert|confirm)/);
+});
+
 test("client portal lists only delivered authenticated publications", () => {
   const source = read("components", "client", "ClientReportsTab.tsx");
   assert.match(source, /status === "DELIVERED"/);
