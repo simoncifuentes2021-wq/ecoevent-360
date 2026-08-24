@@ -194,6 +194,10 @@ def _freeform_element_html(element: dict[str, Any], page_width: float, page_heig
         f"font-size:{float(style.get('fontSize', 18)) * 0.21:.4f}mm",
         f"font-weight:{escape(str(style.get('fontWeight', 'normal')))}",
         f"text-align:{escape(str(style.get('textAlign', 'left')))}",
+        f"line-height:{float(style.get('lineHeight', 1.2))}",
+        f"letter-spacing:{float(style.get('letterSpacing', 0)) * 0.21:.4f}mm",
+        f"padding:{float(style.get('padding', 0)) * 0.21:.4f}mm",
+        "white-space:pre-wrap",
         f"opacity:{float(style.get('opacity', 1))}",
         f"border-radius:{float(style.get('borderRadius', 0)) * 0.21:.4f}mm",
     ]

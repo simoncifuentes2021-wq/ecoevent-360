@@ -163,6 +163,15 @@ def test_auto_report_materializes_once_as_editable_freeform(report_context):
     )
     assert any(element.data_binding for page in pages for element in page.elements)
     assert all(
+        element.metadata_.get("auto_layout_version") == 2
+        for page in pages
+        for element in page.elements
+    )
+    assert any(
+        element.type == ReportElementType.SHAPE and element.style.get("opacity") == 0.88
+        for element in pages[0].elements
+    )
+    assert all(
         element.x + element.width <= page.width and element.y + element.height <= page.height
         for page in pages
         for element in page.elements

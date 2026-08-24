@@ -132,7 +132,8 @@ test("freeform editor starts from the existing automatic report", () => {
   for (const pattern of [
     /materializeAutoReportPages/,
     /pages\/materialize-auto/,
-    /Editar dise.o del reporte/,
+    /Editar dise.o profesional/,
+    /elementos editables/,
     /FreeformChart/,
     /FreeformImage/,
     /getAvailableReportEvidences/,

@@ -19,6 +19,7 @@ from app.services.report_data_binding_registry import canonical_key
 
 PAGE_WIDTH = 1000.0
 PAGE_HEIGHT = 1414.0
+AUTO_LAYOUT_VERSION = 2
 
 
 def _auto_element(page: ReportPage, kind: ReportElementType, **values) -> ReportElement:
@@ -28,7 +29,7 @@ def _auto_element(page: ReportPage, kind: ReportElementType, **values) -> Report
         rotation=0,
         locked=False,
         visible=True,
-        metadata_={"materialized_from_auto": True},
+        metadata_={"materialized_from_auto": True, "auto_layout_version": AUTO_LAYOUT_VERSION},
         data_binding=values.pop("data_binding", None),
         content=values.pop("content", {}),
         style=values.pop("style", {}),
@@ -68,14 +69,43 @@ def _is_legacy_placeholder_layout(pages: list[ReportPage]) -> bool:
     )
 
 
+def _is_replaceable_auto_layout(report: Report, pages: list[ReportPage]) -> bool:
+    """Upgrade generated canvases, but never overwrite a canvas the user has edited."""
+    if (report.editorial_config or {}).get("freeform_user_edited"):
+        return False
+    elements = [element for page in pages for element in page.elements]
+    return bool(elements) and all(
+        (element.metadata_ or {}).get("materialized_from_auto")
+        and (element.metadata_ or {}).get("auto_layout_version") != AUTO_LAYOUT_VERSION
+        for element in elements
+    )
+
+
+def _page_chrome(page: ReportPage, title: str, number: int, theme: dict) -> list[ReportElement]:
+    primary = str(theme["primary_color"])
+    muted = str(theme["muted_color"])
+    background = str(theme["background_color"])
+    return [
+        _auto_element(page, ReportElementType.SHAPE, x=885, y=0, width=115, height=115, z_index=0, style={"background": background, "borderRadius": 58}),
+        _auto_element(page, ReportElementType.TEXT, x=70, y=64, width=620, height=32, z_index=2, content={"text": title.upper()}, style={"fontSize": 10, "fontWeight": "800", "color": primary, "letterSpacing": 2}),
+        _auto_element(page, ReportElementType.TEXT, x=790, y=64, width=140, height=32, z_index=2, content={"text": "EcoEvent 360"}, style={"fontSize": 10, "textAlign": "right", "color": muted}),
+        _auto_element(page, ReportElementType.SHAPE, x=70, y=104, width=860, height=2, z_index=2, style={"background": "#DCE5E0"}),
+        _auto_element(page, ReportElementType.TEXT, x=70, y=1350, width=500, height=28, z_index=2, content={"text": "IMPACTO · OPERACIÓN · EVIDENCIA"}, style={"fontSize": 9, "color": muted, "letterSpacing": 1}),
+        _auto_element(page, ReportElementType.TEXT, x=870, y=1350, width=60, height=28, z_index=2, content={"text": f"{number - 1:02d}"}, style={"fontSize": 10, "fontWeight": "800", "textAlign": "right", "color": primary}),
+    ]
+
+
 def _materialize_section(
     db: Session, report: Report, page: ReportPage, section, top: float, height: float, z: int
 ) -> list[ReportElement]:
     from app.services.report_visual_data_service import chart_dataset
 
-    theme = report.theme or {}
-    primary = str(theme.get("primary_color") or "#12372A")
-    accent = str(theme.get("accent_color") or "#95D5B2")
+    from app.services.report_render_service import theme_for_template
+
+    theme = theme_for_template(report.template_key.value, report.theme)
+    primary = str(theme["primary_color"])
+    accent = str(theme["accent_color"])
+    surface = str(theme["background_color"])
     content = section.content or {}
     elements = [
         _auto_element(
@@ -86,18 +116,18 @@ def _materialize_section(
             width=900,
             height=height,
             z_index=z,
-            style={"background": "#F4F7F5", "borderRadius": 18, "opacity": 1},
+            style={"background": surface, "borderRadius": 10, "opacity": 1},
         ),
         _auto_element(
             page,
             ReportElementType.TITLE,
-            x=75,
+            x=82,
             y=top + 24,
             width=850,
             height=64,
             z_index=z + 1,
             content={"text": section.title},
-            style={"fontSize": 28, "fontWeight": "700", "color": primary},
+            style={"fontSize": 30, "fontWeight": "800", "color": primary, "lineHeight": 1.05},
         ),
     ]
     cursor = top + 96
@@ -107,13 +137,13 @@ def _materialize_section(
             _auto_element(
                 page,
                 ReportElementType.TEXT,
-                x=75,
+                x=82,
                 y=cursor,
                 width=850,
                 height=min(120, max(70, height * 0.2)),
                 z_index=z + 1,
                 content={"text": str(text_value)},
-                style={"fontSize": 16, "color": "#334155"},
+                style={"fontSize": 16, "color": str(theme["muted_color"]), "lineHeight": 1.5},
             )
         )
         cursor += min(135, max(85, height * 0.22))
@@ -129,14 +159,14 @@ def _materialize_section(
                 _auto_element(
                     page,
                     ReportElementType.KPI,
-                    x=75 + index * (card_width + 14),
+                    x=82 + index * (card_width + 14),
                     y=cursor,
                     width=card_width,
                     height=min(125, max(90, height - (cursor - top) - 24)),
                     z_index=z + 1,
                     content={"text": display, "label": field.get("label")},
                     data_binding=_field_binding(section.section_key, str(field.get("key") or "")),
-                    style={"fontSize": 22, "fontWeight": "700", "color": primary, "background": "#FFFFFF", "borderRadius": 12},
+                    style={"fontSize": 22, "fontWeight": "800", "color": primary, "background": "#FFFFFF", "borderRadius": 10, "padding": 16},
                 )
             )
         cursor += min(140, max(105, height - (cursor - top) - 24))
@@ -176,8 +206,10 @@ def _materialize_section(
     return elements
 
 
-def materialize_auto_layout(db: Session, report_id: UUID, user: User) -> list[ReportPage]:
-    """Create an editable FREEFORM copy of the current AUTO layout exactly once."""
+def materialize_auto_layout(
+    db: Session, report_id: UUID, user: User, *, force_upgrade: bool = False
+) -> list[ReportPage]:
+    """Create an editable object model of the professional editorial layout."""
     _ensure_admin(user)
     db.execute(select(Report.id).where(Report.id == report_id).with_for_update())
     report = ensure_can_access_report(db, user, report_id)
@@ -189,7 +221,12 @@ def materialize_auto_layout(db: Session, report_id: UUID, user: User) -> list[Re
             .order_by(ReportPage.page_number)
         ).unique()
     )
-    if existing and not _is_legacy_placeholder_layout(existing):
+    replaceable = (
+        force_upgrade
+        or _is_legacy_placeholder_layout(existing)
+        or _is_replaceable_auto_layout(report, existing)
+    )
+    if existing and not replaceable:
         return existing
     if existing:
         for page in existing:
@@ -197,7 +234,9 @@ def materialize_auto_layout(db: Session, report_id: UUID, user: User) -> list[Re
         db.flush()
 
     from app.services.report_page_planner import plan_pages
+    from app.services.report_render_service import theme_for_template
 
+    theme = theme_for_template(report.template_key.value, report.theme)
     visible = [section for section in report.sections if section.is_enabled]
     by_key = {section.section_key: section for section in visible}
     plans = plan_pages(
@@ -230,28 +269,35 @@ def materialize_auto_layout(db: Session, report_id: UUID, user: User) -> list[Re
         db.flush()
         pages.append(page)
         if plan.recipe.value == "COVER_HERO":
-            primary = str((report.theme or {}).get("primary_color") or "#12372A")
+            primary = str(theme["primary_color"])
+            accent = str(theme["accent_color"])
             page.background = primary
-            page.elements.extend(
-                [
-                    _auto_element(page, ReportElementType.TITLE, x=70, y=190, width=860, height=220, z_index=2, content={"text": report.title}, style={"fontSize": 52, "fontWeight": "700", "color": "#FFFFFF"}),
-                    _auto_element(page, ReportElementType.TEXT, x=70, y=440, width=700, height=90, z_index=2, content={"text": report.event.name}, data_binding={"key": "event.name"}, style={"fontSize": 26, "color": "#FFFFFF"}),
-                    _auto_element(page, ReportElementType.TEXT, x=70, y=550, width=700, height=70, z_index=2, content={"text": report.event.client.business_name}, data_binding={"key": "event.client"}, style={"fontSize": 18, "color": "#D1FAE5"}),
-                ]
-            )
             evidence = next((item for item in report.evidences if item.is_enabled), None)
             if evidence:
                 page.elements.append(
-                    _auto_element(page, ReportElementType.IMAGE, x=570, y=760, width=360, height=500, z_index=1, content={"evidence_id": str(evidence.evidence_id), "caption": evidence.caption or evidence.evidence.description}, style={"objectFit": "cover", "borderRadius": 18})
+                    _auto_element(page, ReportElementType.IMAGE, x=0, y=0, width=1000, height=1414, z_index=0, content={"evidence_id": str(evidence.evidence_id), "caption": evidence.caption or evidence.evidence.description}, style={"objectFit": "cover", "borderRadius": 0})
                 )
+            page.elements.extend(
+                [
+                    _auto_element(page, ReportElementType.SHAPE, x=0, y=0, width=1000, height=1414, z_index=1, style={"background": primary, "opacity": 0.88}),
+                    _auto_element(page, ReportElementType.SHAPE, x=82, y=515, width=118, height=9, z_index=2, style={"background": accent}),
+                    _auto_element(page, ReportElementType.TEXT, x=82, y=90, width=720, height=45, z_index=2, content={"text": "ECOEVENT 360 · REPORTE DE IMPACTO"}, style={"fontSize": 12, "fontWeight": "800", "color": "#FFFFFF", "letterSpacing": 3}),
+                    _auto_element(page, ReportElementType.TITLE, x=82, y=555, width=820, height=260, z_index=2, content={"text": report.title}, style={"fontSize": 52, "fontWeight": "800", "color": "#FFFFFF", "lineHeight": 0.95}),
+                    _auto_element(page, ReportElementType.TEXT, x=82, y=875, width=380, height=105, z_index=2, content={"text": report.event.client.business_name}, data_binding={"key": "event.client"}, style={"fontSize": 22, "fontWeight": "700", "color": "#FFFFFF"}),
+                    _auto_element(page, ReportElementType.TEXT, x=82, y=975, width=390, height=95, z_index=2, content={"text": report.event.name}, data_binding={"key": "event.name"}, style={"fontSize": 16, "color": "#D1FAE5"}),
+                    _auto_element(page, ReportElementType.TEXT, x=550, y=875, width=365, height=135, z_index=2, content={"text": f"REPORTE INTEGRAL\n{report.event.start_date:%d.%m.%Y} — {report.event.end_date:%d.%m.%Y}"}, style={"fontSize": 16, "fontWeight": "700", "color": "#FFFFFF", "lineHeight": 1.5}),
+                ]
+            )
             continue
         sections = [by_key[key] for key in plan.section_keys if key in by_key]
         if not sections:
             continue
-        block_height = min(1160 / len(sections), 570)
+        page.elements.extend(_page_chrome(page, plan.title, plan.number, theme))
+        page.elements.append(_auto_element(page, ReportElementType.TITLE, x=70, y=135, width=840, height=105, z_index=2, content={"text": plan.title}, style={"fontSize": 38, "fontWeight": "800", "color": str(theme["primary_color"]), "lineHeight": 1}))
+        block_height = min(1030 / len(sections), 505)
         for index, section in enumerate(sections):
             page.elements.extend(
-                _materialize_section(db, report, page, section, 120 + index * (block_height + 20), block_height, index * 20)
+                _materialize_section(db, report, page, section, 250 + index * (block_height + 18), block_height, 10 + index * 20)
             )
     report.composition_mode = ReportCompositionMode.FREEFORM
     report.edit_version += 1
