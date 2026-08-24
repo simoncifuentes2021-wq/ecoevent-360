@@ -3,6 +3,10 @@ import type { User } from "@/types/user";
 
 export type ReportStatus = "DRAFT" | "GENERATED" | "DELIVERED" | "ARCHIVED" | "FAILED";
 export type ReportScope = "EVENT" | "SHOW";
+export type ReportCompositionMode = "AUTO" | "FREEFORM";
+export type ReportElementType = "TEXT" | "TITLE" | "KPI" | "IMAGE" | "CHART" | "SHAPE";
+export type ReportElement = { id: string; page_id: string; type: ReportElementType; x: number; y: number; width: number; height: number; rotation: number; z_index: number; locked: boolean; visible: boolean; content: Record<string, unknown>; style: Record<string, unknown>; data_binding?: Record<string, unknown> | null; metadata: Record<string, unknown>; created_at: string; updated_at: string };
+export type ReportPage = { id: string; report_id: string; page_number: number; name?: string | null; width: number; height: number; background: string; background_image?: string | null; is_enabled: boolean; created_at: string; updated_at: string; elements: ReportElement[] };
 export type ReportDataAvailability = "AVAILABLE" | "NO_DATA" | "EVENT_LEVEL_ONLY" | "NOT_APPLICABLE";
 export type ReportSectionType = "COVER" | "EXECUTIVE_SUMMARY" | "EVENT_INFO" | "SHOW_INFO" | "SERVICES" | "OPERATIONS" | "STAFF" | "TASKS" | "INCIDENTS" | "FORMS" | "BIKE_ZONE" | "WASTE" | "CARBON" | "ENVIRONMENTAL_IMPACT" | "EVIDENCES" | "RECOMMENDATIONS" | "CONCLUSION" | "CUSTOM";
 export type ReportLayoutVariant = "HERO_IMAGE_TEXT" | "KPI_GRID" | "TWO_COLUMN" | "METRIC_LIST" | "FEATURE_CHART" | "PHOTO_GRID" | "EDITORIAL" | "TEXT_IMAGE" | "BIG_NUMBERS";
@@ -43,6 +47,7 @@ export type Report = {
   template_key?: ReportTemplateKey;
   theme?: Partial<ReportTheme>;
   editorial_config?: Partial<ReportEditorialConfig>;
+  composition_mode?: ReportCompositionMode;
   generated_by?: string | null;
   generator?: Pick<User, "id" | "full_name" | "email"> | null;
   generated_at?: string | null;

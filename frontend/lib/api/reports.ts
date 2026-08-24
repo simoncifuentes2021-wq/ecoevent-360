@@ -3,7 +3,7 @@ import { clearSession, getStoredToken } from "@/lib/auth";
 import { api, ApiError } from "@/lib/api";
 import { toQuery, type QueryValue } from "@/lib/api/query";
 import type { ListResponse } from "@/types/common";
-import type { AvailableReportEvidence, GenerateReportResponse, Report, ReportAIDraft, ReportAIEditorialPlan, ReportAILength, ReportAIOperation, ReportAIStyle, ReportEditor, ReportPagePlan, ReportPublication, ReportRevision, ReportScope, ReportSection, ReportTemplateKey, ReportTheme, ReportEditorialConfig } from "@/types/report";
+import type { AvailableReportEvidence, GenerateReportResponse, Report, ReportAIDraft, ReportAIEditorialPlan, ReportAILength, ReportAIOperation, ReportAIStyle, ReportEditor, ReportElement, ReportElementType, ReportPage, ReportPagePlan, ReportPublication, ReportRevision, ReportScope, ReportSection, ReportTemplateKey, ReportTheme, ReportEditorialConfig } from "@/types/report";
 
 function listFrom<T>(raw: T[] | ListResponse<T> | { data?: T[]; items?: T[]; total?: number; page?: number; limit?: number }): ListResponse<T> {
   if (Array.isArray(raw)) return { items: raw, total: raw.length, page: 1, limit: raw.length };
@@ -110,6 +110,14 @@ export function restoreReportRevision(reportId: string, revisionId: string, edit
 export function getReportPublications(reportId: string) { return api.get<ReportPublication[]>(`/reports/${reportId}/publications`); }
 export function generateReportPublication(reportId: string, idempotencyKey: string) { return api.post<ReportPublication>(`/reports/${reportId}/publications`, { idempotency_key: idempotencyKey }); }
 export function deliverReportPublication(publicationId: string) { return api.post<ReportPublication>(`/reports/publications/${publicationId}/deliver`, {}); }
+export function getReportPages(reportId: string) { return api.get<ReportPage[]>(`/reports/${reportId}/pages`); }
+export function createReportPage(reportId: string, body: Partial<Pick<ReportPage, "name" | "width" | "height" | "background" | "background_image" | "is_enabled">> = {}) { return api.post<ReportPage>(`/reports/${reportId}/pages`, body); }
+export function updateReportPage(reportId: string, pageId: string, body: Partial<ReportPage>) { return api.patch<ReportPage>(`/reports/${reportId}/pages/${pageId}`, body); }
+export function deleteReportPage(reportId: string, pageId: string) { return api.delete<void>(`/reports/${reportId}/pages/${pageId}`); }
+export function createReportElement(reportId: string, pageId: string, body: { type: ReportElementType; x: number; y: number; width: number; height: number; rotation?: number; z_index?: number; locked?: boolean; visible?: boolean; content?: Record<string, unknown>; style?: Record<string, unknown>; data_binding?: Record<string, unknown> | null; metadata?: Record<string, unknown> }) { return api.post<ReportElement>(`/reports/${reportId}/pages/${pageId}/elements`, body); }
+export function updateReportElement(reportId: string, elementId: string, body: Partial<ReportElement>) { return api.patch<ReportElement>(`/reports/${reportId}/elements/${elementId}`, body); }
+export function deleteReportElement(reportId: string, elementId: string) { return api.delete<void>(`/reports/${reportId}/elements/${elementId}`); }
+export function batchUpdateReportElements(reportId: string, pageId: string, elements: Array<Partial<ReportElement> & { id: string }>) { return api.put<ReportElement[]>(`/reports/${reportId}/pages/${pageId}/elements/batch`, { elements }); }
 async function authenticatedPdf(path: string) { const token = getStoredToken(); const response = await fetch(`${API_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }); handleUnauthorized(response); if (!response.ok) throw new ApiError(response.status, "No se pudo obtener el PDF."); return response.blob(); }
 export function previewReportPdf(reportId: string) { return authenticatedPdf(`/reports/${reportId}/pdf-preview`); }
 export function downloadReportPublication(publicationId: string, inline = false) { return authenticatedPdf(`/reports/publications/${publicationId}/download?inline=${inline}`); }

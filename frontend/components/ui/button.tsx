@@ -3,7 +3,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost" | "destructive";
   size?: "sm" | "md";
 };
 
@@ -17,6 +17,7 @@ export function Button({ className, variant = "primary", size = "md", ...props }
         variant === "primary" && "bg-primary text-primary-foreground hover:bg-primary/90",
         variant === "secondary" && "bg-white text-foreground shadow-sm hover:bg-muted",
         variant === "ghost" && "hover:bg-muted",
+        variant === "destructive" && "bg-red-600 text-white hover:bg-red-700",
         className
       )}
       {...props}
