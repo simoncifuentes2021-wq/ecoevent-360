@@ -363,6 +363,21 @@ def _styles(document: ReportRenderDocument) -> str:
     .premium-copy>strong{{display:inline-flex;gap:1mm;align-items:baseline;font-size:21pt;color:{t["primary_color"]};margin-right:4mm}} .premium-copy>strong small{{font-size:8pt}} .premium-copy>span{{font-size:8pt;color:{t["muted_color"]}}}
     .metric-chips{{display:flex;gap:1.5mm;flex-wrap:wrap;margin-top:2mm}} .metric-chips span{{padding:1mm 2mm;border-radius:99px;background:white;border:1px solid #dce5e0;font-size:6.5pt;color:{t["muted_color"]}}}
     .premium-executive{{border-color:#d4af37;border-left-color:#18181b}} .premium-environmental,.premium-impact{{background:linear-gradient(120deg,#fff,#effbe8)}} .premium-bike_zone{{background:linear-gradient(120deg,#fff,#e7fff7)}}
+    .premium-section{{max-height:238mm;overflow:hidden;padding-bottom:4mm}} .premium-section-heading{{display:flex;align-items:center;gap:4mm;margin-bottom:8mm;border-bottom:1px solid #dce5e0;padding-bottom:4mm}}
+    .premium-section-heading h2{{font-size:24pt;margin:1mm 0 0;line-height:1.05}} .premium-section-heading small{{font-size:7pt;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:{t["secondary_color"]}}}
+    .premium-heading-icon{{display:grid;place-items:center;width:11mm;height:11mm;border-radius:50%;background:{t["primary_color"]};color:white;flex:0 0 auto}} .premium-heading-icon svg{{width:6mm;height:6mm;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}}
+    .premium-event-grid,.premium-split{{display:grid;grid-template-columns:1.1fr .9fr;gap:10mm;align-items:start}} .premium-event-name{{font-size:clamp(24pt,4.8vw,40pt);line-height:.98;letter-spacing:-.04em;overflow-wrap:anywhere;margin-bottom:7mm}}
+    .premium-hero-number,.premium-hero{{display:flex;flex-direction:column;align-items:flex-start;margin:4mm 0 7mm}} .premium-hero-number strong,.premium-hero>strong{{font-size:48pt;line-height:.9;letter-spacing:-.055em;color:{t["primary_color"]}}}
+    .premium-hero>strong small{{font-size:12pt;letter-spacing:0;margin-left:2mm}} .premium-hero-number span,.premium-hero>span{{margin-top:2mm;font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.13em;color:{t["muted_color"]}}} .premium-hero em{{margin-top:4mm;color:{t["secondary_color"]};font-style:normal;font-weight:800}}
+    .premium-narrative{{max-width:90mm;font-size:11pt;line-height:1.6;color:{t["muted_color"]}}} .premium-event-photo{{margin:0}} .premium-event-photo figure img{{height:93mm;border-radius:1mm}} .premium-event-photo figcaption{{display:none}}
+    .premium-metadata{{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin-top:10mm;border-top:1px solid #dce5e0;border-bottom:1px solid #dce5e0}} .premium-metadata>div{{padding:5mm 4mm;border-right:1px solid #dce5e0}} .premium-metadata>div:last-child{{border-right:0}} .premium-metadata small,.premium-baseline small{{display:block;font-size:6.5pt;text-transform:uppercase;letter-spacing:.1em;color:{t["muted_color"]}}} .premium-metadata strong{{display:block;margin-top:2mm;font-size:10pt;line-height:1.3;overflow-wrap:anywhere}}
+    .premium-secondary{{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;margin:7mm 0}} .premium-secondary>div{{padding-top:3mm;border-top:1.2mm solid {t["accent_color"]}}} .premium-secondary strong{{display:block;font-size:18pt;color:{t["primary_color"]}}} .premium-secondary strong small{{font-size:8pt;margin-left:1mm}} .premium-secondary span{{font-size:7pt;color:{t["muted_color"]}}}
+    .premium-chart{{padding:6mm;border-left:1px solid #dce5e0;min-height:82mm}} .premium-chart svg{{max-height:90mm}} .premium-chart.wide{{margin-top:9mm;border-left:0;border-top:1px solid #dce5e0;min-height:58mm;padding:5mm 0}} .premium-chart.wide svg{{max-height:55mm}}
+    .premium-empty-state{{min-height:105mm;display:flex;flex-direction:column;justify-content:center;border-top:2mm solid {t["accent_color"]};padding:10mm 0}} .premium-empty-state h3{{font-size:30pt;margin-bottom:4mm}} .premium-empty-state p{{font-size:13pt;color:{t["muted_color"]}}}
+    .premium-waste-grid{{display:grid;grid-template-columns:.85fr 1.15fr;gap:12mm;align-items:start}} .premium-breakdown{{display:grid;gap:0;border-top:1px solid #dce5e0}} .premium-breakdown-row{{display:flex;justify-content:space-between;gap:5mm;padding:3.5mm 0;border-bottom:1px solid #dce5e0}} .premium-breakdown-row span{{color:{t["muted_color"]}}}
+    .premium-impact-hero{{display:flex;justify-content:space-between;align-items:end;margin:1mm 0 8mm;padding-bottom:7mm;border-bottom:1px solid #dce5e0}} .premium-impact-hero strong{{font-size:49pt;line-height:.88;letter-spacing:-.055em;color:{t["primary_color"]}}} .premium-impact-hero strong small{{font-size:11pt;letter-spacing:0;margin-left:2mm}} .premium-impact-hero span{{display:block;margin-top:2mm;font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.15em}} .premium-impact-hero em{{font-style:normal;font-size:23pt;font-weight:800;color:{t["secondary_color"]};text-align:right}} .premium-impact-hero em small{{display:block;font-size:7pt;font-weight:500;color:{t["muted_color"]}}}
+    .premium-baseline{{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:8mm;background:{t["background_color"]}}} .premium-baseline>div{{padding:5mm 7mm}} .premium-baseline>div+div{{border-left:1px solid #dce5e0}} .premium-baseline strong{{font-size:22pt;color:{t["primary_color"]}}} .premium-baseline span{{font-size:7pt;margin-left:1mm;color:{t["muted_color"]}}}
+    .premium-methodology{{margin-top:7mm;padding-top:4mm;border-top:1px solid #dce5e0;font-size:8pt;color:{t["muted_color"]}}} .premium-methodology p{{margin:2mm 0 0}} .premium-tone-executive .premium-heading-icon{{background:#18181b}} .premium-tone-executive .premium-section-heading{{border-bottom-color:#d4af37}}
     p{{orphans:3;widows:3}} .editorial-block,.kpi,figure,.metric{{break-inside:avoid-page}}
     """
 
@@ -444,15 +459,106 @@ def _page_html(
         content = _mixed_html(sections, photos, theme)
     editorial_config = editorial_config or {}
     visual = report_visual_design_service.normalized(editorial_config.get("visual_config"))
-    section_visuals = editorial_config.get("section_visuals") or {}
-    enrichment = "".join(
-        report_visual_design_service.section_enrichment(
-            section, visual, section_visuals.get(section.get("section_key")), _editable_attr
-        )
-        for section in sections[:1]
-    )
-    content = enrichment + content
+    premium = _premium_page_html(sections, photos, theme, visual)
+    if premium:
+        content = premium
     return f"""<section class="page recipe-{recipe.lower()}"><header class="page-head"><span class="chapter">{escape(title)}</span><span>EcoEvent 360</span></header>{content}<footer class="folio"><span>Impacto · operación · evidencia</span><b>{number:02d}</b></footer></section>"""
+
+
+def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, visual: dict) -> str:
+    preset = str(visual.get("preset") or "AUTO")
+    if preset == "AUTO":
+        return ""
+    selected = next((section for section in sections if report_visual_design_service.section_variant(preset, str(section.get("section_type") or ""))), None)
+    renderer = {
+        "EVENT_INFO": _render_event_info_premium, "BIKE_ZONE": _render_bike_zone_premium,
+        "WASTE": _render_waste_premium, "CARBON": _render_carbon_premium,
+        "ENVIRONMENTAL_IMPACT": _render_environmental_impact_premium,
+    }.get((selected or {}).get("section_type"))
+    return renderer(selected, photos, theme, preset) if renderer and selected else ""
+
+
+def _premium_fields(section: dict) -> tuple[dict[str, dict], list[dict], list[dict]]:
+    content = section.get("content") or {}
+    fields = [item for item in content.get("fields") or [] if item.get("is_visible", True)]
+    return {str(item.get("key")): item for item in fields}, fields, content.get("items") or []
+
+
+def _premium_value(field: dict | None, fallback: str = "—") -> str:
+    return report_visual_design_service.format_metric(field.get("value"), field.get("unit")) if field else fallback
+
+
+def _premium_unit(field: dict | None) -> str:
+    return report_visual_design_service.normalize_unit((field or {}).get("unit"))
+
+
+def _premium_heading(section: dict, eyebrow: str, icon: str, key: str) -> str:
+    return f'<header class="premium-section-heading"{_editable_attr(f"section.{key}.heading", "SECTION_TITLE", "box")}><span class="premium-heading-icon">{report_visual_design_service.icon_svg(icon)}</span><div><small>{escape(eyebrow)}</small><h2>{escape(str(section.get("title") or "Resultados"))}</h2></div></header>'
+
+
+def _render_event_info_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, _, _ = _premium_fields(section)
+    name = str((by_key.get("name") or {}).get("value") or section.get("title") or "Evento")
+    attendees = by_key.get("real_attendees") or by_key.get("estimated_attendees")
+    metadata = "".join(f'<div><small>{escape(str(by_key[key].get("label") or key))}</small><strong>{escape(str(by_key[key].get("value") or "—"))}</strong></div>' for key in ("start_date", "end_date", "location", "city", "type") if by_key.get(key))
+    narrative = (section.get("content") or {}).get("text") or "Datos generales y alcance del evento reportado."
+    photo = _photos(photos[:1], "premium-event-photo", "event-info", "section.event-info.photo") if photos else ""
+    return f'<article class="premium-section premium-event premium-tone-{preset.lower()}">{_premium_heading(section, "Perfil del evento", "CALENDAR", "event-info")}<div class="premium-event-grid"><div><h3 class="premium-event-name"{_editable_attr("section.event-info.hero", "HERO", "box")}>{escape(name)}</h3><div class="premium-hero-number"><strong>{escape(_premium_value(attendees))}</strong><span>asistentes</span></div><p class="premium-narrative">{_safe_text(narrative)}</p></div>{photo}</div><div class="premium-metadata"{_editable_attr("section.event-info.metadata", "METADATA", "box")}>{metadata}</div></article>'
+
+
+def _render_bike_zone_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, fields, items = _premium_fields(section)
+    users = by_key.get("users") or (fields[0] if fields else None)
+    try:
+        empty = Decimal(str((users or {}).get("value") or 0)) == 0
+    except InvalidOperation:
+        empty = False
+    heading = _premium_heading(section, "Movilidad sostenible", "BICYCLE", "bike-zone")
+    if empty:
+        return f'<article class="premium-section premium-bike premium-empty">{heading}<div class="premium-empty-state"{_editable_attr("section.bike-zone.hero", "EMPTY_STATE", "box")}><h3>Bike Zone</h3><p>No se registraron usuarios de Bike Zone en este evento.</p></div></article>'
+    secondary = "".join(f'<div><strong>{escape(_premium_value(field))}</strong><span>{escape(str(field.get("label") or "Indicador"))}</span></div>' for field in fields[1:4])
+    chart = report_chart_service.bar_chart(items, theme["accent_color"])
+    chart_html = f'<div class="premium-chart"{_editable_attr("section.bike-zone.chart", "CHART", "box")}>{chart}</div>' if chart else ""
+    text = (section.get("content") or {}).get("text") or "Movilidad activa integrada a la experiencia del evento."
+    return f'<article class="premium-section premium-bike premium-tone-{preset.lower()}">{heading}<div class="premium-split"><div><div class="premium-hero"{_editable_attr("section.bike-zone.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(users))}</strong><span>usuarios registrados</span></div><div class="premium-secondary"{_editable_attr("section.bike-zone.comparison", "COMPARISON", "box")}>{secondary}</div><p class="premium-narrative">{_safe_text(text)}</p></div>{chart_html}</div></article>'
+
+
+def _render_waste_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, fields, items = _premium_fields(section)
+    total = by_key.get("total") or (fields[0] if fields else None)
+    recovery = by_key.get("recovery_rate") or by_key.get("recovered_rate")
+    breakdown = "".join(f'<div class="premium-breakdown-row"><span>{escape(str(item.get("label") or item.get("name") or "Categoría"))}</span><strong>{escape(report_visual_design_service.format_metric(item.get("value")))} {escape(report_visual_design_service.normalize_unit(str(item.get("unit") or "kg")))}</strong></div>' for item in items[:5])
+    chart = report_chart_service.bar_chart(items, theme["accent_color"])
+    recovery_html = f'<em>{escape(_premium_value(recovery))}% valorizado</em>' if recovery else ""
+    chart_html = f'<div class="premium-chart wide"{_editable_attr("section.waste.chart", "CHART", "box")}>{chart}</div>' if chart else ""
+    return f'<article class="premium-section premium-waste premium-tone-{preset.lower()}">{_premium_heading(section, "Circularidad", "RECYCLE", "waste")}<div class="premium-waste-grid"><div class="premium-hero"{_editable_attr("section.waste.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(total))}<small>{escape(_premium_unit(total))}</small></strong><span>residuos gestionados</span>{recovery_html}</div><div class="premium-breakdown"{_editable_attr("section.waste.recovery", "METRIC_LIST", "box")}>{breakdown or "<p>Sin categorías registradas.</p>"}</div></div>{chart_html}</article>'
+
+
+def _render_carbon_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, fields, items = _premium_fields(section)
+    total = by_key.get("total") or (fields[0] if fields else None)
+    breakdown = "".join(f'<div class="premium-breakdown-row"><span>{escape(str(item.get("label") or "Categoría"))}</span><strong>{escape(report_visual_design_service.format_metric(item.get("value")))} {escape(report_visual_design_service.normalize_unit(str(item.get("unit") or "kgCO2e")))}</strong></div>' for item in items[:5])
+    chart = report_chart_service.bar_chart(items, theme["accent_color"])
+    chart_html = f'<div class="premium-chart"{_editable_attr("section.carbon.chart", "CHART", "box")}>{chart}</div>' if chart else ""
+    text = (section.get("content") or {}).get("text") or "Huella consolidada a partir de los registros disponibles."
+    return f'<article class="premium-section premium-carbon premium-tone-{preset.lower()}">{_premium_heading(section, "Huella de carbono", "CARBON", "carbon")}<div class="premium-split"><div><div class="premium-hero"{_editable_attr("section.carbon.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(total))}<small>{escape(_premium_unit(total))}</small></strong><span>emisiones totales</span></div><div class="premium-breakdown"{_editable_attr("section.carbon.breakdown", "METRIC_LIST", "box")}>{breakdown}</div><p class="premium-methodology">{_safe_text(text)}</p></div>{chart_html}</div></article>'
+
+
+def _render_environmental_impact_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, _, _ = _premium_fields(section)
+    avoided, baseline, actual = by_key.get("co2e_avoided_kg"), by_key.get("co2e_baseline_kg"), by_key.get("co2e_actual_kg")
+    reduction = None
+    try:
+        base_value, actual_value = Decimal(str((baseline or {}).get("value") or 0)), Decimal(str((actual or {}).get("value") or 0))
+        if base_value:
+            reduction = (base_value - actual_value) * 100 / base_value
+    except (InvalidOperation, ValueError):
+        pass
+    comparison = "".join(f'<div><small>{label}</small><strong>{escape(_premium_value(field))}</strong><span>kg CO₂e</span></div>' for label, field in (("Línea base", baseline), ("Escenario real", actual)) if field)
+    secondary = "".join(f'<div><strong>{escape(_premium_value(by_key.get(key)))}<small>{escape(_premium_unit(by_key.get(key)))}</small></strong><span>{escape(str((by_key.get(key) or {}).get("label") or key))}</span></div>' for key in ("energy_kwh", "fuel_avoided_l", "pm25_avoided_kg", "pm10_avoided_kg") if by_key.get(key))
+    trace = (section.get("content") or {}).get("text") or "Resultados calculados desde acciones ambientales aprobadas y trazables."
+    reduction_html = f'<em>↓ {escape(report_visual_design_service.format_metric(reduction, "%", precision=1))}%<small> frente a línea base</small></em>' if reduction is not None else ""
+    return f'<article class="premium-section premium-impact-story premium-tone-{preset.lower()}">{_premium_heading(section, "Impacto ambiental evitado", "LEAF", "environmental-impact")}<div class="premium-impact-hero"{_editable_attr("section.environmental-impact.hero", "BIG_NUMBER", "box")}><div><strong>{escape(_premium_value(avoided))}<small>kg CO₂e</small></strong><span>evitados</span></div>{reduction_html}</div><div class="premium-baseline"{_editable_attr("section.environmental-impact.baseline", "COMPARISON", "box")}>{comparison}</div><div class="premium-secondary"{_editable_attr("section.environmental-impact.secondary", "METRIC_LIST", "box")}>{secondary}</div><aside class="premium-methodology"{_editable_attr("section.environmental-impact.traceability", "TEXT_BLOCK", "box")}><b>Metodología y trazabilidad</b><p>{_safe_text(trace)}</p></aside></article>'
 
 
 def _environmental_management_html(sections: list[dict], photos: list[dict]) -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from html import escape
 from typing import Any
 
@@ -11,6 +12,29 @@ PRESETS = {
     "ENVIRONMENTAL": {"label": "Ambiental", "tone": "environmental"},
     "BIKE_ZONE": {"label": "Bike Zone", "tone": "bike"},
     "IMPACT": {"label": "Impacto", "tone": "impact"},
+}
+
+PRESET_SECTION_VARIANTS = {
+    "ECOEVENT_EDITORIAL": {
+        "EVENT_INFO": "EVENT_INFO_EDITORIAL", "BIKE_ZONE": "BIKE_ZONE_MOBILITY",
+        "WASTE": "WASTE_CIRCULARITY", "CARBON": "CARBON_FOOTPRINT",
+        "ENVIRONMENTAL_IMPACT": "ENVIRONMENTAL_IMPACT_STORY",
+    },
+    "EXECUTIVE": {
+        "EVENT_INFO": "EVENT_INFO_EDITORIAL", "BIKE_ZONE": "BIKE_ZONE_MOBILITY",
+        "WASTE": "WASTE_CIRCULARITY", "CARBON": "CARBON_FOOTPRINT",
+        "ENVIRONMENTAL_IMPACT": "ENVIRONMENTAL_IMPACT_STORY",
+    },
+    "ENVIRONMENTAL": {
+        "EVENT_INFO": "EVENT_INFO_EDITORIAL", "BIKE_ZONE": "BIKE_ZONE_MOBILITY",
+        "WASTE": "WASTE_CIRCULARITY", "CARBON": "CARBON_FOOTPRINT",
+        "ENVIRONMENTAL_IMPACT": "ENVIRONMENTAL_IMPACT_STORY",
+    },
+    "BIKE_ZONE": {"BIKE_ZONE": "BIKE_ZONE_MOBILITY"},
+    "IMPACT": {
+        "WASTE": "WASTE_CIRCULARITY", "CARBON": "CARBON_FOOTPRINT",
+        "ENVIRONMENTAL_IMPACT": "ENVIRONMENTAL_IMPACT_STORY",
+    },
 }
 
 SECTION_ICONS = {
@@ -44,6 +68,34 @@ def normalized(raw: dict[str, Any] | None) -> dict[str, Any]:
 def icon_svg(key: str) -> str:
     path = ICON_PATHS.get(key, ICON_PATHS["LEAF"])
     return f'<svg aria-hidden="true" viewBox="0 0 24 24"><path d="{path}"/></svg>'
+
+
+def section_variant(preset: str, section_type: str) -> str | None:
+    return PRESET_SECTION_VARIANTS.get(preset, {}).get(section_type)
+
+
+def format_metric(value: Any, unit: str | None = None, *, precision: int | None = None) -> str:
+    """Human report formatting only; the stored numeric value is never changed."""
+    if value is None or value == "":
+        return "—"
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return str(value)
+    absolute = abs(number)
+    digits = precision if precision is not None else (
+        5 if absolute and absolute < Decimal("0.001") else 2 if number != number.to_integral() else 0
+    )
+    rendered = f"{number:.{digits}f}".rstrip("0").rstrip(".") if digits else f"{number:.0f}"
+    if rendered in {"-0", ""}:
+        rendered = "0"
+    return rendered.replace(".", ",")
+
+
+def normalize_unit(unit: str | None) -> str:
+    return {"kgCO2e": "kg CO₂e", "tCO2e": "t CO₂e", "attendees": "asistentes"}.get(
+        str(unit or ""), str(unit or "")
+    )
 
 
 def section_enrichment(section: dict[str, Any], visual: dict[str, Any], override: dict[str, Any] | None, editable_attr) -> str:
