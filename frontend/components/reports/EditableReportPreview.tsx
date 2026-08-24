@@ -6,7 +6,19 @@ import { Button } from "@/components/ui/button";
 import { getReportLayoutOverrides, resetReportLayoutOverride, saveReportLayoutOverride } from "@/lib/api/reports";
 import type { ReportLayoutOverride, ReportPagePlan } from "@/types/report";
 
-const cleanOverride = (elementKey: string): ReportLayoutOverride => ({ element_key: elementKey, page_key: null, x_offset: 0, y_offset: 0, width_scale: 1, height_scale: 1, rotation: 0, z_index: 0, locked: false, visible: true });
+const cleanOverride = (elementKey: string): ReportLayoutOverride => ({ element_key: elementKey, page_key: null, x_offset: 0, y_offset: 0, width_scale: 1, height_scale: 1, box_width: null, box_height: null, rotation: 0, z_index: 0, locked: false, visible: true });
+const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
+function hasSevereOverlap(node: HTMLElement, next: DOMRect, doc: Document): boolean {
+  return Array.from(doc.querySelectorAll<HTMLElement>("[data-report-element-key]"))
+    .filter(other => other !== node && other.closest(".page,.cover") === node.closest(".page,.cover"))
+    .some(other => {
+      const rect = other.getBoundingClientRect();
+      const width = Math.max(0, Math.min(next.right, rect.right) - Math.max(next.left, rect.left));
+      const height = Math.max(0, Math.min(next.bottom, rect.bottom) - Math.max(next.top, rect.top));
+      const smallest = Math.min(next.width * next.height, rect.width * rect.height);
+      return smallest > 0 && width * height / smallest > .6;
+    });
+}
 type HistoryEntry = { before?: ReportLayoutOverride; after?: ReportLayoutOverride };
 type ViewportAnchor = { x: number; y: number; elementKey?: string; elementTop?: number };
 
@@ -21,6 +33,7 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [future, setFuture] = useState<HistoryEntry[]>([]);
+  const [collisionWarning, setCollisionWarning] = useState(false);
   const pages = plan?.pages || [];
 
   const loadOverrides = useCallback(async () => {
@@ -112,10 +125,19 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
         if (current.locked) { setSelected(key); return; }
         event.preventDefault(); event.stopPropagation(); setSelected(key);
         const startX = event.clientX; const startY = event.clientY; const original = node.style.transform;
-        const move = (pointer: PointerEvent) => { node.style.transform = `${original} translate(${pointer.clientX - startX}px,${pointer.clientY - startY}px)`; };
+        const rect = node.getBoundingClientRect();
+        const pageRect = (node.closest(".page,.cover") as HTMLElement | null)?.getBoundingClientRect();
+        const delta = (pointer: PointerEvent) => ({
+          x: pageRect ? clamp(pointer.clientX - startX, pageRect.left + 24 - rect.right, pageRect.right - 24 - rect.left) : pointer.clientX - startX,
+          y: pageRect ? clamp(pointer.clientY - startY, pageRect.top + 24 - rect.bottom, pageRect.bottom - 24 - rect.top) : pointer.clientY - startY,
+        });
+        const move = (pointer: PointerEvent) => { const next = delta(pointer); node.style.transform = `${original} translate(${next.x}px,${next.y}px)`; };
         const up = (pointer: PointerEvent) => {
           doc.removeEventListener("pointermove", move); doc.removeEventListener("pointerup", up);
-          const after = { ...current, x_offset: current.x_offset + pointer.clientX - startX, y_offset: current.y_offset + pointer.clientY - startY };
+          const next = delta(pointer);
+          const nextRect = new DOMRect(rect.x + next.x, rect.y + next.y, rect.width, rect.height);
+          setCollisionWarning(hasSevereOverlap(node, nextRect, doc));
+          const after = { ...current, x_offset: current.x_offset + next.x, y_offset: current.y_offset + next.y };
           void commit(after, overridesRef.current[key]);
         };
         doc.addEventListener("pointermove", move); doc.addEventListener("pointerup", up);
@@ -126,10 +148,21 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
           event.preventDefault(); event.stopPropagation();
           const current = overridesRef.current[key] || cleanOverride(key);
           const rect = node.getBoundingClientRect(); const startX = event.clientX; const startY = event.clientY; const original = node.style.transform;
-          const move = (pointer: PointerEvent) => { const sx = Math.max(.1, (rect.width + pointer.clientX - startX) / rect.width); const sy = Math.max(.1, (rect.height + pointer.clientY - startY) / rect.height); node.style.transform = `${original} scale(${sx},${sy})`; };
+          const boxResize = node.dataset.reportResizeMode === "box";
+          const move = (pointer: PointerEvent) => {
+            const width = clamp(rect.width + pointer.clientX - startX, 24, 2000);
+            const height = clamp(rect.height + pointer.clientY - startY, 16, 3000);
+            setCollisionWarning(hasSevereOverlap(node, new DOMRect(rect.x, rect.y, width, height), doc));
+            if (boxResize) { node.style.width = `${width}px`; node.style.height = `${height}px`; node.style.overflow = "hidden"; }
+            else { node.style.transform = `${original} scale(${width / rect.width},${height / rect.height})`; }
+          };
           const up = (pointer: PointerEvent) => {
             doc.removeEventListener("pointermove", move); doc.removeEventListener("pointerup", up);
-            const after = { ...current, width_scale: Math.max(.1, Math.min(5, current.width_scale * (rect.width + pointer.clientX - startX) / rect.width)), height_scale: Math.max(.1, Math.min(5, current.height_scale * (rect.height + pointer.clientY - startY) / rect.height)) };
+            const width = clamp(rect.width + pointer.clientX - startX, 24, 2000);
+            const height = clamp(rect.height + pointer.clientY - startY, 16, 3000);
+            const after = boxResize
+              ? { ...current, box_width: width, box_height: height }
+              : { ...current, width_scale: clamp(current.width_scale * width / rect.width, .1, 5), height_scale: clamp(current.height_scale * height / rect.height, .1, 5) };
             void commit(after, overridesRef.current[key]);
           };
           doc.addEventListener("pointermove", move); doc.addEventListener("pointerup", up);
@@ -155,8 +188,8 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
   async function undo() { const entry = history.at(-1); if (!entry) return; setHistory(items => items.slice(0, -1)); setFuture(items => [...items, entry]); if (entry.before) await commit(entry.before, entry.after, false); else if (entry.after) await remove(entry.after.element_key, false); }
   async function redo() { const entry = future.at(-1); if (!entry) return; setFuture(items => items.slice(0, -1)); setHistory(items => [...items, entry]); if (entry.after) await commit(entry.after, entry.before, false); else if (entry.before) await remove(entry.before.element_key, false); }
   const current = selected ? overrides[selected] || cleanOverride(selected) : undefined;
-  const changeZoom = (next: number) => setZoom(Math.min(100, Math.max(30, next)));
+  const changeZoom = (next: number) => setZoom(clamp(next, 30, 100));
   const goPage = (number: number, sectionKey?: string) => { if (sectionKey) onSelectSection(sectionKey); iframeRef.current?.contentWindow?.scrollTo({ top: (number - 1) * 1123, behavior: "smooth" }); };
 
-  return <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-auto rounded-2xl bg-slate-200 p-3" data-testid="live-a4-preview"><div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-white p-2 shadow-sm"><button type="button" aria-label="Alejar vista previa" className="h-8 rounded-lg border px-3 font-bold" onClick={() => changeZoom(zoom - 10)}>−</button><input aria-label="Zoom de vista previa" type="range" min="30" max="100" step="5" value={zoom} onChange={event => changeZoom(Number(event.target.value))} className="min-w-20 flex-1"/><button type="button" aria-label="Acercar vista previa" className="h-8 rounded-lg border px-3 font-bold" onClick={() => changeZoom(zoom + 10)}>+</button><output className="w-12 text-center text-xs font-bold">{zoom}%</output><Button size="sm" variant={editing ? "primary" : "secondary"} onClick={() => { setEditing(value => !value); setSelected(undefined); }}><Maximize2 className="h-4 w-4"/>{editing ? "Terminar edición" : "Editar posiciones"}</Button></div>{editing ? <div className="mb-3 rounded-xl border border-emerald-200 bg-white p-2"><div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" disabled={busy || !history.length} onClick={() => void undo()}><Undo2 className="h-4 w-4"/>Deshacer</Button><Button size="sm" variant="ghost" disabled={busy || !future.length} onClick={() => void redo()}><Redo2 className="h-4 w-4"/>Rehacer</Button>{current ? <><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ locked: !current.locked })}>{current.locked ? <Unlock className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}{current.locked ? "Desbloquear" : "Bloquear"}</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ z_index: current.z_index + 1 })}><ChevronUp className="h-4 w-4"/>Adelante</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ z_index: current.z_index - 1 })}><ChevronDown className="h-4 w-4"/>Atrás</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void remove(current.element_key)}><RotateCcw className="h-4 w-4"/>Restablecer elemento</Button></> : null}<Button size="sm" variant="ghost" className="ml-auto text-red-700" disabled={busy || !Object.keys(overrides).length} onClick={() => void resetAll()}>Restablecer todo</Button></div><p className="mt-2 px-2 text-xs text-slate-600">Selecciona un KPI, gráfico o imagen del reporte. Arrastra para mover y usa el control verde para redimensionar. Los datos y el diseño profesional se conservan.</p>{selected ? <p className="mt-1 truncate px-2 text-[10px] font-mono text-emerald-800">{selected}</p> : null}</div> : null}<div className="mb-3 flex gap-2 overflow-x-auto" aria-label="Páginas del reporte">{pages.map(page => <button key={page.number} className="shrink-0 rounded-lg bg-white px-3 py-2 text-left text-xs shadow-sm" onClick={() => goPage(page.number, page.section_keys[0])}><b>{page.number}</b> {page.title}</button>)}</div>{html ? <div className="overflow-auto rounded-lg bg-slate-300 p-3"><div className="mx-auto" style={{ width: `${794 * zoom / 100}px`, height: `${1123 * zoom / 100}px` }}><iframe ref={iframeRef} onLoad={iframeLoaded} title="Vista previa exacta y editable del reporte" sandbox="allow-same-origin" srcDoc={html} className="origin-top-left border-0 bg-white shadow-xl" style={{ width: "794px", height: "1123px", transform: `scale(${zoom / 100})` }}/></div></div> : <div className="grid aspect-[210/297] place-items-center bg-white text-sm text-slate-500">Preparando vista previa editorial…</div>}</div>;
+  return <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-auto rounded-2xl bg-slate-200 p-3" data-testid="live-a4-preview"><div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-white p-2 shadow-sm"><button type="button" aria-label="Alejar vista previa" className="h-8 rounded-lg border px-3 font-bold" onClick={() => changeZoom(zoom - 10)}>−</button><input aria-label="Zoom de vista previa" type="range" min="30" max="100" step="5" value={zoom} onChange={event => changeZoom(Number(event.target.value))} className="min-w-20 flex-1"/><button type="button" aria-label="Acercar vista previa" className="h-8 rounded-lg border px-3 font-bold" onClick={() => changeZoom(zoom + 10)}>+</button><output className="w-12 text-center text-xs font-bold">{zoom}%</output><Button size="sm" variant={editing ? "primary" : "secondary"} onClick={() => { setEditing(value => !value); setSelected(undefined); }}><Maximize2 className="h-4 w-4"/>{editing ? "Terminar edición" : "Editar posiciones"}</Button></div>{editing ? <div className="mb-3 rounded-xl border border-emerald-200 bg-white p-2"><div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" disabled={busy || !history.length} onClick={() => void undo()}><Undo2 className="h-4 w-4"/>Deshacer</Button><Button size="sm" variant="ghost" disabled={busy || !future.length} onClick={() => void redo()}><Redo2 className="h-4 w-4"/>Rehacer</Button>{current ? <><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ locked: !current.locked })}>{current.locked ? <Unlock className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}{current.locked ? "Desbloquear" : "Bloquear"}</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ z_index: current.z_index + 1 })}><ChevronUp className="h-4 w-4"/>Adelante</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ z_index: current.z_index - 1 })}><ChevronDown className="h-4 w-4"/>Atrás</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void remove(current.element_key)}><RotateCcw className="h-4 w-4"/>Restablecer elemento</Button></> : null}<Button size="sm" variant="ghost" className="ml-auto text-red-700" disabled={busy || !Object.keys(overrides).length} onClick={() => void resetAll()}>Restablecer todo</Button></div><p className="mt-2 px-2 text-xs text-slate-600">Selecciona títulos, textos, indicadores, gráficos o galerías del reporte. Los textos cambian de caja y hacen reflow sin deformar la tipografía.</p>{collisionWarning ? <p role="status" className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">Advertencia: este elemento se superpone ampliamente con otro. Puedes conservar la superposición si es intencional.</p> : null}{selected ? <p className="mt-1 truncate px-2 text-[10px] font-mono text-emerald-800">{selected}</p> : null}</div> : null}<div className="mb-3 flex gap-2 overflow-x-auto" aria-label="Páginas del reporte">{pages.map(page => <button key={page.number} className="shrink-0 rounded-lg bg-white px-3 py-2 text-left text-xs shadow-sm" onClick={() => goPage(page.number, page.section_keys[0])}><b>{page.number}</b> {page.title}</button>)}</div>{html ? <div className="overflow-auto rounded-lg bg-slate-300 p-3"><div className="mx-auto" style={{ width: `${794 * zoom / 100}px`, height: `${1123 * zoom / 100}px` }}><iframe ref={iframeRef} onLoad={iframeLoaded} title="Vista previa exacta y editable del reporte" sandbox="allow-same-origin" srcDoc={html} className="origin-top-left border-0 bg-white shadow-xl" style={{ width: "794px", height: "1123px", transform: `scale(${zoom / 100})` }}/></div></div> : <div className="grid aspect-[210/297] place-items-center bg-white text-sm text-slate-500">Preparando vista previa editorial…</div>}</div>;
 }

@@ -35,16 +35,16 @@ test("preview supports typed reusable editorial layouts", () => {
 
 test("2B.1 editor uses three panels and the backend page plan", () => {
   const builder = read("components", "reports", "ReportBuilder.tsx");
+  const preview = read("components", "reports", "EditableReportPreview.tsx");
   const api = read("lib", "api", "reports.ts");
   const types = read("types", "report.ts");
   assert.match(builder, /report-builder-three-panels/);
-  assert.match(builder, /live-a4-preview/);
+  assert.match(preview, /live-a4-preview/);
   assert.match(builder, /getReportPagePlan/);
   assert.match(api, /\/page-plan/);
   assert.match(types, /ReportPagePlan/);
-  assert.match(builder, /Zoom de vista previa/);
-  assert.match(builder, /Ajustar/);
-  assert.match(builder, /794 \* zoom/);
+  assert.match(preview, /Zoom de vista previa/);
+  assert.match(preview, /794 \* zoom/);
   assert.match(builder, /cause\.status !== 409/);
   assert.match(builder, /payload\(latest\.edit_version\)/);
   assert.match(builder, /Guardado automático activo/);
@@ -95,6 +95,26 @@ test("premium PDF workflow uses exact preview and immutable publications", () =>
   assert.doesNotMatch(editor, /window\.confirm/);
 });
 
+test("canonical preview editor supports box resize, bounds and viewport persistence", () => {
+  const editor = read("components", "reports", "EditableReportPreview.tsx");
+  const types = read("types", "report.ts");
+  for (const pattern of [
+    /reportResizeMode/,
+    /boxResize/,
+    /box_width/,
+    /box_height/,
+    /pageRect/,
+    /clamp/,
+    /rememberViewport/,
+    /restoreViewport/,
+    /Deshacer/,
+    /Rehacer/,
+    /Restablecer elemento/,
+    /Restablecer todo/,
+  ]) assert.match(`${editor}\n${types}`, pattern);
+  assert.doesNotMatch(editor, /dangerouslySetInnerHTML|ReportElement|FreeformReportDesigner/);
+});
+
 test("freeform editor keeps A4 logical geometry and batches drag or resize", () => {
   const editor = read("components", "reports", "FreeformReportDesigner.tsx");
   const api = read("lib", "api", "reports.ts");
@@ -139,12 +159,12 @@ test("freeform editor starts from the existing automatic report", () => {
     /getReportHtmlPreview/,
     /previewNonce/,
     /embedded/,
-    /Editar posiciones/,
-    /Editar contenido/,
     /FreeformChart/,
     /FreeformImage/,
     /getAvailableReportEvidences/,
-  ]) assert.match(`${editor}\n${builder}\n${api}`, pattern);
+  ]) assert.match(`${editor}\n${api}`, pattern);
+  assert.match(builder, /EditableReportPreview/);
+  assert.doesNotMatch(builder, /FreeformReportDesigner/);
 });
 
 test("client portal lists only delivered authenticated publications", () => {
