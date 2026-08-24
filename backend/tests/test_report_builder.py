@@ -1563,3 +1563,51 @@ def test_freeform_template_keeps_bindings_but_drops_private_evidence_values():
     pages = _snapshot_pages(report)
     assert pages[0]["elements"][0]["content"] == {"caption": "Foto"}
     assert pages[0]["elements"][1]["data_binding"] == {"key": "waste.total_kg"}
+
+
+def test_ai_page_layout_validator_rejects_bounds_bindings_fonts_and_overlaps():
+    from app.services.ai.report_layout_service import LayoutValidator
+
+    valid = {
+        "elements": [
+            {
+                "type": "KPI",
+                "x": 50,
+                "y": 100,
+                "width": 300,
+                "height": 180,
+                "data_binding": {"key": "waste.total_kg"},
+                "style": {"fontFamily": "Inter"},
+            }
+        ]
+    }
+    assert LayoutValidator.validate(valid).elements[0].type == "KPI"
+    for invalid in [
+        {"elements": [{"type": "TEXT", "x": 950, "y": 0, "width": 100, "height": 40}]},
+        {
+            "elements": [
+                {
+                    "type": "KPI",
+                    "x": 0,
+                    "y": 0,
+                    "width": 100,
+                    "height": 40,
+                    "data_binding": {"key": "secret.sql"},
+                }
+            ]
+        },
+        {
+            "elements": [
+                {
+                    "type": "TEXT",
+                    "x": 0,
+                    "y": 0,
+                    "width": 100,
+                    "height": 40,
+                    "style": {"fontFamily": "RemoteFont"},
+                }
+            ]
+        },
+    ]:
+        with pytest.raises(ValueError):
+            LayoutValidator.validate(invalid)
