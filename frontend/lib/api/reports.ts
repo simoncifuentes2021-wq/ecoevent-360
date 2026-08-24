@@ -3,7 +3,7 @@ import { clearSession, getStoredToken } from "@/lib/auth";
 import { api, ApiError } from "@/lib/api";
 import { toQuery, type QueryValue } from "@/lib/api/query";
 import type { ListResponse } from "@/types/common";
-import type { AvailableReportEvidence, GenerateReportResponse, Report, ReportAIDraft, ReportAIEditorialPlan, ReportAILength, ReportAIOperation, ReportAIStyle, ReportEditor, ReportElement, ReportElementType, ReportPage, ReportPagePlan, ReportPublication, ReportRevision, ReportScope, ReportSection, ReportTemplateKey, ReportTheme, ReportEditorialConfig } from "@/types/report";
+import type { AvailableReportEvidence, GenerateReportResponse, Report, ReportAIDraft, ReportAIEditorialPlan, ReportAILength, ReportAIOperation, ReportAIStyle, ReportEditor, ReportElement, ReportElementType, ReportLayoutOverride, ReportPage, ReportPagePlan, ReportPublication, ReportRevision, ReportScope, ReportSection, ReportTemplateKey, ReportTheme, ReportEditorialConfig } from "@/types/report";
 
 function listFrom<T>(raw: T[] | ListResponse<T> | { data?: T[]; items?: T[]; total?: number; page?: number; limit?: number }): ListResponse<T> {
   if (Array.isArray(raw)) return { items: raw, total: raw.length, page: 1, limit: raw.length };
@@ -90,6 +90,10 @@ export function getReportEditor(reportId: string) { return api.get<ReportEditor>
 export function updateReportDesign(reportId: string, editVersion: number, templateKey: ReportTemplateKey, theme: ReportTheme, editorialConfig?: ReportEditorialConfig) { return api.patch<ReportEditor>(`/reports/${reportId}`, { edit_version: editVersion, template_key: templateKey, theme, editorial_config: editorialConfig }); }
 export function updateReportEditorialConfig(reportId: string, editVersion: number, editorialConfig: ReportEditorialConfig) { return api.patch<ReportEditor>(`/reports/${reportId}`, { edit_version: editVersion, editorial_config: editorialConfig }); }
 export function getReportPagePlan(reportId: string) { return api.get<ReportPagePlan>(`/reports/${reportId}/page-plan`); }
+export function getReportLayoutOverrides(reportId: string) { return api.get<ReportLayoutOverride[]>(`/reports/${reportId}/layout-overrides`); }
+export function saveReportLayoutOverride(reportId: string, override: ReportLayoutOverride) { return api.put<ReportLayoutOverride>(`/reports/${reportId}/layout-overrides`, override); }
+export function saveReportLayoutOverrides(reportId: string, overrides: ReportLayoutOverride[]) { return api.put<ReportLayoutOverride[]>(`/reports/${reportId}/layout-overrides/batch`, { overrides }); }
+export function resetReportLayoutOverride(reportId: string, elementKey?: string) { return api.delete<void>(`/reports/${reportId}/layout-overrides${elementKey ? `?element_key=${encodeURIComponent(elementKey)}` : ""}`); }
 export async function getReportHtmlPreview(reportId: string) { const token = getStoredToken(); const response = await fetch(`${API_URL}/reports/${reportId}/html-preview`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }); handleUnauthorized(response); if (!response.ok) throw new ApiError(response.status, "No se pudo actualizar la vista previa."); return response.text(); }
 export function updateReportSection(reportId: string, sectionId: string, body: { title?: string; is_enabled?: boolean; layout_variant?: ReportSection["layout_variant"]; content?: ReportSection["content"]; edit_version: number }) { return api.patch<ReportSection>(`/reports/${reportId}/sections/${sectionId}`, body); }
 export function generateReportSectionDraft(reportId: string, sectionId: string, body: { operation: ReportAIOperation; style: ReportAIStyle; length: ReportAILength; current_text?: string | null }) { return api.post<ReportAIDraft>(`/reports/${reportId}/sections/${sectionId}/ai-draft`, body); }
