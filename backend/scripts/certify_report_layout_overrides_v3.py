@@ -44,6 +44,8 @@ def main() -> None:
     baseline = request(f"/reports/{REPORT_ID}/html-preview", token).decode()
     types = re.findall(r'data-report-element-type="([^"]+)"', baseline)
     assert "CHART" in types and "IMAGE" in types and "PHOTO_GRID" in types
+    assert re.search(r'data-report-element-type="CHART" data-report-resize-mode="box"', baseline)
+    assert re.search(r'data-report-element-type="IMAGE" data-report-resize-mode="box"', baseline)
     assert "data:image/" in baseline and "private/" not in baseline
     (OUTPUT / "chart-pdf.pdf").write_bytes(request(f"/reports/{REPORT_ID}/pdf-preview", token))
 
