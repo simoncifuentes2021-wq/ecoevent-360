@@ -92,24 +92,29 @@ def main() -> None:
         editable_count = frame.locator("[data-report-element-key]").count()
         assert editable_count > 0, "The canonical HTML contains no editable elements"
         assert frame.locator(".report-resize-handle").count() == 0
-        first = frame.locator("[data-report-element-key]").first
+        first = frame.locator('[data-report-element-key="section.bike-zone.title"]')
+        if first.count() == 0:
+            first = frame.locator("[data-report-element-key]").nth(editable_count - 1)
         first.evaluate("node => node.click()")
         assert frame.locator(".report-resize-handle").count() == 1
         first.evaluate("node => node.scrollIntoView({block: 'center'})")
         page.wait_for_timeout(200)
         scroll_before = frame.locator("body").evaluate("() => window.scrollY")
+        frame.locator("body").evaluate("() => { window.__ecoeventNoReload = 'preserved'; }")
         page.get_by_role("button", name="Adelante", exact=True).click()
         page.wait_for_timeout(900)
         scroll_after = frame.locator("body").evaluate("() => window.scrollY")
+        no_reload = frame.locator("body").evaluate("() => window.__ecoeventNoReload")
         assert scroll_before > 0
         assert abs(scroll_after - scroll_before) < 24, (scroll_before, scroll_after)
+        assert no_reload == "preserved"
         page.screenshot(path=output / "editor-profesional.png", full_page=True)
         page.get_by_role("button", name="Restablecer elemento", exact=True).click()
         page.wait_for_timeout(700)
         browser.close()
     print(
         f"visual_editor=ok editable_elements={editable_count} "
-        f"scroll_before={scroll_before} scroll_after={scroll_after} "
+        f"scroll_before={scroll_before} scroll_after={scroll_after} no_reload=true "
         f"pdf_bytes={len(pdf)} artifact={output}"
     )
 

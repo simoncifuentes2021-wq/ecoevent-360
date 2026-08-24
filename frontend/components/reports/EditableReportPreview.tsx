@@ -22,7 +22,7 @@ function hasSevereOverlap(node: HTMLElement, next: DOMRect, doc: Document): bool
 type HistoryEntry = { before?: ReportLayoutOverride; after?: ReportLayoutOverride };
 type ViewportAnchor = { x: number; y: number; elementKey?: string; elementTop?: number };
 
-export function EditableReportPreview({ reportId, html, plan, onSelectSection, onSaved }: { reportId: string; html: string; plan?: ReportPagePlan; onSelectSection: (key: string) => void; onSaved: () => Promise<void> }) {
+export function EditableReportPreview({ reportId, html, plan, onSelectSection, onSaved }: { reportId: string; html: string; plan?: ReportPagePlan; onSelectSection: (key: string) => void; onSaved: (refreshHtml?: boolean) => Promise<void> }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overridesRef = useRef<Record<string, ReportLayoutOverride>>({});
   const pendingViewportRef = useRef<ViewportAnchor>();
@@ -81,6 +81,20 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
     await onSaved();
   }, [onSaved, rememberViewport]);
 
+  const applySavedOverride = useCallback((item: ReportLayoutOverride) => {
+    const node = iframeRef.current?.contentDocument?.querySelector<HTMLElement>(
+      `[data-report-element-key="${CSS.escape(item.element_key)}"]`,
+    );
+    if (!node) return;
+    node.style.position = "relative";
+    node.style.transformOrigin = "top left";
+    node.style.transform = `translate(${item.x_offset}px,${item.y_offset}px) rotate(${item.rotation}deg) scale(${item.width_scale},${item.height_scale})`;
+    node.style.zIndex = String(item.z_index);
+    node.style.visibility = item.visible ? "visible" : "hidden";
+    if (item.box_width != null) { node.style.width = `${item.box_width}px`; node.style.maxWidth = "none"; }
+    if (item.box_height != null) { node.style.height = `${item.box_height}px`; node.style.overflow = "hidden"; }
+  }, []);
+
   const commit = useCallback(async (after: ReportLayoutOverride, before?: ReportLayoutOverride, remember = true) => {
     setBusy(true);
     try {
@@ -88,9 +102,10 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
       const next = { ...overridesRef.current, [saved.element_key]: saved };
       overridesRef.current = next; setOverrides(next);
       if (remember) { setHistory(items => [...items, { before, after: saved }]); setFuture([]); }
-      await refreshKeepingViewport(saved.element_key);
+      applySavedOverride(saved);
+      await onSaved(false);
     } finally { setBusy(false); }
-  }, [refreshKeepingViewport, reportId]);
+  }, [applySavedOverride, onSaved, reportId]);
 
   const remove = useCallback(async (elementKey: string, remember = true) => {
     const before = overridesRef.current[elementKey];

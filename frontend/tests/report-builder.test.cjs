@@ -97,6 +97,7 @@ test("premium PDF workflow uses exact preview and immutable publications", () =>
 
 test("canonical preview editor supports box resize, bounds and viewport persistence", () => {
   const editor = read("components", "reports", "EditableReportPreview.tsx");
+  const builder = read("components", "reports", "ReportBuilder.tsx");
   const types = read("types", "report.ts");
   for (const pattern of [
     /reportResizeMode/,
@@ -111,7 +112,10 @@ test("canonical preview editor supports box resize, bounds and viewport persiste
     /Rehacer/,
     /Restablecer elemento/,
     /Restablecer todo/,
-  ]) assert.match(`${editor}\n${types}`, pattern);
+    /onSaved\(false\)/,
+    /applySavedOverride/,
+    /suppressPreviewRefresh/,
+  ]) assert.match(`${editor}\n${builder}\n${types}`, pattern);
   assert.doesNotMatch(editor, /dangerouslySetInnerHTML|ReportElement|FreeformReportDesigner/);
 });
 
