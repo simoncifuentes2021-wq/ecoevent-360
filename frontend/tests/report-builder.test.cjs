@@ -119,6 +119,27 @@ test("canonical preview editor supports box resize, bounds and viewport persiste
   assert.doesNotMatch(editor, /dangerouslySetInnerHTML|ReportElement|FreeformReportDesigner/);
 });
 
+test("professional preview editor exposes PowerPoint-style multi-selection tools", () => {
+  const editor = read("components", "reports", "EditableReportPreview.tsx");
+  const math = read("components", "reports", "report-layout-editor-math.ts");
+  for (const pattern of [
+    /event\.ctrlKey \|\| event\.metaKey/,
+    /saveReportLayoutOverrides/,
+    /elementos seleccionados/,
+    /Alinear izquierda/,
+    /Distribuir horizontalmente/,
+    /Igualar ancho/,
+    /Restablecer seleccionados/,
+    /report-smart-guide/,
+    /Shift.*10|event\.shiftKey \? 10 : 1/,
+    /alignItems/,
+    /distributeItems/,
+    /equalSize/,
+    /snapDelta/,
+  ]) assert.match(`${editor}\n${math}`, pattern);
+  assert.doesNotMatch(editor, /createReportElement|ReportElement|dangerouslySetInnerHTML/);
+});
+
 test("freeform editor keeps A4 logical geometry and batches drag or resize", () => {
   const editor = read("components", "reports", "FreeformReportDesigner.tsx");
   const api = read("lib", "api", "reports.ts");
