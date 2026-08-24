@@ -2033,6 +2033,9 @@ class Report(Base):
     pages: Mapped[list["ReportPage"]] = relationship(
         back_populates="report", cascade="all, delete-orphan", order_by="ReportPage.page_number"
     )
+    layout_overrides: Mapped[list["ReportLayoutOverride"]] = relationship(
+        back_populates="report", cascade="all, delete-orphan", order_by="ReportLayoutOverride.element_key"
+    )
     composition_mode: Mapped[ReportCompositionMode] = mapped_column(
         Enum(ReportCompositionMode, name="report_composition_mode", native_enum=False),
         nullable=False,
@@ -2047,6 +2050,36 @@ class Report(Base):
     editorial_config: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
+
+
+class ReportLayoutOverride(Base):
+    __tablename__ = "report_layout_overrides"
+    __table_args__ = (
+        UniqueConstraint("report_id", "element_key", name="uq_report_layout_overrides_report_key"),
+        CheckConstraint("width_scale >= 0.1 and width_scale <= 5", name="ck_report_layout_overrides_width_scale"),
+        CheckConstraint("height_scale >= 0.1 and height_scale <= 5", name="ck_report_layout_overrides_height_scale"),
+        CheckConstraint("rotation >= -360 and rotation <= 360", name="ck_report_layout_overrides_rotation"),
+        Index("idx_report_layout_overrides_report", "report_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    report_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False
+    )
+    element_key: Mapped[str] = mapped_column(String(220), nullable=False)
+    page_key: Mapped[str | None] = mapped_column(String(160))
+    x_offset: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
+    y_offset: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
+    width_scale: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("1"))
+    height_scale: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("1"))
+    rotation: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
+    z_index: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    locked: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    visible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    report: Mapped[Report] = relationship(back_populates="layout_overrides")
 
 
 class ReportSection(Base):

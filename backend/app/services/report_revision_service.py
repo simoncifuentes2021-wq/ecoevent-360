@@ -8,6 +8,7 @@ from app.models.core import (
     Report,
     ReportElement,
     ReportEvidence,
+    ReportLayoutOverride,
     ReportPage,
     ReportRevision,
     ReportSection,
@@ -28,6 +29,21 @@ def snapshot(report: Report) -> dict:
         "theme": report.theme,
         "editorial_config": report.editorial_config,
         "composition_mode": report.composition_mode.value,
+        "layout_overrides": [
+            {
+                "element_key": item.element_key,
+                "page_key": item.page_key,
+                "x_offset": item.x_offset,
+                "y_offset": item.y_offset,
+                "width_scale": item.width_scale,
+                "height_scale": item.height_scale,
+                "rotation": item.rotation,
+                "z_index": item.z_index,
+                "locked": item.locked,
+                "visible": item.visible,
+            }
+            for item in report.layout_overrides
+        ],
         "pages": [
             {
                 "id": str(page.id),
@@ -143,6 +159,9 @@ def restore(db: Session, report: Report, revision_id: UUID, version: int):
     report.editorial_config = data.get("editorial_config", {})
     report.composition_mode = ReportCompositionMode(data.get("composition_mode", "AUTO"))
     db.query(ReportPage).filter(ReportPage.report_id == report.id).delete(synchronize_session=False)
+    db.query(ReportLayoutOverride).filter(ReportLayoutOverride.report_id == report.id).delete(
+        synchronize_session=False
+    )
     db.query(ReportEvidence).filter(ReportEvidence.report_id == report.id).delete(
         synchronize_session=False
     )
@@ -178,5 +197,7 @@ def restore(db: Session, report: Report, revision_id: UUID, version: int):
             raw_element.pop("id", None)
             raw_element["metadata_"] = raw_element.pop("metadata", {})
             db.add(ReportElement(page_id=page.id, **raw_element))
+    for raw_override in data.get("layout_overrides", []):
+        db.add(ReportLayoutOverride(report_id=report.id, **raw_override))
     report.edit_version += 1
     db.commit()

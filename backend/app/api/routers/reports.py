@@ -26,6 +26,9 @@ from app.schemas.report_schema import (
     ReportElementUpdate,
     ReportElementBatchUpdate,
     ReportElementRead,
+    ReportLayoutOverrideBatch,
+    ReportLayoutOverrideRead,
+    ReportLayoutOverrideUpsert,
     ReportTemplateLayoutCreate,
     ReportTemplateLayoutRead,
     ReportRead,
@@ -58,6 +61,57 @@ def _element_read(item):
 
 def _page_read(item):
     return ReportPageRead.from_model(item)
+
+
+@router.get("/{report_id}/layout-overrides", response_model=list[ReportLayoutOverrideRead])
+def list_report_layout_overrides(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_override_service
+
+    return report_layout_override_service.list_all(db, report_id, current_user)
+
+
+@router.put("/{report_id}/layout-overrides", response_model=ReportLayoutOverrideRead)
+def upsert_report_layout_override(
+    report_id: UUID,
+    payload: ReportLayoutOverrideUpsert,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_override_service
+
+    return report_layout_override_service.upsert(db, report_id, payload, current_user)
+
+
+@router.put("/{report_id}/layout-overrides/batch", response_model=list[ReportLayoutOverrideRead])
+def batch_report_layout_overrides(
+    report_id: UUID,
+    payload: ReportLayoutOverrideBatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_override_service
+
+    return report_layout_override_service.batch_upsert(db, report_id, payload, current_user)
+
+
+@router.delete("/{report_id}/layout-overrides", status_code=204)
+def reset_report_layout_overrides(
+    report_id: UUID,
+    element_key: str | None = Query(default=None, min_length=3, max_length=220),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_layout_override_service
+
+    if element_key:
+        report_layout_override_service.reset_element(db, report_id, element_key, current_user)
+    else:
+        report_layout_override_service.reset_all(db, report_id, current_user)
+    return Response(status_code=204)
 
 
 @router.get("/{report_id}/pages", response_model=list[ReportPageRead])

@@ -244,6 +244,35 @@ class ReportRead(BaseModel):
     composition_mode: ReportCompositionMode = ReportCompositionMode.AUTO
 
 
+class ReportLayoutOverrideBase(BaseModel):
+    element_key: str = Field(min_length=3, max_length=220, pattern=r"^[a-z0-9][a-z0-9_.:-]*$")
+    page_key: str | None = Field(default=None, max_length=160, pattern=r"^[a-z0-9][a-z0-9_.:-]*$")
+    x_offset: float = Field(default=0, ge=-2000, le=2000)
+    y_offset: float = Field(default=0, ge=-3000, le=3000)
+    width_scale: float = Field(default=1, ge=0.1, le=5)
+    height_scale: float = Field(default=1, ge=0.1, le=5)
+    rotation: float = Field(default=0, ge=-360, le=360)
+    z_index: int = Field(default=0, ge=-10000, le=10000)
+    locked: bool = False
+    visible: bool = True
+
+
+class ReportLayoutOverrideUpsert(ReportLayoutOverrideBase):
+    pass
+
+
+class ReportLayoutOverrideBatch(BaseModel):
+    overrides: list[ReportLayoutOverrideUpsert] = Field(min_length=1, max_length=100)
+
+
+class ReportLayoutOverrideRead(ReportLayoutOverrideBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    report_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
 class ReportPageCreate(BaseModel):
     name: str | None = Field(default=None, max_length=180)
     width: float = Field(default=1000, gt=0, le=5000)
