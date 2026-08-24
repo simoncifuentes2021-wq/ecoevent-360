@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import io
 import sys
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlparse
+
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -20,6 +23,7 @@ from app.models.core import (  # noqa: E402
     CarbonRecord,
     Evidence,
     Event,
+    ReportEvidence,
     Task,
     WasteRecord,
     WasteType,
@@ -27,26 +31,22 @@ from app.models.core import (  # noqa: E402
 from app.models.enums import (  # noqa: E402
     CarbonScope,
     ReportScope,
+    ReportLayoutVariant,
     TaskStatus,
     WasteDestination,
 )
 from app.schemas.report_schema import ReportUpdate  # noqa: E402
-from app.services import report_builder_service  # noqa: E402
+from app.services import file_storage_service, report_builder_service  # noqa: E402
 from scripts.seed_session_comparison_demo import (  # noqa: E402
     DEMO_PREFIX,
     seed as seed_comparison,
 )
 
 
-def assert_disposable_database() -> None:
+def assert_local_database() -> None:
     parsed = urlparse(settings.database_url.replace("postgresql+psycopg://", "postgresql://"))
-    database = parsed.path.lstrip("/").lower()
-    if parsed.hostname not in {"localhost", "127.0.0.1"} or not any(
-        token in database for token in ("test", "disposable")
-    ):
-        raise SystemExit(
-            "BLOQUEADO: este cargador solo funciona en PostgreSQL local cuyo nombre contenga 'test' o 'disposable'."
-        )
+    if parsed.hostname not in {"localhost", "127.0.0.1"}:
+        raise SystemExit("BLOQUEADO: este fixture solo funciona contra PostgreSQL local.")
     if settings.app_env.lower() == "production":
         raise SystemExit("BLOQUEADO: APP_ENV=production.")
 
@@ -63,7 +63,7 @@ def main() -> int:
     if not args.yes:
         print("No se creó nada. Ejecuta con --yes.")
         return 2
-    assert_disposable_database()
+    assert_local_database()
 
     with SessionLocal() as db:
         result = seed_comparison(db, client_id=None, admin_email=args.admin_email)
@@ -113,17 +113,28 @@ def main() -> int:
             ]
         )
 
-        evidence = Evidence(
-            event_id=event.id,
-            session_id=main_show.id,
-            uploaded_by=admin.id,
-            file_url="/uploads/demo-evidence.png",
-            file_type="image/png",
-            description="Evidencia principal de gestión ambiental y movilidad sostenible",
-            taken_at=datetime.now(),
-        )
-        db.add(evidence)
+        evidences = []
+        for index, (width, height, color) in enumerate(
+            [(1200, 700, "#15803d"), (700, 1200, "#0f766e"), (900, 650, "#65a30d"), (800, 800, "#047857")],
+            start=1,
+        ):
+            image = Image.new("RGB", (width, height), color)
+            ImageDraw.Draw(image).text((40, 40), f"EcoEvent fixture v3 - evidencia {index}", fill="white")
+            content = io.BytesIO()
+            image.save(content, format="PNG")
+            storage_key = file_storage_service.save_bytes_file(
+                "report-layout-v3", content.getvalue(), content_type="image/png",
+                allowed_content_types={"image/png": ".png"}, original_filename=f"fixture-{index}.png",
+            )
+            evidences.append(Evidence(
+                event_id=event.id, session_id=main_show.id, uploaded_by=admin.id,
+                file_url=storage_key, file_type="image/png",
+                description=f"Fixture visual v3 {'horizontal' if width > height else 'vertical'} {index}",
+                taken_at=datetime.now(),
+            ))
+        db.add_all(evidences)
         db.flush()
+        evidence = evidences[0]
 
         waste_rows = [
             ("Botellas de plástico PET", Decimal("71.040"), WasteDestination.RECYCLING),
@@ -200,12 +211,49 @@ def main() -> int:
         event_report = report_builder_service.create_draft(
             db, event.id, ReportScope.EVENT, None, admin
         )
+        for section in event_report.sections:
+            if section.section_key == "waste":
+                section.layout_variant = ReportLayoutVariant.FEATURE_CHART
+                content = dict(section.content or {})
+                content["items"] = [
+                    {**item, "value": float(item.get("total_kg") or item.get("weight_kg") or 0)}
+                    for item in (content.get("items") or [])
+                ]
+                section.content = content
+            if section.section_key == "evidences":
+                section.is_enabled = True
+                section.layout_variant = ReportLayoutVariant.PHOTO_GRID
+            if section.section_key == "forms":
+                section.is_enabled = True
+                section.layout_variant = ReportLayoutVariant.FEATURE_CHART
+                content = dict(section.content or {})
+                content["items"] = [
+                    {"label": "Excelente", "value": 18},
+                    {"label": "Bueno", "value": 11},
+                    {"label": "Regular", "value": 4},
+                ]
+                section.content = content
         report_builder_service.update_report(
             db,
             event_report,
             ReportUpdate(
                 template_key="ENVIRONMENTAL_STORY", edit_version=event_report.edit_version
             ),
+        )
+        evidence_section = next(
+            (section for section in event_report.sections if section.section_key == "evidences"), None
+        )
+        db.add_all(
+            [
+                ReportEvidence(
+                    report_id=event_report.id,
+                    section_id=evidence_section.id if evidence_section else None,
+                    evidence_id=item.id,
+                    sort_order=index,
+                    caption=item.description,
+                )
+                for index, item in enumerate(evidences)
+            ]
         )
         show_report = report_builder_service.create_draft(
             db, event.id, ReportScope.SHOW, main_show.id, admin
