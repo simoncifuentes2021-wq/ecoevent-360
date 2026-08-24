@@ -68,6 +68,7 @@ class ReportRenderDocument:
     evidences: tuple[dict[str, Any], ...]
     publication: dict[str, Any]
     editorial_config: dict[str, Any] = field(default_factory=dict)
+    freeform_pages: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
 
 def normalize_theme(raw: dict | None) -> dict:
@@ -107,6 +108,8 @@ def evidence_asset(reference: str, mime: str | None) -> tuple[str | None, str | 
 
 
 def build_html(document: ReportRenderDocument) -> str:
+    if document.report.get("composition_mode") == "FREEFORM" and document.freeform_pages:
+        return _build_freeform_html(document)
     theme = document.theme
     evidence_by_section: dict[str | None, list[dict]] = {}
     for item in document.evidences:
@@ -139,6 +142,77 @@ def build_html(document: ReportRenderDocument) -> str:
         + page_html
         + "</body></html>"
     )
+
+
+def _build_freeform_html(document: ReportRenderDocument) -> str:
+    pages = "".join(
+        _freeform_page_html(page)
+        for page in document.freeform_pages
+        if page.get("is_enabled", True)
+    )
+    return (
+        '<!doctype html><html><head><meta charset="utf-8"><style>'
+        "@page{size:A4;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0}"
+        ".freeform-page{position:relative;width:210mm;height:297mm;overflow:hidden;page-break-after:always}"
+        ".freeform-page:last-child{page-break-after:auto}.freeform-element{position:absolute;overflow:hidden}"
+        "</style><title>"
+        + escape(document.report["title"])
+        + "</title></head><body>"
+        + pages
+        + "</body></html>"
+    )
+
+
+def _freeform_page_html(page: dict[str, Any]) -> str:
+    width = float(page.get("width") or 1000)
+    height = float(page.get("height") or 1414)
+    elements = "".join(
+        _freeform_element_html(element, width, height)
+        for element in sorted(page.get("elements") or [], key=lambda item: item.get("z_index", 0))
+        if element.get("visible", True)
+    )
+    background = escape(str(page.get("background") or "#FFFFFF"))
+    return f'<section class="freeform-page" style="background:{background}">{elements}</section>'
+
+
+def _freeform_element_html(element: dict[str, Any], page_width: float, page_height: float) -> str:
+    style = element.get("style") or {}
+    content = element.get("content") or {}
+    left = float(element["x"]) / page_width * 100
+    top = float(element["y"]) / page_height * 100
+    width = float(element["width"]) / page_width * 100
+    height = float(element["height"]) / page_height * 100
+    css = [
+        f"left:{left:.8f}%",
+        f"top:{top:.8f}%",
+        f"width:{width:.8f}%",
+        f"height:{height:.8f}%",
+        f"z-index:{int(element.get('z_index', 0))}",
+        f"transform:rotate({float(element.get('rotation', 0)):.4f}deg)",
+        f"color:{escape(str(style.get('color', '#15231D')))}",
+        f"background:{escape(str(style.get('background', 'transparent')))}",
+        f"font-size:{float(style.get('fontSize', 18)) * 0.21:.4f}mm",
+        f"font-weight:{escape(str(style.get('fontWeight', 'normal')))}",
+        f"text-align:{escape(str(style.get('textAlign', 'left')))}",
+        f"opacity:{float(style.get('opacity', 1))}",
+        f"border-radius:{float(style.get('borderRadius', 0)) * 0.21:.4f}mm",
+    ]
+    kind = element.get("type")
+    text = escape(str(content.get("text") or ("Sin datos" if kind in {"KPI", "CHART"} else "")))
+    if kind == "KPI":
+        body = f'<small style="display:block">KPI</small><strong style="font-size:1.8em">{text}</strong>'
+    elif kind == "CHART":
+        body = f'<div style="height:100%;display:grid;place-items:center;border:1px dashed #94a3b8">{text}</div>'
+    elif kind == "IMAGE":
+        uri = content.get("uri")
+        body = (
+            f'<img alt="" src="{escape(str(uri))}" style="width:100%;height:100%;object-fit:{escape(str(style.get("objectFit", "cover")))}">'
+            if uri
+            else '<div style="height:100%;display:grid;place-items:center;background:#f1f5f9">Sin imagen</div>'
+        )
+    else:
+        body = text
+    return f'<div class="freeform-element" data-element-id="{escape(str(element.get("id", "")))}" style="{";".join(css)}">{body}</div>'
 
 
 def _styles(document: ReportRenderDocument) -> str:

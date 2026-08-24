@@ -4,7 +4,16 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.core import Report, ReportEvidence, ReportRevision, ReportSection, User
+from app.models.core import (
+    Report,
+    ReportElement,
+    ReportEvidence,
+    ReportPage,
+    ReportRevision,
+    ReportSection,
+    User,
+)
+from app.models.enums import ReportCompositionMode
 from app.services.report_builder_service import _assert_editable
 
 
@@ -18,6 +27,39 @@ def snapshot(report: Report) -> dict:
         "template_key": report.template_key.value,
         "theme": report.theme,
         "editorial_config": report.editorial_config,
+        "composition_mode": report.composition_mode.value,
+        "pages": [
+            {
+                "id": str(page.id),
+                "page_number": page.page_number,
+                "name": page.name,
+                "width": page.width,
+                "height": page.height,
+                "background": page.background,
+                "background_image": page.background_image,
+                "is_enabled": page.is_enabled,
+                "elements": [
+                    {
+                        "id": str(element.id),
+                        "type": element.type.value,
+                        "x": element.x,
+                        "y": element.y,
+                        "width": element.width,
+                        "height": element.height,
+                        "rotation": element.rotation,
+                        "z_index": element.z_index,
+                        "locked": element.locked,
+                        "visible": element.visible,
+                        "content": element.content,
+                        "style": element.style,
+                        "data_binding": element.data_binding,
+                        "metadata": element.metadata_,
+                    }
+                    for element in page.elements
+                ],
+            }
+            for page in report.pages
+        ],
         "sections": [
             {
                 "section_key": s.section_key,
@@ -99,6 +141,8 @@ def restore(db: Session, report: Report, revision_id: UUID, version: int):
     report.template_key = data.get("template_key", "ENVIRONMENTAL_PREMIUM")
     report.theme = data.get("theme", {})
     report.editorial_config = data.get("editorial_config", {})
+    report.composition_mode = ReportCompositionMode(data.get("composition_mode", "AUTO"))
+    db.query(ReportPage).filter(ReportPage.report_id == report.id).delete(synchronize_session=False)
     db.query(ReportEvidence).filter(ReportEvidence.report_id == report.id).delete(
         synchronize_session=False
     )
@@ -122,5 +166,17 @@ def restore(db: Session, report: Report, revision_id: UUID, version: int):
                 **raw,
             )
         )
+    for raw_page in data.get("pages", []):
+        raw_page = dict(raw_page)
+        raw_page.pop("id", None)
+        elements = raw_page.pop("elements", [])
+        page = ReportPage(report_id=report.id, **raw_page)
+        db.add(page)
+        db.flush()
+        for raw_element in elements:
+            raw_element = dict(raw_element)
+            raw_element.pop("id", None)
+            raw_element["metadata_"] = raw_element.pop("metadata", {})
+            db.add(ReportElement(page_id=page.id, **raw_element))
     report.edit_version += 1
     db.commit()

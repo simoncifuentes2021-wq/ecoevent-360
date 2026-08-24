@@ -1417,3 +1417,53 @@ def test_every_layout_preserves_information_in_regular_and_feature_recipes(secti
     assert f"layout-{variant.value.lower().replace('_', '-')}" in html
     assert "Indicador oculto" not in html
     assert "Categoría oculta" not in html
+
+
+def test_freeform_renderer_preserves_exact_logical_geometry_and_escapes_content():
+    from app.services.report_render_service import ReportRenderDocument, build_html, normalize_theme
+
+    document = ReportRenderDocument(
+        report={
+            "id": "report",
+            "title": "Libre",
+            "scope": "EVENT",
+            "template_key": "EXECUTIVE",
+            "composition_mode": "FREEFORM",
+        },
+        event={"id": "event", "name": "Evento", "date": "24.08.2026"},
+        show=None,
+        client={"id": "client", "name": "Cliente"},
+        theme=normalize_theme({}),
+        sections=tuple(),
+        evidences=tuple(),
+        publication={"number": None},
+        freeform_pages=(
+            {
+                "page_number": 1,
+                "width": 1000,
+                "height": 1414,
+                "background": "#FFFFFF",
+                "is_enabled": True,
+                "elements": [
+                    {
+                        "id": "text-1",
+                        "type": "TEXT",
+                        "x": 125,
+                        "y": 141.4,
+                        "width": 500,
+                        "height": 282.8,
+                        "rotation": 0,
+                        "z_index": 3,
+                        "visible": True,
+                        "content": {"text": "<script>unsafe</script>"},
+                        "style": {"fontSize": 20},
+                    }
+                ],
+            },
+        ),
+    )
+    html = build_html(document)
+    assert "left:12.50000000%" in html and "top:10.00000000%" in html
+    assert "width:50.00000000%" in html and "height:20.00000000%" in html
+    assert "&lt;script&gt;unsafe&lt;/script&gt;" in html
+    assert "<script>unsafe</script>" not in html

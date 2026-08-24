@@ -14,7 +14,11 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.core import Report, ReportPublication, User
 from app.models.enums import ReportPublicationStatus, ReportStatus, UserRole
 from app.services import file_storage_service, report_pdf_service, report_revision_service
-from app.services.report_render_service import ReportRenderDocument, evidence_asset, theme_for_template
+from app.services.report_render_service import (
+    ReportRenderDocument,
+    evidence_asset,
+    theme_for_template,
+)
 
 
 def _admin(user: User) -> None:
@@ -58,6 +62,7 @@ def prepare_document(
             "title": report.title,
             "scope": report.scope.value,
             "template_key": report.template_key.value,
+            "composition_mode": report.composition_mode.value,
         },
         event={
             "id": str(event.id),
@@ -73,6 +78,7 @@ def prepare_document(
         evidences=tuple(evidences),
         publication={"number": publication_number, "generated_at": datetime.utcnow().isoformat()},
         editorial_config=report.editorial_config or {},
+        freeform_pages=tuple(snapshot.get("pages") or []),
     )
     frozen = {
         **snapshot,
@@ -86,7 +92,9 @@ def prepare_document(
 
     frozen["page_plan"] = [
         page.as_dict()
-        for page in plan_pages(snapshot["sections"], report.template_key.value, report.editorial_config)
+        for page in plan_pages(
+            snapshot["sections"], report.template_key.value, report.editorial_config
+        )
     ]
     return document, frozen
 
@@ -168,9 +176,7 @@ def list_publications(db: Session, report_id: UUID, user: User) -> list[ReportPu
     return list(db.scalars(query.order_by(ReportPublication.publication_number.desc())).all())
 
 
-def latest_publication(
-    db: Session, report_id: UUID, user: User
-) -> ReportPublication | None:
+def latest_publication(db: Session, report_id: UUID, user: User) -> ReportPublication | None:
     """Return the newest visible immutable PDF for a report."""
     publications = list_publications(db, report_id, user)
     return next(

@@ -11,6 +11,7 @@ from app.models.core import (
     EventSession,
     Report,
     ReportEvidence,
+    ReportPage,
     ReportSection,
     User,
 )
@@ -276,6 +277,7 @@ def get_editor(db: Session, report_id: UUID, user: User) -> Report:
             selectinload(Report.session),
             selectinload(Report.sections),
             selectinload(Report.evidences).selectinload(ReportEvidence.evidence),
+            selectinload(Report.pages).selectinload(ReportPage.elements),
         )
         .where(Report.id == report_id, Report.status != ReportStatus.ARCHIVED)
     )

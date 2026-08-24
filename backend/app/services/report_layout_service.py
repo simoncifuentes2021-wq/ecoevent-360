@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.core import Report, ReportElement, ReportPage, User
+from app.models.enums import ReportCompositionMode
 from app.schemas.report_schema import (
     ReportElementBatchUpdate,
     ReportElementCreate,
@@ -71,6 +72,8 @@ def create_page(db: Session, report_id: UUID, payload: ReportPageCreate, user: U
     ) + 1
     page = ReportPage(report_id=report_id, page_number=number, **payload.model_dump())
     db.add(page)
+    report = db.get(Report, report_id)
+    report.composition_mode = ReportCompositionMode.FREEFORM
     db.commit()
     db.refresh(page)
     return page
@@ -103,6 +106,15 @@ def delete_page(db: Session, report_id: UUID, page_id: UUID, user: User) -> None
         .order_by(ReportPage.page_number)
     ):
         item.page_number -= 1
+    remaining = (
+        db.scalar(
+            select(func.count()).select_from(ReportPage).where(ReportPage.report_id == report_id)
+        )
+        or 0
+    )
+    if not remaining:
+        report = db.get(Report, report_id)
+        report.composition_mode = ReportCompositionMode.AUTO
     db.commit()
 
 
