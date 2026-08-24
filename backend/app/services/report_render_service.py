@@ -697,7 +697,7 @@ def _feature_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
     chart = report_chart_service.bar_chart(items, theme["accent_color"])
     section_key = _stable_part(section.get("section_key"))
     photo_html = _photos(photos[:2], "photos", section_key, f"section.{section_key}.gallery")
-    chart_html = f'<div class="chart-panel"{_editable_attr(f"{section_key}.chart.main", "CHART")}>{chart}</div>' if chart else ""
+    chart_html = f'<div class="chart-panel"{_editable_attr(f"{section_key}.chart.main", "CHART", "box")}>{chart}</div>' if chart else ""
     visual = f'<div class="feature-visual">{photo_html}{chart_html}</div>'
     if not visual:
         visual = '<div class="chart-panel"><div class="warning">Los indicadores se actualizarán al incorporar nuevos registros.</div></div>'
@@ -739,7 +739,7 @@ def _mixed_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
         chart = report_chart_service.bar_chart(items, theme["accent_color"])
         if section.get("layout_variant") == "FEATURE_CHART" and chart:
             key = f'{_stable_part(section.get("section_key"))}.chart.main'
-            media = f'<div class="section-media chart-panel"{_editable_attr(key, "CHART")}>{chart}</div>'
+            media = f'<div class="section-media chart-panel"{_editable_attr(key, "CHART", "box")}>{chart}</div>'
         body = f'<div class="section-body">{copy}<div class="section-fields">{fields_html}{_items(items, f"{section_key}.items")}</div>{media}</div>'
         variant = str(section.get("layout_variant") or "EDITORIAL").lower().replace("_", "-")
         blocks.append(
@@ -824,7 +824,7 @@ def _photos(
         key = f"{_stable_part(key_prefix or photo.get('section_key') or 'report')}.image.{_stable_part(photo.get('evidence_id'))}"
         caption = escape(str(photo.get("caption") or "Evidencia del evento"))
         figures.append(
-            f'<figure{_editable_attr(key, "IMAGE")}><img src="{photo["uri"]}"><figcaption>{caption}</figcaption></figure>'
+            f'<figure{_editable_attr(key, "IMAGE", "box")}><img src="{photo["uri"]}"><figcaption>{caption}</figcaption></figure>'
         )
     attribute = _editable_attr(gallery_key, "PHOTO_GRID", "box") if gallery_key else ""
     return f'<div class="{css_class}"{attribute}>{"".join(figures)}</div>'
