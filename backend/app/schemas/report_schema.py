@@ -103,6 +103,33 @@ class SectionPageOverride(BaseModel):
         return self
 
 
+ReportVisualPreset = Literal[
+    "AUTO", "ECOEVENT_EDITORIAL", "EXECUTIVE", "ENVIRONMENTAL", "BIKE_ZONE", "IMPACT"
+]
+ReportVisualVariant = Literal[
+    "AUTO", "IMPACT_STORY", "SHOW_COMPARISON", "CARD_GRID", "SECTION_HERO", "PHOTO_STORY"
+]
+
+
+class ReportVisualConfig(BaseModel):
+    preset: ReportVisualPreset = "AUTO"
+    icon_density: Literal["LOW", "MEDIUM", "HIGH"] = "MEDIUM"
+    visual_density: Literal["AIRY", "BALANCED", "COMPACT"] = "BALANCED"
+    show_icons: bool = True
+    show_trends: bool = True
+    show_equivalences: bool = True
+
+
+class ReportSectionVisualConfig(BaseModel):
+    variant: ReportVisualVariant = "AUTO"
+    icon_key: Literal[
+        "LEAF", "RECYCLE", "BICYCLE", "CARBON", "ENERGY", "WATER", "PEOPLE",
+        "LOCATION", "CALENDAR", "CHART", "CHECK", "LIGHTBULB", "CAMERA", "TARGET",
+    ] | None = None
+    show_icon: bool = True
+    show_trend: bool = True
+
+
 class ReportEditorialConfig(BaseModel):
     mode: Literal["AUTO", "CUSTOM"] = "AUTO"
     cover_style: Literal["FULL_PHOTO", "SIDE_PHOTO", "EDITORIAL", "MINIMAL_PREMIUM"] = "FULL_PHOTO"
@@ -116,6 +143,11 @@ class ReportEditorialConfig(BaseModel):
     chart_types: dict[
         Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,100}$")],
         Literal["BAR", "DONUT", "COMPARISON", "DISTRIBUTION"],
+    ] = Field(default_factory=dict)
+    visual_config: ReportVisualConfig = Field(default_factory=ReportVisualConfig)
+    section_visuals: dict[
+        Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,100}$")],
+        ReportSectionVisualConfig,
     ] = Field(default_factory=dict)
 
     @model_validator(mode="after")

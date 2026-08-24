@@ -10,6 +10,7 @@ from html import escape
 from typing import Any
 
 from app.services import file_storage_service, report_chart_service
+from app.services import report_visual_design_service
 from app.services.report_page_planner import plan_pages, visible_section
 
 DEFAULT_THEME = {
@@ -133,7 +134,7 @@ def build_html(document: ReportRenderDocument) -> str:
         if plan.recipe.value != "COVER_HERO"
     ]
     page_html = "".join(
-        _page_html(page, evidence_by_section, all_photos, theme, index + 1)
+        _page_html(page, evidence_by_section, all_photos, theme, index + 1, document.editorial_config)
         for index, page in enumerate(pages)
     )
     html = (
@@ -356,6 +357,12 @@ def _styles(document: ReportRenderDocument) -> str:
     .carbon-visual,.carbon-photo,.carbon-photo figure{{height:100%;margin:0}} .carbon-photo{{display:block}}
     .carbon-photo figure img{{height:211mm;border-radius:0;object-fit:cover}} .carbon-photo figcaption{{display:none}}
     .carbon-story{{grid-template-columns:1.05fr 1.05fr .65fr}} .carbon-story h3{{font-size:18pt;overflow-wrap:normal;hyphens:none}}
+    .premium-insight{{display:grid;grid-template-columns:15mm 1fr;gap:5mm;align-items:center;margin:0 0 7mm;padding:5mm 6mm;border:1px solid {t["accent_color"]};border-left:2mm solid {t["secondary_color"]};border-radius:3mm;background:linear-gradient(120deg,#fff,{t["background_color"]})}}
+    .premium-icon{{width:13mm;height:13mm;display:grid;place-items:center;border-radius:50%;background:{t["primary_color"]};color:white}} .premium-icon svg{{width:7mm;height:7mm;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}}
+    .premium-copy>small{{font-size:6.5pt;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:{t["secondary_color"]}}} .premium-copy h3{{font-size:13pt;margin:1mm 0 2mm}}
+    .premium-copy>strong{{display:inline-flex;gap:1mm;align-items:baseline;font-size:21pt;color:{t["primary_color"]};margin-right:4mm}} .premium-copy>strong small{{font-size:8pt}} .premium-copy>span{{font-size:8pt;color:{t["muted_color"]}}}
+    .metric-chips{{display:flex;gap:1.5mm;flex-wrap:wrap;margin-top:2mm}} .metric-chips span{{padding:1mm 2mm;border-radius:99px;background:white;border:1px solid #dce5e0;font-size:6.5pt;color:{t["muted_color"]}}}
+    .premium-executive{{border-color:#d4af37;border-left-color:#18181b}} .premium-environmental,.premium-impact{{background:linear-gradient(120deg,#fff,#effbe8)}} .premium-bike_zone{{background:linear-gradient(120deg,#fff,#e7fff7)}}
     p{{orphans:3;widows:3}} .editorial-block,.kpi,figure,.metric{{break-inside:avoid-page}}
     """
 
@@ -399,7 +406,8 @@ def _cover_html(document: ReportRenderDocument, photos: list[dict]) -> str:
 
 
 def _page_html(
-    page: dict, evidence_map: dict, all_photos: list[dict], theme: dict, number: int
+    page: dict, evidence_map: dict, all_photos: list[dict], theme: dict, number: int,
+    editorial_config: dict | None = None,
 ) -> str:
     sections = page["sections"]
     recipe = page["recipe"]
@@ -434,6 +442,16 @@ def _page_html(
         content = f'<div class="quote"{_editable_attr("page.empty.highlight", "HIGHLIGHT", "box")}>Este reporte está preparado para crecer con la información del evento.</div>'
     else:
         content = _mixed_html(sections, photos, theme)
+    editorial_config = editorial_config or {}
+    visual = report_visual_design_service.normalized(editorial_config.get("visual_config"))
+    section_visuals = editorial_config.get("section_visuals") or {}
+    enrichment = "".join(
+        report_visual_design_service.section_enrichment(
+            section, visual, section_visuals.get(section.get("section_key")), _editable_attr
+        )
+        for section in sections[:1]
+    )
+    content = enrichment + content
     return f"""<section class="page recipe-{recipe.lower()}"><header class="page-head"><span class="chapter">{escape(title)}</span><span>EcoEvent 360</span></header>{content}<footer class="folio"><span>Impacto · operación · evidencia</span><b>{number:02d}</b></footer></section>"""
 
 
