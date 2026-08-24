@@ -8,10 +8,12 @@ import type { ReportLayoutOverride, ReportPagePlan } from "@/types/report";
 
 const cleanOverride = (elementKey: string): ReportLayoutOverride => ({ element_key: elementKey, page_key: null, x_offset: 0, y_offset: 0, width_scale: 1, height_scale: 1, rotation: 0, z_index: 0, locked: false, visible: true });
 type HistoryEntry = { before?: ReportLayoutOverride; after?: ReportLayoutOverride };
+type ViewportAnchor = { x: number; y: number; elementKey?: string; elementTop?: number };
 
 export function EditableReportPreview({ reportId, html, plan, onSelectSection, onSaved }: { reportId: string; html: string; plan?: ReportPagePlan; onSelectSection: (key: string) => void; onSaved: () => Promise<void> }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overridesRef = useRef<Record<string, ReportLayoutOverride>>({});
+  const pendingViewportRef = useRef<ViewportAnchor>();
   const [overrides, setOverrides] = useState<Record<string, ReportLayoutOverride>>({});
   const [selected, setSelected] = useState<string>();
   const [editing, setEditing] = useState(false);
@@ -29,6 +31,43 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
   }, [reportId]);
   useEffect(() => { void loadOverrides(); }, [loadOverrides]);
 
+  const rememberViewport = useCallback((elementKey?: string) => {
+    const frame = iframeRef.current;
+    const view = frame?.contentWindow;
+    const doc = frame?.contentDocument;
+    if (!view || !doc) return;
+    const anchor = elementKey
+      ? doc.querySelector<HTMLElement>(`[data-report-element-key="${CSS.escape(elementKey)}"]`)
+      : null;
+    pendingViewportRef.current = {
+      x: view.scrollX,
+      y: view.scrollY,
+      elementKey,
+      elementTop: anchor?.getBoundingClientRect().top,
+    };
+  }, []);
+
+  const restoreViewport = useCallback(() => {
+    const saved = pendingViewportRef.current;
+    const frame = iframeRef.current;
+    const view = frame?.contentWindow;
+    const doc = frame?.contentDocument;
+    if (!saved || !view || !doc) return;
+    let top = saved.y;
+    if (saved.elementKey && saved.elementTop !== undefined) {
+      const anchor = doc.querySelector<HTMLElement>(
+        `[data-report-element-key="${CSS.escape(saved.elementKey)}"]`,
+      );
+      if (anchor) top = view.scrollY + anchor.getBoundingClientRect().top - saved.elementTop;
+    }
+    view.scrollTo({ left: saved.x, top });
+  }, []);
+
+  const refreshKeepingViewport = useCallback(async (elementKey?: string) => {
+    rememberViewport(elementKey);
+    await onSaved();
+  }, [onSaved, rememberViewport]);
+
   const commit = useCallback(async (after: ReportLayoutOverride, before?: ReportLayoutOverride, remember = true) => {
     setBusy(true);
     try {
@@ -36,9 +75,9 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
       const next = { ...overridesRef.current, [saved.element_key]: saved };
       overridesRef.current = next; setOverrides(next);
       if (remember) { setHistory(items => [...items, { before, after: saved }]); setFuture([]); }
-      await onSaved();
+      await refreshKeepingViewport(saved.element_key);
     } finally { setBusy(false); }
-  }, [onSaved, reportId]);
+  }, [refreshKeepingViewport, reportId]);
 
   const remove = useCallback(async (elementKey: string, remember = true) => {
     const before = overridesRef.current[elementKey];
@@ -48,9 +87,9 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
       const next = { ...overridesRef.current }; delete next[elementKey];
       overridesRef.current = next; setOverrides(next);
       if (remember) { setHistory(items => [...items, { before }]); setFuture([]); }
-      await onSaved();
+      await refreshKeepingViewport(elementKey);
     } finally { setBusy(false); }
-  }, [onSaved, reportId]);
+  }, [refreshKeepingViewport, reportId]);
 
   const decorate = useCallback(() => {
     const doc = iframeRef.current?.contentDocument;
@@ -101,13 +140,23 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
   }, [commit, editing, selected]);
   useEffect(() => { decorate(); }, [decorate, html]);
 
+  const iframeLoaded = useCallback(() => {
+    decorate();
+    window.requestAnimationFrame(restoreViewport);
+    window.setTimeout(restoreViewport, 120);
+    window.setTimeout(() => {
+      restoreViewport();
+      pendingViewportRef.current = undefined;
+    }, 350);
+  }, [decorate, restoreViewport]);
+
   async function patchSelected(patch: Partial<ReportLayoutOverride>) { if (!selected) return; const before = overridesRef.current[selected]; await commit({ ...(before || cleanOverride(selected)), ...patch }, before); }
-  async function resetAll() { setBusy(true); try { await resetReportLayoutOverride(reportId); overridesRef.current = {}; setOverrides({}); setHistory([]); setFuture([]); setSelected(undefined); await onSaved(); } finally { setBusy(false); } }
+  async function resetAll() { setBusy(true); try { const anchor = selected; rememberViewport(anchor); await resetReportLayoutOverride(reportId); overridesRef.current = {}; setOverrides({}); setHistory([]); setFuture([]); await onSaved(); } finally { setBusy(false); } }
   async function undo() { const entry = history.at(-1); if (!entry) return; setHistory(items => items.slice(0, -1)); setFuture(items => [...items, entry]); if (entry.before) await commit(entry.before, entry.after, false); else if (entry.after) await remove(entry.after.element_key, false); }
   async function redo() { const entry = future.at(-1); if (!entry) return; setFuture(items => items.slice(0, -1)); setHistory(items => [...items, entry]); if (entry.after) await commit(entry.after, entry.before, false); else if (entry.before) await remove(entry.before.element_key, false); }
   const current = selected ? overrides[selected] || cleanOverride(selected) : undefined;
   const changeZoom = (next: number) => setZoom(Math.min(100, Math.max(30, next)));
   const goPage = (number: number, sectionKey?: string) => { if (sectionKey) onSelectSection(sectionKey); iframeRef.current?.contentWindow?.scrollTo({ top: (number - 1) * 1123, behavior: "smooth" }); };
 
-  return <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-auto rounded-2xl bg-slate-200 p-3" data-testid="live-a4-preview"><div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-white p-2 shadow-sm"><button type="button" aria-label="Alejar vista previa" className="h-8 rounded-lg border px-3 font-bold" onClick={() => changeZoom(zoom - 10)}>−</button><input aria-label="Zoom de vista previa" type="range" min="30" max="100" step="5" value={zoom} onChange={event => changeZoom(Number(event.target.value))} className="min-w-20 flex-1"/><button type="button" aria-label="Acercar vista previa" className="h-8 rounded-lg border px-3 font-bold" onClick={() => changeZoom(zoom + 10)}>+</button><output className="w-12 text-center text-xs font-bold">{zoom}%</output><Button size="sm" variant={editing ? "primary" : "secondary"} onClick={() => { setEditing(value => !value); setSelected(undefined); }}><Maximize2 className="h-4 w-4"/>{editing ? "Terminar edición" : "Editar posiciones"}</Button></div>{editing ? <div className="mb-3 rounded-xl border border-emerald-200 bg-white p-2"><div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" disabled={busy || !history.length} onClick={() => void undo()}><Undo2 className="h-4 w-4"/>Deshacer</Button><Button size="sm" variant="ghost" disabled={busy || !future.length} onClick={() => void redo()}><Redo2 className="h-4 w-4"/>Rehacer</Button>{current ? <><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ locked: !current.locked })}>{current.locked ? <Unlock className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}{current.locked ? "Desbloquear" : "Bloquear"}</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ z_index: current.z_index + 1 })}><ChevronUp className="h-4 w-4"/>Adelante</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ z_index: current.z_index - 1 })}><ChevronDown className="h-4 w-4"/>Atrás</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void remove(current.element_key)}><RotateCcw className="h-4 w-4"/>Restablecer elemento</Button></> : null}<Button size="sm" variant="ghost" className="ml-auto text-red-700" disabled={busy || !Object.keys(overrides).length} onClick={() => void resetAll()}>Restablecer todo</Button></div><p className="mt-2 px-2 text-xs text-slate-600">Selecciona un KPI, gráfico o imagen del reporte. Arrastra para mover y usa el control verde para redimensionar. Los datos y el diseño profesional se conservan.</p>{selected ? <p className="mt-1 truncate px-2 text-[10px] font-mono text-emerald-800">{selected}</p> : null}</div> : null}<div className="mb-3 flex gap-2 overflow-x-auto" aria-label="Páginas del reporte">{pages.map(page => <button key={page.number} className="shrink-0 rounded-lg bg-white px-3 py-2 text-left text-xs shadow-sm" onClick={() => goPage(page.number, page.section_keys[0])}><b>{page.number}</b> {page.title}</button>)}</div>{html ? <div className="overflow-auto rounded-lg bg-slate-300 p-3"><div className="mx-auto" style={{ width: `${794 * zoom / 100}px`, height: `${1123 * zoom / 100}px` }}><iframe ref={iframeRef} onLoad={decorate} title="Vista previa exacta y editable del reporte" sandbox="allow-same-origin" srcDoc={html} className="origin-top-left border-0 bg-white shadow-xl" style={{ width: "794px", height: "1123px", transform: `scale(${zoom / 100})` }}/></div></div> : <div className="grid aspect-[210/297] place-items-center bg-white text-sm text-slate-500">Preparando vista previa editorial…</div>}</div>;
+  return <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-auto rounded-2xl bg-slate-200 p-3" data-testid="live-a4-preview"><div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-white p-2 shadow-sm"><button type="button" aria-label="Alejar vista previa" className="h-8 rounded-lg border px-3 font-bold" onClick={() => changeZoom(zoom - 10)}>−</button><input aria-label="Zoom de vista previa" type="range" min="30" max="100" step="5" value={zoom} onChange={event => changeZoom(Number(event.target.value))} className="min-w-20 flex-1"/><button type="button" aria-label="Acercar vista previa" className="h-8 rounded-lg border px-3 font-bold" onClick={() => changeZoom(zoom + 10)}>+</button><output className="w-12 text-center text-xs font-bold">{zoom}%</output><Button size="sm" variant={editing ? "primary" : "secondary"} onClick={() => { setEditing(value => !value); setSelected(undefined); }}><Maximize2 className="h-4 w-4"/>{editing ? "Terminar edición" : "Editar posiciones"}</Button></div>{editing ? <div className="mb-3 rounded-xl border border-emerald-200 bg-white p-2"><div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" disabled={busy || !history.length} onClick={() => void undo()}><Undo2 className="h-4 w-4"/>Deshacer</Button><Button size="sm" variant="ghost" disabled={busy || !future.length} onClick={() => void redo()}><Redo2 className="h-4 w-4"/>Rehacer</Button>{current ? <><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ locked: !current.locked })}>{current.locked ? <Unlock className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}{current.locked ? "Desbloquear" : "Bloquear"}</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ z_index: current.z_index + 1 })}><ChevronUp className="h-4 w-4"/>Adelante</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void patchSelected({ z_index: current.z_index - 1 })}><ChevronDown className="h-4 w-4"/>Atrás</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void remove(current.element_key)}><RotateCcw className="h-4 w-4"/>Restablecer elemento</Button></> : null}<Button size="sm" variant="ghost" className="ml-auto text-red-700" disabled={busy || !Object.keys(overrides).length} onClick={() => void resetAll()}>Restablecer todo</Button></div><p className="mt-2 px-2 text-xs text-slate-600">Selecciona un KPI, gráfico o imagen del reporte. Arrastra para mover y usa el control verde para redimensionar. Los datos y el diseño profesional se conservan.</p>{selected ? <p className="mt-1 truncate px-2 text-[10px] font-mono text-emerald-800">{selected}</p> : null}</div> : null}<div className="mb-3 flex gap-2 overflow-x-auto" aria-label="Páginas del reporte">{pages.map(page => <button key={page.number} className="shrink-0 rounded-lg bg-white px-3 py-2 text-left text-xs shadow-sm" onClick={() => goPage(page.number, page.section_keys[0])}><b>{page.number}</b> {page.title}</button>)}</div>{html ? <div className="overflow-auto rounded-lg bg-slate-300 p-3"><div className="mx-auto" style={{ width: `${794 * zoom / 100}px`, height: `${1123 * zoom / 100}px` }}><iframe ref={iframeRef} onLoad={iframeLoaded} title="Vista previa exacta y editable del reporte" sandbox="allow-same-origin" srcDoc={html} className="origin-top-left border-0 bg-white shadow-xl" style={{ width: "794px", height: "1123px", transform: `scale(${zoom / 100})` }}/></div></div> : <div className="grid aspect-[210/297] place-items-center bg-white text-sm text-slate-500">Preparando vista previa editorial…</div>}</div>;
 }

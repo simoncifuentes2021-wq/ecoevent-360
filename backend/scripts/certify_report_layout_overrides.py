@@ -95,10 +95,21 @@ def main() -> None:
         first = frame.locator("[data-report-element-key]").first
         first.evaluate("node => node.click()")
         assert frame.locator(".report-resize-handle").count() == 1
+        first.evaluate("node => node.scrollIntoView({block: 'center'})")
+        page.wait_for_timeout(200)
+        scroll_before = frame.locator("body").evaluate("() => window.scrollY")
+        page.get_by_role("button", name="Adelante", exact=True).click()
+        page.wait_for_timeout(900)
+        scroll_after = frame.locator("body").evaluate("() => window.scrollY")
+        assert scroll_before > 0
+        assert abs(scroll_after - scroll_before) < 24, (scroll_before, scroll_after)
         page.screenshot(path=output / "editor-profesional.png", full_page=True)
+        page.get_by_role("button", name="Restablecer elemento", exact=True).click()
+        page.wait_for_timeout(700)
         browser.close()
     print(
         f"visual_editor=ok editable_elements={editable_count} "
+        f"scroll_before={scroll_before} scroll_after={scroll_after} "
         f"pdf_bytes={len(pdf)} artifact={output}"
     )
 
