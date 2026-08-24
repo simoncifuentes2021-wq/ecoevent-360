@@ -1611,3 +1611,17 @@ def test_ai_page_layout_validator_rejects_bounds_bindings_fonts_and_overlaps():
     ]:
         with pytest.raises(ValueError):
             LayoutValidator.validate(invalid)
+
+
+def test_full_report_ai_validator_enforces_grounding_and_privacy():
+    from app.services.ai.report_orchestration_service import ReportAIValidator
+
+    raw = {
+        "title": "Ambiental",
+        "pages": [{"elements": [{"type": "TEXT", "x": 10, "y": 10, "width": 400, "height": 100}]}],
+        "claims": [{"text": "Se recuperaron 42 kg", "sources": ["waste.total_kg"]}],
+    }
+    assert ReportAIValidator.validate(raw, {"waste.total_kg": 42}).title == "Ambiental"
+    raw["claims"][0]["text"] = "Se recuperaron 99 kg"
+    with pytest.raises(ValueError):
+        ReportAIValidator.validate(raw, {"waste.total_kg": 42})
