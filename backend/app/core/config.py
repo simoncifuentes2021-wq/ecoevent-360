@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     database_url: str
     migration_database_url: str | None = None
     secret_key: str = Field(validation_alias=AliasChoices("SECRET_KEY", "JWT_SECRET_KEY"))
-    algorithm: str = Field(default="HS256", validation_alias=AliasChoices("ALGORITHM", "JWT_ALGORITHM"))
+    algorithm: str = Field(
+        default="HS256", validation_alias=AliasChoices("ALGORITHM", "JWT_ALGORITHM")
+    )
     access_token_expire_minutes: int = 1440
     first_super_admin_email: str | None = Field(
         default=None,
@@ -29,7 +31,9 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
-    public_app_url: str | None = Field(default=None, validation_alias=AliasChoices("PUBLIC_APP_URL", "FRONTEND_PUBLIC_URL"))
+    public_app_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("PUBLIC_APP_URL", "FRONTEND_PUBLIC_URL")
+    )
     cloudflare_r2_bucket: str | None = None
     cloudflare_r2_account_id: str | None = None
     cloudflare_r2_access_key_id: str | None = None
@@ -61,6 +65,11 @@ class Settings(BaseSettings):
     ai_base_url: str | None = None
     ai_timeout_seconds: float = 30.0
     ai_max_output_tokens: int = 800
+    ai_report_model: str | None = Field(
+        default=None, validation_alias=AliasChoices("AI_REPORT_MODEL", "AI_MODEL")
+    )
+    openai_api_key: str | None = None
+    ai_monthly_budget_usd: float = 10.0
     ai_temperature: float = 0.2
     rate_limit_ai_interpretation: str = "5/300"
     rate_limit_ai_reports: str = "10/300"
@@ -92,7 +101,9 @@ class Settings(BaseSettings):
             if "*" in self.backend_cors_origins:
                 raise ValueError("BACKEND_CORS_ORIGINS cannot contain '*' in production")
             if not self.redis_url:
-                raise ValueError("REDIS_URL is required in production for distributed rate limiting")
+                raise ValueError(
+                    "REDIS_URL is required in production for distributed rate limiting"
+                )
         return self
 
     @property
