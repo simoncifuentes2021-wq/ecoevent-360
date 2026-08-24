@@ -122,6 +122,7 @@ def prepare_document(
         publication={"number": publication_number, "generated_at": datetime.utcnow().isoformat()},
         editorial_config=report.editorial_config or {},
         freeform_pages=tuple(snapshot.get("pages") or []),
+        layout_overrides=tuple(snapshot.get("layout_overrides") or []),
     )
     frozen = {
         **snapshot,
