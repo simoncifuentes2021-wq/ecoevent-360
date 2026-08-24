@@ -166,7 +166,7 @@ def test_auto_report_materializes_once_as_editable_freeform(report_context):
     )
     assert any(element.data_binding for page in pages for element in page.elements)
     assert all(
-        element.metadata_.get("auto_layout_version") == 2
+        element.metadata_.get("auto_layout_version") == 3
         for page in pages
         for element in page.elements
     )
@@ -186,6 +186,43 @@ def test_auto_report_materializes_once_as_editable_freeform(report_context):
     assert [[element.id for element in page.elements] for page in repeated] == first_ids
     db.refresh(report)
     assert report.composition_mode == ReportCompositionMode.FREEFORM
+
+
+def test_report_engine_and_freeform_objects_sync_in_both_directions(report_context):
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    pages = report_layout_service.materialize_auto_layout(db, report.id, admin)
+    section = next(item for item in report.sections if (item.content or {}).get("text"))
+
+    report_builder_service.update_section(
+        db,
+        report,
+        section.id,
+        SectionUpdate(
+            edit_version=report.edit_version,
+            title="Título sincronizado",
+            content=ReportSectionContent(**{**section.content, "text": "Texto desde el motor"}),
+        ),
+    )
+    linked_text = next(
+        element
+        for page in pages
+        for element in page.elements
+        if element.metadata_.get("section_id") == str(section.id)
+        and element.metadata_.get("section_role") == "text"
+    )
+    db.refresh(linked_text)
+    assert linked_text.content["text"] == "Texto desde el motor"
+
+    report_layout_service.update_element(
+        db,
+        report.id,
+        linked_text.id,
+        ReportElementUpdate(content={**linked_text.content, "text": "Texto desde diseño"}),
+        admin,
+    )
+    db.refresh(section)
+    assert section.content["text"] == "Texto desde diseño"
 
 
 def test_auto_materialization_replaces_only_untouched_legacy_placeholders(report_context):

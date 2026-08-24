@@ -19,17 +19,22 @@ from app.services.report_data_binding_registry import canonical_key
 
 PAGE_WIDTH = 1000.0
 PAGE_HEIGHT = 1414.0
-AUTO_LAYOUT_VERSION = 2
+AUTO_LAYOUT_VERSION = 3
 
 
 def _auto_element(page: ReportPage, kind: ReportElementType, **values) -> ReportElement:
+    metadata = values.pop("metadata", {})
     return ReportElement(
         page_id=page.id,
         type=kind,
         rotation=0,
         locked=False,
         visible=True,
-        metadata_={"materialized_from_auto": True, "auto_layout_version": AUTO_LAYOUT_VERSION},
+        metadata_={
+            "materialized_from_auto": True,
+            "auto_layout_version": AUTO_LAYOUT_VERSION,
+            **metadata,
+        },
         data_binding=values.pop("data_binding", None),
         content=values.pop("content", {}),
         style=values.pop("style", {}),
@@ -49,6 +54,81 @@ def _field_binding(section_key: str, field_key: str) -> dict | None:
         None,
     )
     return {"key": match.key} if match else None
+
+
+def _section_metadata(section, role: str, **values) -> dict:
+    return {
+        "section_id": str(section.id),
+        "section_key": section.section_key,
+        "section_role": role,
+        **values,
+    }
+
+
+def sync_section_elements(db: Session, section) -> None:
+    """Push report-engine content into its linked editable objects."""
+    elements = list(
+        db.scalars(
+            select(ReportElement)
+            .join(ReportPage)
+            .where(ReportPage.report_id == section.report_id)
+        )
+    )
+    fields = {
+        str(field.get("key")): field for field in (section.content or {}).get("fields", [])
+    }
+    for element in elements:
+        metadata = element.metadata_ or {}
+        if metadata.get("section_id") != str(section.id):
+            continue
+        element.visible = section.is_enabled
+        role = metadata.get("section_role")
+        if role == "title":
+            element.content = {**(element.content or {}), "text": section.title}
+        elif role == "text":
+            element.content = {
+                **(element.content or {}),
+                "text": str((section.content or {}).get("text") or ""),
+            }
+        elif role == "field":
+            field = fields.get(str(metadata.get("field_key")))
+            if field:
+                value = field.get("value")
+                display = "Sin datos" if value is None else str(value)
+                if field.get("unit") and value is not None:
+                    display += f" {field['unit']}"
+                element.content = {
+                    **(element.content or {}),
+                    "text": display,
+                    "label": field.get("label"),
+                }
+
+
+def _sync_element_content_to_section(element: ReportElement, text: str) -> None:
+    """Push editable object copy back into the report-engine section."""
+    metadata = element.metadata_ or {}
+    section_id = metadata.get("section_id")
+    role = metadata.get("section_role")
+    if not section_id or role not in {"title", "text", "field"}:
+        return
+    section = element.page.report.sections and next(
+        (item for item in element.page.report.sections if str(item.id) == str(section_id)), None
+    )
+    if not section:
+        return
+    if role == "title":
+        section.title = text[:180] or section.title
+    elif role == "text":
+        section.content = {**(section.content or {}), "text": text}
+    else:
+        field_key = str(metadata.get("field_key"))
+        fields = [dict(field) for field in (section.content or {}).get("fields", [])]
+        for field in fields:
+            if str(field.get("key")) == field_key:
+                field["value"] = text
+                field["is_overridden"] = True
+        section.content = {**(section.content or {}), "fields": fields}
+    section.edit_version += 1
 
 
 def _is_legacy_placeholder_layout(pages: list[ReportPage]) -> bool:
@@ -81,13 +161,13 @@ def _is_replaceable_auto_layout(report: Report, pages: list[ReportPage]) -> bool
     )
 
 
-def _page_chrome(page: ReportPage, title: str, number: int, theme: dict) -> list[ReportElement]:
+def _page_chrome(page: ReportPage, title: str, number: int, theme: dict, section=None) -> list[ReportElement]:
     primary = str(theme["primary_color"])
     muted = str(theme["muted_color"])
     background = str(theme["background_color"])
     return [
         _auto_element(page, ReportElementType.SHAPE, x=885, y=0, width=115, height=115, z_index=0, style={"background": background, "borderRadius": 58}),
-        _auto_element(page, ReportElementType.TEXT, x=70, y=64, width=620, height=32, z_index=2, content={"text": title.upper()}, style={"fontSize": 10, "fontWeight": "800", "color": primary, "letterSpacing": 2}),
+        _auto_element(page, ReportElementType.TEXT, x=70, y=64, width=620, height=32, z_index=2, metadata=_section_metadata(section, "title") if section else {}, content={"text": title.upper()}, style={"fontSize": 10, "fontWeight": "800", "color": primary, "letterSpacing": 2}),
         _auto_element(page, ReportElementType.TEXT, x=790, y=64, width=140, height=32, z_index=2, content={"text": "EcoEvent 360"}, style={"fontSize": 10, "textAlign": "right", "color": muted}),
         _auto_element(page, ReportElementType.SHAPE, x=70, y=104, width=860, height=2, z_index=2, style={"background": "#DCE5E0"}),
         _auto_element(page, ReportElementType.TEXT, x=70, y=1350, width=500, height=28, z_index=2, content={"text": "IMPACTO · OPERACIÓN · EVIDENCIA"}, style={"fontSize": 9, "color": muted, "letterSpacing": 1}),
@@ -116,6 +196,7 @@ def _materialize_section(
             width=900,
             height=height,
             z_index=z,
+            metadata=_section_metadata(section, "container"),
             style={"background": surface, "borderRadius": 10, "opacity": 1},
         ),
         _auto_element(
@@ -126,6 +207,7 @@ def _materialize_section(
             width=850,
             height=64,
             z_index=z + 1,
+            metadata=_section_metadata(section, "title"),
             content={"text": section.title},
             style={"fontSize": 30, "fontWeight": "800", "color": primary, "lineHeight": 1.05},
         ),
@@ -142,6 +224,7 @@ def _materialize_section(
                 width=850,
                 height=min(120, max(70, height * 0.2)),
                 z_index=z + 1,
+                metadata=_section_metadata(section, "text"),
                 content={"text": str(text_value)},
                 style={"fontSize": 16, "color": str(theme["muted_color"]), "lineHeight": 1.5},
             )
@@ -164,6 +247,9 @@ def _materialize_section(
                     width=card_width,
                     height=min(125, max(90, height - (cursor - top) - 24)),
                     z_index=z + 1,
+                    metadata=_section_metadata(
+                        section, "field", field_key=str(field.get("key") or "")
+                    ),
                     content={"text": display, "label": field.get("label")},
                     data_binding=_field_binding(section.section_key, str(field.get("key") or "")),
                     style={"fontSize": 22, "fontWeight": "800", "color": primary, "background": "#FFFFFF", "borderRadius": 10, "padding": 16},
@@ -181,6 +267,7 @@ def _materialize_section(
                 width=520,
                 height=height - (cursor - top) - 24,
                 z_index=z + 1,
+                metadata=_section_metadata(section, "chart"),
                 content={"source": section.section_key, "chart_type": "BAR", "dataset": dataset},
                 style={"color": accent, "background": "#FFFFFF", "borderRadius": 12},
             )
@@ -199,6 +286,7 @@ def _materialize_section(
                 width=310,
                 height=height - (cursor - top) - 24,
                 z_index=z + 2,
+                metadata=_section_metadata(section, "image"),
                 content={"evidence_id": str(evidence.evidence_id), "caption": evidence.caption or evidence.evidence.description},
                 style={"objectFit": "cover", "borderRadius": 12},
             )
@@ -292,8 +380,8 @@ def materialize_auto_layout(
         sections = [by_key[key] for key in plan.section_keys if key in by_key]
         if not sections:
             continue
-        page.elements.extend(_page_chrome(page, plan.title, plan.number, theme))
-        page.elements.append(_auto_element(page, ReportElementType.TITLE, x=70, y=135, width=840, height=105, z_index=2, content={"text": plan.title}, style={"fontSize": 38, "fontWeight": "800", "color": str(theme["primary_color"]), "lineHeight": 1}))
+        page.elements.extend(_page_chrome(page, plan.title, plan.number, theme, sections[0]))
+        page.elements.append(_auto_element(page, ReportElementType.TITLE, x=70, y=135, width=840, height=105, z_index=2, metadata=_section_metadata(sections[0], "title"), content={"text": plan.title}, style={"fontSize": 38, "fontWeight": "800", "color": str(theme["primary_color"]), "lineHeight": 1}))
         block_height = min(1030 / len(sections), 505)
         for index, section in enumerate(sections):
             page.elements.extend(
@@ -462,6 +550,7 @@ def update_element(
     report = _editable_report(db, report_id, user)
     element = _element(db, report_id, element_id)
     values = payload.model_dump(exclude_unset=True)
+    content_changed = "content" in values and values["content"] != element.content
     _validate_bounds(element.page, values, element)
     _validate_binding(values)
     _validate_content(db, report, values, element)
@@ -469,6 +558,8 @@ def update_element(
         values["metadata_"] = values.pop("metadata")
     for key, value in values.items():
         setattr(element, key, value)
+    if content_changed:
+        _sync_element_content_to_section(element, str((element.content or {}).get("text") or ""))
     _touch_report(report)
     db.commit()
     db.refresh(element)
@@ -499,6 +590,7 @@ def batch_update(
     for change in payload.elements:
         element = lookup[change.id]
         values = change.model_dump(exclude={"id"}, exclude_unset=True)
+        content_changed = "content" in values and values["content"] != element.content
         _validate_bounds(page, values, element)
         _validate_binding(values)
         _validate_content(db, report, values, element)
@@ -506,6 +598,10 @@ def batch_update(
             values["metadata_"] = values.pop("metadata")
         for key, value in values.items():
             setattr(element, key, value)
+        if content_changed:
+            _sync_element_content_to_section(
+                element, str((element.content or {}).get("text") or "")
+            )
     _touch_report(report)
     db.commit()
     return sorted(elements, key=lambda item: item.z_index)

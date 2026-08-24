@@ -393,6 +393,9 @@ def update_section(
         section.content = content
     section.edit_version += 1
     section.updated_at = datetime.utcnow()
+    from app.services.report_layout_service import sync_section_elements
+
+    sync_section_elements(db, section)
     report.edit_version += 1
     report.updated_at = datetime.utcnow()
     db.commit()

@@ -128,6 +128,7 @@ test("freeform editor supports keyboard, layers, duplicate, lock and undo", () =
 
 test("freeform editor starts from the existing automatic report", () => {
   const editor = read("components", "reports", "FreeformReportDesigner.tsx");
+  const builder = read("components", "reports", "ReportBuilder.tsx");
   const api = read("lib", "api", "reports.ts");
   for (const pattern of [
     /materializeAutoReportPages/,
@@ -137,10 +138,13 @@ test("freeform editor starts from the existing automatic report", () => {
     /Vista profesional en vivo/,
     /getReportHtmlPreview/,
     /previewNonce/,
+    /embedded/,
+    /Editar posiciones/,
+    /Editar contenido/,
     /FreeformChart/,
     /FreeformImage/,
     /getAvailableReportEvidences/,
-  ]) assert.match(`${editor}\n${api}`, pattern);
+  ]) assert.match(`${editor}\n${builder}\n${api}`, pattern);
 });
 
 test("client portal lists only delivered authenticated publications", () => {
