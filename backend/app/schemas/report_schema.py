@@ -356,6 +356,27 @@ class ReportPageRead(BaseModel):
     updated_at: datetime
     elements: list[ReportElementRead] = Field(default_factory=list)
 
+    @classmethod
+    def from_model(cls, page):
+        values = {
+            column: getattr(page, column)
+            for column in (
+                "id",
+                "report_id",
+                "page_number",
+                "name",
+                "width",
+                "height",
+                "background",
+                "background_image",
+                "is_enabled",
+                "created_at",
+                "updated_at",
+            )
+        }
+        values["elements"] = [ReportElementRead.from_model(element) for element in page.elements]
+        return cls.model_validate(values)
+
 
 class ReportTemplateLayoutCreate(BaseModel):
     name: str = Field(min_length=1, max_length=180)

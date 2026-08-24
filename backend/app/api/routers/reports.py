@@ -57,9 +57,7 @@ def _element_read(item):
 
 
 def _page_read(item):
-    data = ReportPageRead.model_validate(item)
-    data.elements = [_element_read(element) for element in item.elements]
-    return data
+    return ReportPageRead.from_model(item)
 
 
 @router.get("/{report_id}/pages", response_model=list[ReportPageRead])

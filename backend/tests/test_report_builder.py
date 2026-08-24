@@ -108,6 +108,10 @@ def test_freeform_page_element_batch_persists_exact_geometry(report_context):
     )
     db.expire_all()
     loaded = report_layout_service.list_pages(db, report.id, admin)[0]
+    from app.schemas.report_schema import ReportPageRead
+
+    serialized = ReportPageRead.from_model(loaded)
+    assert [item.metadata for item in serialized.elements] == [{}, {}]
     geometry = {item.type: (item.x, item.y, item.width, item.height) for item in loaded.elements}
     assert geometry[ReportElementType.TEXT] == (123.25, 45.5, 333.75, 90.125)
     assert geometry[ReportElementType.KPI] == (600.5, 900.25, 250.5, 180.75)
