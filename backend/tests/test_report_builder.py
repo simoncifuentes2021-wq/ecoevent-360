@@ -122,6 +122,7 @@ def test_freeform_layout_permissions_bounds_lock_layers_and_delete(report_contex
     db, event, _, _, admin, client, _ = report_context
     report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
     page = report_layout_service.create_page(db, report.id, ReportPageCreate(), admin)
+    version_after_page = report.edit_version
     with pytest.raises(HTTPException) as forbidden:
         report_layout_service.create_page(db, report.id, ReportPageCreate(), client)
     assert forbidden.value.status_code == 403
@@ -141,6 +142,8 @@ def test_freeform_layout_permissions_bounds_lock_layers_and_delete(report_contex
         ReportElementCreate(type=ReportElementType.SHAPE, x=20, y=20, width=100, height=100),
         admin,
     )
+    db.refresh(report)
+    assert report.edit_version == version_after_page + 1
     updated = report_layout_service.update_element(
         db, report.id, element.id, ReportElementUpdate(locked=True, z_index=7), admin
     )

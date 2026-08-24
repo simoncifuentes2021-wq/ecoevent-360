@@ -310,6 +310,11 @@ def _editable_report(db: Session, report_id: UUID, user: User) -> Report:
     return ensure_can_access_report(db, user, report_id)
 
 
+def _touch_report(report: Report) -> None:
+    """Make layout changes observable by live previews and publication freshness checks."""
+    report.edit_version += 1
+
+
 def _page(db: Session, report_id: UUID, page_id: UUID) -> ReportPage:
     page = db.scalar(
         select(ReportPage).where(ReportPage.id == page_id, ReportPage.report_id == report_id)
@@ -387,6 +392,7 @@ def create_page(db: Session, report_id: UUID, payload: ReportPageCreate, user: U
     page = ReportPage(report_id=report_id, page_number=number, **payload.model_dump())
     db.add(page)
     report.composition_mode = ReportCompositionMode.FREEFORM
+    _touch_report(report)
     db.commit()
     db.refresh(page)
     return page
@@ -395,20 +401,21 @@ def create_page(db: Session, report_id: UUID, payload: ReportPageCreate, user: U
 def update_page(
     db: Session, report_id: UUID, page_id: UUID, payload: ReportPageUpdate, user: User
 ) -> ReportPage:
-    _editable_report(db, report_id, user)
+    report = _editable_report(db, report_id, user)
     page = _page(db, report_id, page_id)
     values = payload.model_dump(exclude_unset=True)
     for key, value in values.items():
         setattr(page, key, value)
     for element in page.elements:
         _validate_bounds(page, {}, element)
+    _touch_report(report)
     db.commit()
     db.refresh(page)
     return page
 
 
 def delete_page(db: Session, report_id: UUID, page_id: UUID, user: User) -> None:
-    _editable_report(db, report_id, user)
+    report = _editable_report(db, report_id, user)
     page = _page(db, report_id, page_id)
     deleted_number = page.page_number
     db.delete(page)
@@ -426,8 +433,8 @@ def delete_page(db: Session, report_id: UUID, page_id: UUID, user: User) -> None
         or 0
     )
     if not remaining:
-        report = db.get(Report, report_id)
         report.composition_mode = ReportCompositionMode.AUTO
+    _touch_report(report)
     db.commit()
 
 
@@ -443,6 +450,7 @@ def create_element(
     values["metadata_"] = values.pop("metadata")
     element = ReportElement(page_id=page.id, **values)
     db.add(element)
+    _touch_report(report)
     db.commit()
     db.refresh(element)
     return element
@@ -461,14 +469,16 @@ def update_element(
         values["metadata_"] = values.pop("metadata")
     for key, value in values.items():
         setattr(element, key, value)
+    _touch_report(report)
     db.commit()
     db.refresh(element)
     return element
 
 
 def delete_element(db: Session, report_id: UUID, element_id: UUID, user: User) -> None:
-    _editable_report(db, report_id, user)
+    report = _editable_report(db, report_id, user)
     db.delete(_element(db, report_id, element_id))
+    _touch_report(report)
     db.commit()
 
 
@@ -496,5 +506,6 @@ def batch_update(
             values["metadata_"] = values.pop("metadata")
         for key, value in values.items():
             setattr(element, key, value)
+    _touch_report(report)
     db.commit()
     return sorted(elements, key=lambda item: item.z_index)
