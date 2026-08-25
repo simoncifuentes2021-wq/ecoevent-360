@@ -41,6 +41,30 @@ RATE_LIMIT_AI_REPORTS=10/300
 
 `AI_BASE_URL` es opcional. OpenRouter usa por defecto `https://openrouter.ai/api/v1`. La clave vive exclusivamente en el backend. Con `AI_ENABLED=false`, el resto de EcoEvent funciona normalmente.
 
+## Carril profesional de reportes
+
+Los reportes no heredan el proveedor general. Usan `AI_REPORT_PROVIDER`, `AI_REPORT_MODEL`,
+`AI_REPORT_API_KEY`, `AI_REPORT_BASE_URL`, `AI_REPORT_TIMEOUT_SECONDS`,
+`AI_REPORT_MAX_OUTPUT_TOKENS`, `AI_REPORT_TEMPERATURE` y
+`AI_REPORT_MONTHLY_BUDGET_USD`. La clave sigue esta prioridad: `AI_REPORT_API_KEY` y,
+solo por compatibilidad, `OPENAI_API_KEY`. Nunca cae implícitamente en `AI_API_KEY`.
+
+OpenAI usa Responses API con Structured Outputs y `store=false`. La IA entrega propuestas
+para `ReportSection`, presets y variantes certificadas; no genera HTML, CSS, páginas libres,
+coordenadas, publicaciones ni modifica `layout_overrides`. Toda aplicación requiere aceptación
+humana y crea primero una revisión reversible.
+
+`AI_REPORT_PRICING_JSON` mantiene precios fuera de la lógica. Si un modelo no tiene precio
+configurado, se registran tokens pero el coste queda desconocido; no se inventa un valor.
+
+### Privacidad y retención
+
+El contexto elimina claves sensibles y enmascara PII habitual en texto libre. No se envían URLs
+privadas ni respuestas individuales de formularios. `AIGeneration.input_snapshot` conserva solo
+el contexto sanitizado necesario, source keys y agregados para auditoría. Se recomienda una
+retención configurable de 90 días para snapshots y una retención mayor para metadatos de uso;
+esta fase no ejecuta borrado automático.
+
 ## Proveedores
 
 `AIProvider` define el contrato async normalizado. `OpenRouterProvider` y el adaptador OpenAI-compatible están registrados en `ai_router.py`. Para usar OpenAI se cambian `AI_PROVIDER=openai`, modelo y clave; Impacto Ambiental no cambia.
