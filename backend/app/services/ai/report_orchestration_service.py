@@ -24,6 +24,17 @@ def get_show_overview(report):
     return {item["key"]: item for item in catalog(report) if item["key"].startswith("show.")}
 
 
+def get_services_summary(report):
+    section = next((item for item in report.sections if item.section_key == "services"), None)
+    if not section:
+        return {}
+    content = section.content or {}
+    return {
+        "services.fields": [item for item in content.get("fields", []) if item.get("is_visible", True)],
+        "services.items": [item for item in content.get("items", []) if item.get("_is_visible", True)],
+    }
+
+
 def get_bike_zone_summary(report):
     return _domain(report, "bike_zone.")
 

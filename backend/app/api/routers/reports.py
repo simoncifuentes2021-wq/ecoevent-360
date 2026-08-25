@@ -44,6 +44,10 @@ from app.schemas.report_schema import (
 from app.services import report_service
 from app.services.ai.ai_service import AIService, AIServiceError
 from app.services.ai.schemas import (
+    ReportAIAssistantApplyRequest,
+    ReportAIAssistantRequest,
+    ReportAIAssistantResponse,
+    ReportAIGenerationHistoryItem,
     ReportAIDraftResponse,
     ReportAIEditorialApplyRequest,
     ReportAIEditorialPlanResponse,
@@ -53,6 +57,57 @@ from app.services.ai.schemas import (
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+@router.post("/{report_id}/ai-assistant/proposals", response_model=ReportAIAssistantResponse)
+async def generate_report_ai_assistant_proposal(
+    report_id: UUID, payload: ReportAIAssistantRequest, request: Request,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user),
+):
+    enforce(request, "ai_report_assistant", str(current_user.id), settings.rate_limit_ai_reports)
+    try:
+        return await AIService().generate_report_assistant_proposal(db, report_id, current_user, payload)
+    except AIServiceError as exc:
+        status_code = 429 if exc.code == "rate_limited" else 402 if exc.code == "REPORT_AI_BUDGET_EXCEEDED" else 503
+        raise HTTPException(status_code, str(exc)) from exc
+
+
+@router.post("/{report_id}/ai-assistant/proposals/apply", response_model=ReportAIEditorialApplyResponse)
+def apply_report_ai_assistant_proposal(
+    report_id: UUID, payload: ReportAIAssistantApplyRequest, request: Request,
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user),
+):
+    from app.services import report_builder_service
+    from app.services.ai import report_assistant_service
+    report = report_builder_service.get_editor(db, report_id, current_user)
+    revision, updated = report_assistant_service.apply_proposal(
+        db, report, payload.generation_id, payload.edit_version, current_user,
+        payload.accepted_section_keys, payload.apply_preset,
+    )
+    create_audit_log(db, user=current_user, action="REPORT_AI_ASSISTANT_PROPOSAL_APPLIED", module="reports", entity_type="Report", entity_id=report.id, event_id=report.event_id, metadata={"generation_id": str(payload.generation_id), "rollback_revision_id": str(revision.id)}, request=request)
+    return {"revision_id": revision.id, "report": updated}
+
+
+@router.get("/{report_id}/ai-generations", response_model=list[ReportAIGenerationHistoryItem])
+def list_report_ai_generations(
+    report_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user),
+):
+    from sqlalchemy import select
+    from app.models.ai import AIGeneration
+    from app.services import report_builder_service
+    report_builder_service.get_editor(db, report_id, current_user)
+    from app.models.core import ReportSection
+    section_ids = list(db.scalars(select(ReportSection.id).where(ReportSection.report_id == report_id)).all())
+    rows = db.scalars(select(AIGeneration).where(
+        AIGeneration.subject_id.in_([report_id, *section_ids]), AIGeneration.capability.like("reports.%")
+    ).order_by(AIGeneration.created_at.desc()).limit(50)).all()
+    return [ReportAIGenerationHistoryItem(
+        id=row.id, created_at=row.created_at.isoformat(), capability=row.capability,
+        provider=row.provider, model=row.model, effective_model=row.effective_model,
+        status=row.status, applied=row.applied, input_tokens=row.input_tokens,
+        output_tokens=row.output_tokens, cached_input_tokens=row.cached_input_tokens,
+        actual_cost_usd=float(row.actual_cost_usd) if row.actual_cost_usd is not None else None,
+    ) for row in rows]
 
 
 def _element_read(item):

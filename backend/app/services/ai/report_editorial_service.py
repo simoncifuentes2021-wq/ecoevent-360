@@ -56,6 +56,7 @@ def apply_plan(db: Session, report: Report, generation_id: UUID, edit_version: i
     for index, section in enumerate(ordered):
         section.sort_order = index
     report.edit_version += 1
+    generation.applied = True
     report.updated_at = datetime.utcnow()
     db.commit()
     return revision, report_builder_service.get_editor(db, report.id, user)
