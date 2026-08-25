@@ -291,7 +291,15 @@ def _freeform_chart_html(dataset: dict, color: str) -> str:
 
 def _styles(document: ReportRenderDocument) -> str:
     t = document.theme
-    return f"""
+    preset = str(((document.editorial_config or {}).get("visual_config") or {}).get("preset") or "AUTO")
+    premium_v2_styles = "" if preset == "AUTO" else f"""
+    .premium-carbon-visual{{display:grid;gap:4mm;min-width:0}} .premium-carbon-visual .premium-chart{{min-height:48mm;padding:3mm 4mm}} .premium-carbon-visual .premium-chart svg{{max-height:48mm}} .premium-carbon-photo{{margin:0}} .premium-carbon-photo figure img{{height:54mm;border-radius:2mm}} .premium-carbon-photo figcaption{{font-size:7pt}}
+    .premium-page-sections{{display:grid;gap:8mm}} .premium-document-grid{{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:11mm;align-items:start}} .premium-document-grid.single{{grid-template-columns:1fr}}
+    .premium-prose{{font-size:13pt;line-height:1.55;color:{t["text_color"]};max-width:150mm}} .premium-hero-rule{{display:flex;align-items:end;justify-content:space-between;gap:8mm;padding:4mm 0 7mm;border-bottom:1px solid #dce5e0;margin-bottom:7mm}} .premium-hero-rule strong{{font-size:47pt;line-height:.88;letter-spacing:-.05em;color:{t["primary_color"]}}} .premium-hero-rule strong small{{font-size:9pt;letter-spacing:0;margin-left:1mm}} .premium-hero-rule span{{max-width:48mm;font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:{t["muted_color"]};text-align:right}}
+    .premium-progress{{height:4mm;background:#e7eeea;border-radius:9mm;overflow:hidden;margin:4mm 0 2mm}} .premium-progress i{{display:block;height:100%;background:{t["secondary_color"]};border-radius:inherit}} .premium-editorial-list{{display:grid;border-top:1px solid #dce5e0}} .premium-editorial-row{{display:grid;grid-template-columns:8mm 1fr auto;gap:4mm;padding:4mm 0;border-bottom:1px solid #dce5e0;break-inside:avoid}} .premium-editorial-row b{{color:{t["secondary_color"]}}} .premium-editorial-row strong{{color:{t["primary_color"]}}} .premium-editorial-row p{{grid-column:2/-1;margin:0;font-size:8pt;color:{t["muted_color"]}}}
+    .premium-positive{{padding:8mm 0;border-top:2mm solid {t["accent_color"]};font-size:18pt;color:{t["primary_color"]}}} .premium-story-photo figure:first-child img{{height:94mm}} .premium-story-photo figure:not(:first-child) img{{height:44mm}}
+    """
+    styles = f"""
     @page {{size:A4;margin:0}} *{{box-sizing:border-box}} html,body{{margin:0;padding:0}}
     body{{font-family:Arial,'Helvetica Neue',sans-serif;color:{t["text_color"]};font-size:10.5pt;line-height:1.45;background:#fff}}
     h1,h2,h3,p,figure{{margin-top:0}} .page{{height:297mm;padding:20mm 17mm 17mm;position:relative;overflow:hidden;page-break-after:always;background:#fff}}
@@ -380,6 +388,7 @@ def _styles(document: ReportRenderDocument) -> str:
     .premium-methodology{{margin-top:7mm;padding-top:4mm;border-top:1px solid #dce5e0;font-size:8pt;color:{t["muted_color"]}}} .premium-methodology p{{margin:2mm 0 0}} .premium-tone-executive .premium-heading-icon{{background:#18181b}} .premium-tone-executive .premium-section-heading{{border-bottom-color:#d4af37}}
     p{{orphans:3;widows:3}} .editorial-block,.kpi,figure,.metric{{break-inside:avoid-page}}
     """
+    return styles + premium_v2_styles
 
 
 def _cover_html(document: ReportRenderDocument, photos: list[dict]) -> str:
@@ -469,13 +478,28 @@ def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, vi
     preset = str(visual.get("preset") or "AUTO")
     if preset == "AUTO":
         return ""
-    selected = next((section for section in sections if report_visual_design_service.section_variant(preset, str(section.get("section_type") or ""))), None)
-    renderer = {
+    renderers = {
         "EVENT_INFO": _render_event_info_premium, "BIKE_ZONE": _render_bike_zone_premium,
         "WASTE": _render_waste_premium, "CARBON": _render_carbon_premium,
         "ENVIRONMENTAL_IMPACT": _render_environmental_impact_premium,
-    }.get((selected or {}).get("section_type"))
-    return renderer(selected, photos, theme, preset) if renderer and selected else ""
+        "EXECUTIVE_SUMMARY": _render_executive_summary_premium,
+        "SHOW_INFO": _render_show_info_premium, "SERVICES": _render_services_premium,
+        "OPERATIONS": _render_operations_premium, "STAFF": _render_staff_premium,
+        "TASKS": _render_tasks_premium, "INCIDENTS": _render_incidents_premium,
+        "FORMS": _render_forms_premium, "EVIDENCES": _render_evidences_premium,
+        "RECOMMENDATIONS": _render_recommendations_premium,
+        "CONCLUSION": _render_conclusion_premium,
+    }
+    rendered = []
+    for section in sections:
+        section_type = str(section.get("section_type") or "")
+        if not report_visual_design_service.section_variant(preset, section_type):
+            rendered.append(_mixed_html([section], photos, theme))
+            continue
+        renderer = renderers.get(section_type)
+        if renderer:
+            rendered.append(renderer(section, photos, theme, preset))
+    return '<div class="premium-page-sections">' + "".join(rendered) + "</div>" if rendered else ""
 
 
 def _premium_fields(section: dict) -> tuple[dict[str, dict], list[dict], list[dict]]:
@@ -540,8 +564,16 @@ def _render_carbon_premium(section: dict, photos: list[dict], theme: dict, prese
     breakdown = "".join(f'<div class="premium-breakdown-row"><span>{escape(str(item.get("label") or "Categoría"))}</span><strong>{escape(report_visual_design_service.format_metric(item.get("value")))} {escape(report_visual_design_service.normalize_unit(str(item.get("unit") or "kgCO2e")))}</strong></div>' for item in items[:5])
     chart = report_chart_service.bar_chart(items, theme["accent_color"])
     chart_html = f'<div class="premium-chart"{_editable_attr("section.carbon.chart", "CHART", "box")}>{chart}</div>' if chart else ""
+    photo_html = _photos(
+        photos[:1], "premium-carbon-photo", "carbon", "section.carbon.gallery"
+    ) if photos else ""
+    visual_html = (
+        f'<div class="premium-carbon-visual">{chart_html}{photo_html}</div>'
+        if chart_html or photo_html
+        else ""
+    )
     text = (section.get("content") or {}).get("text") or "Huella consolidada a partir de los registros disponibles."
-    return f'<article class="premium-section premium-carbon premium-tone-{preset.lower()}">{_premium_heading(section, "Huella de carbono", "CARBON", "carbon")}<div class="premium-split"><div><div class="premium-hero"{_editable_attr("section.carbon.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(total))}<small>{escape(_premium_unit(total))}</small></strong><span>emisiones totales</span></div><div class="premium-breakdown"{_editable_attr("section.carbon.breakdown", "METRIC_LIST", "box")}>{breakdown}</div><p class="premium-methodology">{_safe_text(text)}</p></div>{chart_html}</div></article>'
+    return f'<article class="premium-section premium-carbon premium-tone-{preset.lower()}">{_premium_heading(section, "Huella de carbono", "CARBON", "carbon")}<div class="premium-split"><div><div class="premium-hero"{_editable_attr("section.carbon.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(total))}<small>{escape(_premium_unit(total))}</small></strong><span>emisiones totales</span></div><div class="premium-breakdown"{_editable_attr("section.carbon.breakdown", "METRIC_LIST", "box")}>{breakdown}</div><p class="premium-methodology">{_safe_text(text)}</p></div>{visual_html}</div></article>'
 
 
 def _render_environmental_impact_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
@@ -559,6 +591,133 @@ def _render_environmental_impact_premium(section: dict, photos: list[dict], them
     trace = (section.get("content") or {}).get("text") or "Resultados calculados desde acciones ambientales aprobadas y trazables."
     reduction_html = f'<em>↓ {escape(report_visual_design_service.format_metric(reduction, "%", precision=1))}%<small> frente a línea base</small></em>' if reduction is not None else ""
     return f'<article class="premium-section premium-impact-story premium-tone-{preset.lower()}">{_premium_heading(section, "Impacto ambiental evitado", "LEAF", "environmental-impact")}<div class="premium-impact-hero"{_editable_attr("section.environmental-impact.hero", "BIG_NUMBER", "box")}><div><strong>{escape(_premium_value(avoided))}<small>kg CO₂e</small></strong><span>evitados</span></div>{reduction_html}</div><div class="premium-baseline"{_editable_attr("section.environmental-impact.baseline", "COMPARISON", "box")}>{comparison}</div><div class="premium-secondary"{_editable_attr("section.environmental-impact.secondary", "METRIC_LIST", "box")}>{secondary}</div><aside class="premium-methodology"{_editable_attr("section.environmental-impact.traceability", "TEXT_BLOCK", "box")}><b>Metodología y trazabilidad</b><p>{_safe_text(trace)}</p></aside></article>'
+
+
+def _premium_visible_items(section: dict) -> list[dict]:
+    return [item for item in ((section.get("content") or {}).get("items") or []) if item.get("_is_visible", True) is not False]
+
+
+def _premium_text(section: dict, *item_keys: str) -> str:
+    content = section.get("content") or {}
+    if content.get("text"):
+        return str(content["text"])
+    for item in _premium_visible_items(section):
+        for key in item_keys:
+            if item.get(key):
+                return str(item[key])
+    return ""
+
+
+def _premium_list(items: list[dict], element_key: str) -> str:
+    rows = []
+    for index, item in enumerate(items[:8], 1):
+        label = item.get("label") or item.get("name") or item.get("role") or item.get("summary") or "Detalle"
+        value = item.get("value", item.get("quantity", item.get("count")))
+        rendered = report_visual_design_service.format_metric(value) if value is not None else ""
+        description = item.get("description") or item.get("action") or ""
+        detail = f'<p>{_safe_text(description)}</p>' if description else ""
+        rows.append(f'<div class="premium-editorial-row"><b>{index:02d}</b><span>{escape(str(label))}</span><strong>{escape(rendered)}</strong>{detail}</div>')
+    return f'<div class="premium-editorial-list"{_editable_attr(element_key, "LIST", "box")}>{"".join(rows)}</div>' if rows else ""
+
+
+def _premium_empty(section: dict, eyebrow: str, icon: str, key: str, message: str, preset: str) -> str:
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, eyebrow, icon, key)}<div class="premium-empty-state"{_editable_attr(f"section.{key}.empty", "EMPTY_STATE", "box")}><h3>Información en preparación</h3><p>{escape(message)}</p></div></article>'
+
+
+def _render_executive_summary_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    _, fields, items = _premium_fields(section)
+    narrative = _premium_text(section, "summary", "description")
+    if not narrative and not fields and not items:
+        return _premium_empty(section, "Resumen ejecutivo", "CHART", "executive-summary", "No hay resultados consolidados para este alcance.", preset)
+    hero = fields[0] if fields else None
+    hero_html = f'<div class="premium-hero-rule"{_editable_attr("section.executive-summary.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(hero))}<small>{escape(_premium_unit(hero))}</small></strong><span>{escape(str((hero or {}).get("label") or "Lectura ejecutiva"))}</span></div>' if hero else ""
+    findings = [item for item in items if str(item.get("summary") or "") != narrative]
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Resumen ejecutivo", "CHART", "executive-summary")}{hero_html}<div class="premium-document-grid"><div><p class="premium-prose"{_editable_attr("section.executive-summary.summary", "TEXT_BLOCK", "box")}>{_safe_text(narrative)}</p>{_premium_list(findings, "section.executive-summary.findings")}</div><div>{_metrics(fields[1:5], "section.executive-summary.kpis")}</div></div></article>'
+
+
+def _render_show_info_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, fields, _ = _premium_fields(section)
+    if not fields:
+        return _premium_empty(section, "Información del show", "LOCATION", "show-info", "No hay información del show para este alcance.", preset)
+    name = str((by_key.get("name") or {}).get("value") or section.get("title"))
+    attendees = by_key.get("real_attendees") or by_key.get("expected_attendees")
+    timeline = [field for field in fields if field.get("key") in {"date", "start_time", "end_time", "venue", "stage", "status"}]
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Información del show", "LOCATION", "show-info")}<div class="premium-document-grid"><div><h3 class="premium-event-name"{_editable_attr("section.show-info.hero", "HIGHLIGHT", "box")}>{escape(name)}</h3><div class="premium-hero-rule"><strong>{escape(_premium_value(attendees))}</strong><span>{escape(str((attendees or {}).get("label") or "Asistencia"))}</span></div></div><div>{_metrics(timeline, "section.show-info.timeline")}</div></div></article>'
+
+
+def _render_services_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    items = _premium_visible_items(section)
+    if not items:
+        return _premium_empty(section, "Servicios", "CHECK", "services", "No hay servicios registrados para este alcance.", preset)
+    total = sum(float(item.get("quantity") or item.get("value") or 0) for item in items)
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Servicios", "CHECK", "services")}<div class="premium-hero-rule"{_editable_attr("section.services.summary", "BIG_NUMBER", "box")}><strong>{escape(report_visual_design_service.format_metric(total))}</strong><span>unidades de servicio registradas</span></div>{_premium_list(items, "section.services.categories")}</article>'
+
+
+def _render_operations_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    text, items = _premium_text(section, "summary", "description"), _premium_visible_items(section)
+    if not text and not items:
+        return _premium_empty(section, "Operación", "CHART", "operations", "No hay hitos operativos documentados para este alcance.", preset)
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Operación", "CHART", "operations")}<div class="premium-document-grid"><p class="premium-prose"{_editable_attr("section.operations.summary", "TEXT_BLOCK", "box")}>{_safe_text(text)}</p>{_premium_list(items, "section.operations.timeline")}</div></article>'
+
+
+def _render_staff_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, _, _ = _premium_fields(section)
+    items = [{"role": item.get("role"), "count": item.get("count")} for item in _premium_visible_items(section) if item.get("role")]
+    total = by_key.get("total")
+    if not total and not items:
+        return _premium_empty(section, "Equipo", "PEOPLE", "staff", "No hay personal registrado para este alcance.", preset)
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Cobertura operacional", "PEOPLE", "staff")}<div class="premium-hero-rule"{_editable_attr("section.staff.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(total))}</strong><span>personas por rol operativo</span></div>{_premium_list(items, "section.staff.breakdown")}</article>'
+
+
+def _render_tasks_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, fields, _ = _premium_fields(section)
+    total, rate = by_key.get("total"), by_key.get("completion_rate")
+    if not total or float(total.get("value") or 0) == 0:
+        return _premium_empty(section, "Desempeño de tareas", "CHECK", "tasks", "No hay tareas registradas para este alcance.", preset)
+    percent = max(0, min(100, float((rate or {}).get("value") or 0)))
+    statuses = [field for field in fields if field.get("key") not in {"total", "completion_rate"}]
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Desempeño de tareas", "CHECK", "tasks")}<div class="premium-hero-rule"{_editable_attr("section.tasks.hero", "BIG_NUMBER", "box")}><strong>{escape(report_visual_design_service.format_metric(percent))}<small>%</small></strong><span>cumplimiento · {escape(_premium_value(total))} tareas</span></div><div class="premium-progress"{_editable_attr("section.tasks.progress", "PROGRESS", "box")}><i style="width:{percent:.2f}%"></i></div>{_metrics(statuses[:4], "section.tasks.breakdown")}</article>'
+
+
+def _render_incidents_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, fields, _ = _premium_fields(section)
+    total = by_key.get("total")
+    if not total or float(total.get("value") or 0) == 0:
+        return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Incidencias", "ALERT", "incidents")}<div class="premium-positive"{_editable_attr("section.incidents.hero", "EMPTY_STATE", "box")}>No se registraron incidencias en el periodo.</div></article>'
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Incidencias", "ALERT", "incidents")}<div class="premium-hero-rule"{_editable_attr("section.incidents.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(total))}</strong><span>incidencias registradas</span></div>{_metrics([f for f in fields if f.get("key") != "total"][:4], "section.incidents.breakdown")}</article>'
+
+
+def _render_forms_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    by_key, fields, _ = _premium_fields(section)
+    responses = by_key.get("responses") or (fields[0] if fields else None)
+    if not responses or float(responses.get("value") or 0) == 0:
+        return _premium_empty(section, "Participación", "CHART", "forms", "No existen respuestas registradas.", preset)
+    aggregate_fields = [field for field in fields if field is not responses][:4]
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Participación", "CHART", "forms")}<div class="premium-hero-rule"{_editable_attr("section.forms.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(responses))}</strong><span>respuestas registradas</span></div>{_metrics(aggregate_fields, "section.forms.summary")}</article>'
+
+
+def _render_evidences_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    text = _premium_text(section, "summary", "description")
+    if not photos:
+        return _premium_empty(section, "Historia visual", "CAMERA", "evidences", "No hay evidencias visuales autorizadas para este alcance.", preset)
+    gallery = _photos(photos[:4], "photo-strip premium-story-photo", "evidences", "section.evidences.gallery")
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Historia visual", "CAMERA", "evidences")}<p class="premium-prose"{_editable_attr("section.evidences.context", "TEXT_BLOCK", "box")}>{_safe_text(text or "Evidencias documentales del evento.")}</p><div{_editable_attr("section.evidences.hero", "IMAGE", "box")}>{gallery}</div></article>'
+
+
+def _render_recommendations_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    text, items = _premium_text(section, "summary", "description"), _premium_visible_items(section)
+    if not text and not items:
+        return _premium_empty(section, "Plan de acción", "LIGHTBULB", "recommendations", "No hay recomendaciones registradas para este alcance.", preset)
+    hero = _premium_list(items[:1], "section.recommendations.primary") if items else f'<p class="premium-prose"{_editable_attr("section.recommendations.primary", "TEXT_BLOCK", "box")}>{_safe_text(text)}</p>'
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Plan de acción", "LIGHTBULB", "recommendations")}{hero}{_premium_list(items[1:], "section.recommendations.list")}</article>'
+
+
+def _render_conclusion_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    text, items = _premium_text(section, "summary", "description"), _premium_visible_items(section)
+    if not text and not items:
+        return _premium_empty(section, "Cierre", "TARGET", "conclusion", "La conclusión estará disponible cuando se incorpore contenido aprobado.", preset)
+    photo = _photos(photos[:1], "premium-event-photo", "conclusion", "section.conclusion.photo") if photos else ""
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Cierre editorial", "TARGET", "conclusion")}<div class="premium-document-grid"><div><p class="quote"{_editable_attr("section.conclusion.hero", "HIGHLIGHT", "box")}>{_safe_text(text)}</p>{_premium_list(items[:3], "section.conclusion.summary")}</div>{photo}</div></article>'
 
 
 def _environmental_management_html(sections: list[dict], photos: list[dict]) -> str:
