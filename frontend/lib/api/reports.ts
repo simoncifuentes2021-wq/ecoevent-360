@@ -3,7 +3,7 @@ import { clearSession, getStoredToken } from "@/lib/auth";
 import { api, ApiError } from "@/lib/api";
 import { toQuery, type QueryValue } from "@/lib/api/query";
 import type { ListResponse } from "@/types/common";
-import type { AvailableReportEvidence, GenerateReportResponse, Report, ReportAIDraft, ReportAIEditorialPlan, ReportAILength, ReportAIOperation, ReportAIStyle, ReportEditor, ReportElement, ReportElementType, ReportLayoutOverride, ReportPage, ReportPagePlan, ReportPublication, ReportRevision, ReportScope, ReportSection, ReportTemplateKey, ReportTheme, ReportEditorialConfig } from "@/types/report";
+import type { AvailableReportEvidence, GenerateReportResponse, Report, ReportAIDraft, ReportAIAssistantProposal, ReportAIEditorialPlan, ReportAIGenerationHistoryItem, ReportAILength, ReportAIOperation, ReportAIStyle, ReportEditor, ReportElement, ReportElementType, ReportLayoutOverride, ReportPage, ReportPagePlan, ReportPublication, ReportRevision, ReportScope, ReportSection, ReportTemplateKey, ReportTheme, ReportEditorialConfig } from "@/types/report";
 
 function listFrom<T>(raw: T[] | ListResponse<T> | { data?: T[]; items?: T[]; total?: number; page?: number; limit?: number }): ListResponse<T> {
   if (Array.isArray(raw)) return { items: raw, total: raw.length, page: 1, limit: raw.length };
@@ -99,6 +99,9 @@ export function updateReportSection(reportId: string, sectionId: string, body: {
 export function generateReportSectionDraft(reportId: string, sectionId: string, body: { operation: ReportAIOperation; style: ReportAIStyle; length: ReportAILength; current_text?: string | null }) { return api.post<ReportAIDraft>(`/reports/${reportId}/sections/${sectionId}/ai-draft`, body); }
 export function generateReportEditorialPlan(reportId: string, style: ReportAIStyle, includeTextRewrites = true, forceRefresh = false) { return api.post<ReportAIEditorialPlan>(`/reports/${reportId}/ai-editorial-plan`, { style, include_text_rewrites: includeTextRewrites, force_refresh: forceRefresh }); }
 export function applyReportEditorialPlan(reportId: string, generationId: string, editVersion: number) { return api.post<{ revision_id: string; report: ReportEditor }>(`/reports/${reportId}/ai-editorial-plan/apply`, { generation_id: generationId, edit_version: editVersion }); }
+export function generateReportAssistantProposal(reportId: string, instructions: string, forceRefresh = false) { return api.post<ReportAIAssistantProposal>(`/reports/${reportId}/ai-assistant/proposals`, { instructions, force_refresh: forceRefresh }); }
+export function applyReportAssistantProposal(reportId: string, generationId: string, editVersion: number, acceptedSectionKeys?: string[]) { return api.post<{ revision_id: string; report: ReportEditor }>(`/reports/${reportId}/ai-assistant/proposals/apply`, { generation_id: generationId, edit_version: editVersion, accepted_section_keys: acceptedSectionKeys || null, apply_preset: true }); }
+export function getReportAIGenerations(reportId: string) { return api.get<ReportAIGenerationHistoryItem[]>(`/reports/${reportId}/ai-generations`); }
 export function reorderReportSections(reportId: string, sectionIds: string[], editVersion: number) { return api.put<ReportEditor>(`/reports/${reportId}/sections/order`, { section_ids: sectionIds, edit_version: editVersion }); }
 export function deleteCustomReportSection(reportId: string, sectionId: string, editVersion: number) { return api.delete<void>(`/reports/${reportId}/sections/${sectionId}?edit_version=${editVersion}`); }
 export function refreshReport(reportId: string, editVersion: number) { return api.post<ReportEditor>(`/reports/${reportId}/refresh?edit_version=${editVersion}`, {}); }

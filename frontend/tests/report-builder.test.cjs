@@ -235,3 +235,20 @@ test("legacy report list delegates download and delivery to premium publications
   assert.match(table, /Entregar PDF premium al cliente/);
   assert.match(dialog, /Generar y entregar PDF/);
 });
+
+test("premium report assistant previews a grounded diff before reversible apply", () => {
+  const builder = read("components/reports/ReportBuilder.tsx");
+  const api = read("lib/api/reports.ts");
+  const types = read("types/report.ts");
+  for (const pattern of [
+    /ReportAssistantPanel/,
+    /generateReportAssistantProposal/,
+    /applyReportAssistantProposal/,
+    /proposal\.diff/,
+    /Descartar/,
+    /Aplicar propuesta reversible/,
+    /actual_cost_usd/,
+    /getReportAIGenerations/,
+  ]) assert.match(`${builder}\n${api}\n${types}`, pattern);
+  assert.doesNotMatch(builder, /ReportAssistantPanel[\s\S]*createReportElement/);
+});
