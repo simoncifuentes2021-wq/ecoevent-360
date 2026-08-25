@@ -1,5 +1,6 @@
 import asyncio
 import json
+from copy import deepcopy
 
 import httpx
 
@@ -30,7 +31,7 @@ class OpenAIResponsesProvider:
                     "type": "json_schema",
                     "name": request.schema_name,
                     "strict": True,
-                    "schema": request.output_schema,
+                    "schema": self._strict_schema(request.output_schema),
                 }
             }
 
@@ -100,3 +101,23 @@ class OpenAIResponsesProvider:
                 if part.get("type") in {"output_text", "text"} and part.get("text"):
                     return part["text"]
         return ""
+
+    @classmethod
+    def _strict_schema(cls, schema: dict) -> dict:
+        """Normalize Pydantic JSON Schema to the strict Responses contract."""
+        result = deepcopy(schema)
+
+        def visit(node):
+            if isinstance(node, dict):
+                if node.get("type") == "object" or "properties" in node:
+                    properties = node.get("properties") or {}
+                    node["additionalProperties"] = False
+                    node["required"] = list(properties)
+                for value in node.values():
+                    visit(value)
+            elif isinstance(node, list):
+                for value in node:
+                    visit(value)
+
+        visit(result)
+        return result

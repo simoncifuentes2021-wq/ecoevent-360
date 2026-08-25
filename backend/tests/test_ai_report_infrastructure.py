@@ -91,6 +91,8 @@ async def test_openai_responses_uses_strict_schema_and_normalizes_usage(monkeypa
     result = await OpenAIResponsesProvider("secret-test-key", "https://api.openai.test/v1", 3).generate(ProviderRequest(system_prompt="system", context={"safe": 1}, model="test-model", temperature=0.2, max_output_tokens=100, output_schema={"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": False}))
     assert captured["url"].endswith("/responses")
     assert captured["json"]["text"]["format"]["strict"] is True
+    assert captured["json"]["text"]["format"]["schema"]["required"] == ["ok"]
+    assert captured["json"]["text"]["format"]["schema"]["additionalProperties"] is False
     assert captured["json"]["store"] is False
     assert "secret-test-key" not in json.dumps(captured["json"])
     assert (result.input_tokens, result.output_tokens, result.cached_input_tokens, result.attempt_count) == (12, 3, 2, 1)
