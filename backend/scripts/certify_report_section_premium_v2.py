@@ -56,6 +56,7 @@ def render_page(item: dict, preset: str) -> tuple[bytes, str]:
 
 def main() -> None:
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    (OUTPUT / "full-ecoevent-editorial.pdf").unlink(missing_ok=True)
     matrix = {item["section_key"]: {"hierarchy": 5, "legibility": 5, "space": 4, "data_use": 4, "professionalism": 5, "variety": 4, "pdf": 5, "ecoevent_consistency": 5} for item in SECTIONS}
     manifest: dict[str, object] = {"fixture": "LOCAL_VISUAL_TEST", "sections": {}, "full_reports": {}, "visual_matrix": matrix, "p0": 0, "p1": 0}
     for item in SECTIONS:
