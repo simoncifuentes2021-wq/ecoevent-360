@@ -9,6 +9,7 @@ const user = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", email: "admin@example
 let version = 1;
 let publications = [];
 let visualPreset = "AUTO";
+let appliedAssistantPayload = null;
 let section = { id: sectionId, report_id: reportId, section_key: "bike_zone", section_type: "BIKE_ZONE", title: "Bike Zone", layout_variant: "BIG_NUMBERS", is_enabled: true, sort_order: 0, content: { text: "Operación sustentable", fields: [{ key: "users", label: "Usuarios", auto_value: 5, value: 8, unit: null, description: null, is_overridden: true, source: "BIKE_ZONE" }], items: [] }, source_snapshot: { text: null, fields: [{ key: "users", label: "Usuarios", auto_value: 5, value: 5, unit: null, description: null, is_overridden: false, source: "BIKE_ZONE" }], items: [] }, source_metadata: { availability: "AVAILABLE", source_scope: "SHOW_SCOPED" }, is_custom: false, edit_version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
 const editor = () => ({ id: reportId, event_id: "33333333-3333-4333-8333-333333333333", title: "Reporte editorial E2E", summary: null, pdf_url: null, status: "DRAFT", scope: "EVENT", session_id: null, template_key: "COMPLETE", theme: {}, editorial_config: { mode: "AUTO", cover_style: "FULL_PHOTO", featured_kpi_ids: [], page_overrides: {}, chart_types: {}, visual_config: { preset: visualPreset, icon_density: "MEDIUM", visual_density: "BALANCED", show_icons: true, show_trends: true, show_equivalences: true }, section_visuals: {} }, generated_by: null, generated_at: null, delivered_at: null, created_by: user.id, edit_version: version, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), sections: [section], evidences: [] });
 
@@ -21,6 +22,10 @@ const editor = () => ({ id: reportId, event_id: "33333333-3333-4333-8333-3333333
     const path = new URL(request.url()).pathname; const json = (body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path.endsWith("/auth/me")) return json(user);
     if (path.endsWith(`/reports/${reportId}/editor`)) return json(editor());
+    if (path.endsWith("/reports/ai-usage/monthly")) return json({ month: "2026-08", spent_usd: 0.0044, budget_usd: 10, remaining_usd: 9.9956, generation_count: 1 });
+    if (path.endsWith(`/reports/${reportId}/ai-generations`)) return json([]);
+    if (path.endsWith(`/reports/${reportId}/ai-assistant/proposals`) && request.method() === "POST") return json({ version: "1", report_id: reportId, recommended_preset: "ENVIRONMENTAL", rationale: "Propuesta determinista grounded", estimated_pages: 1, sections: [{ section_key: "bike_zone", visible: true, order: 0, premium_variant: "BIKE_ZONE_IMPACT", emphasis: "HIGH", narrative: null, findings: [], selected_metric_keys: ["bike_zone.users"], selected_evidence_ids: [] }], executive_summary: [], key_findings: [], recommendations: [], conclusion: [], evidence_suggestions: [], warnings: [], source_keys: ["bike_zone.users"], generation_id: "55555555-5555-4555-8555-555555555555", provider: "fake", model: "deterministic", effective_model: "deterministic", prompt_version: "test", cached: false, generated_at: new Date().toISOString(), input_tokens: 100, output_tokens: 50, cached_input_tokens: 0, actual_cost_usd: 0.00008, diff: [] });
+    if (path.endsWith(`/reports/${reportId}/ai-assistant/proposals/apply`) && request.method() === "POST") { appliedAssistantPayload = request.postDataJSON(); version += 1; return json({ revision_id: "66666666-6666-4666-8666-666666666666", report: editor() }); }
     if (path.endsWith(`/reports/${reportId}/available-evidences`)) return json([]);
     if (path.endsWith(`/reports/${reportId}/revisions`)) return json([]);
     if (path.endsWith(`/reports/${reportId}/layout-overrides`) && request.method() === "GET") return json([]);
@@ -83,6 +88,15 @@ const editor = () => ({ id: reportId, event_id: "33333333-3333-4333-8333-3333333
   await page.waitForTimeout(500);
   assert.equal(publications[0].status, "DELIVERED", "la entrega debe invocar el endpoint de publicación");
   await page.getByText("DELIVERED").waitFor();
+  await page.getByRole("button", { name: "Asistente IA" }).click();
+  await page.getByLabel("Describe el reporte").fill("Prioriza Bike Zone con los datos disponibles");
+  await page.getByRole("button", { name: "Generar propuesta" }).click();
+  await page.getByText("Propuesta determinista grounded").waitFor();
+  await page.getByText(/Consumo 2026-08/).waitFor();
+  await page.getByText(/Aplicar tambi.n el preset visual/).click();
+  await page.getByRole("button", { name: "Aplicar seleccionados" }).click();
+  assert.deepEqual(appliedAssistantPayload.accepted_section_keys, ["bike_zone"]);
+  assert.equal(appliedAssistantPayload.apply_preset, false);
   assert.deepEqual(errors, []);
   await browser.close(); console.log("E2E report builder browser: editor and typed preview passed");
 })().catch(error => { console.error(error); process.exit(1); });
