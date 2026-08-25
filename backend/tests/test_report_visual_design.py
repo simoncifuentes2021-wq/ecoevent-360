@@ -119,6 +119,17 @@ def test_all_remaining_sections_have_controlled_premium_variants():
         assert section_variant("AUTO", section_type) is None
 
 
+def test_premium_presets_have_distinct_controlled_tone_classes():
+    section = {"section_key": "services", "section_type": "SERVICES", "title": "Servicios", "content": {"fields": [], "items": [{"name": "Accesos", "quantity": 4}]}}
+    rendered = {
+        preset: _premium_page_html([section], [], {"accent_color": "#95D5B2"}, normalized({"preset": preset}))
+        for preset in ("ECOEVENT_EDITORIAL", "EXECUTIVE", "ENVIRONMENTAL", "BIKE_ZONE", "IMPACT")
+    }
+    assert len(set(rendered.values())) == 5
+    for preset, html in rendered.items():
+        assert f"premium-tone-{preset.lower()}" in html
+
+
 def test_staff_premium_uses_only_aggregate_fields():
     staff = {
         "section_key": "staff", "section_type": "STAFF", "title": "Equipo",
