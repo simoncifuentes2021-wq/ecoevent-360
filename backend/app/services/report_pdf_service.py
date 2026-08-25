@@ -32,8 +32,16 @@ def render(document: ReportRenderDocument, *, timeout_seconds: int = 45) -> tupl
 
 
 def _chromium_pdf(html: str) -> bytes:
+    import asyncio
+    import sys
+
     from playwright.sync_api import sync_playwright
 
+    # Uvicorn selects an event-loop policy without subprocess support on Windows.
+    # The PDF worker owns its loop, so give Playwright the proactor implementation
+    # it needs before it starts the local Chromium driver.
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
