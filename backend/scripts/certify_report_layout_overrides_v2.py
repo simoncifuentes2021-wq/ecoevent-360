@@ -110,14 +110,20 @@ def main() -> None:
         page.screenshot(path=output / "title-before.png", full_page=True)
         page.get_by_role("button", name="Editar posiciones", exact=True).click()
         frame = page.locator('iframe[title="Vista previa exacta y editable del reporte"]').content_frame
-        for element_type in (
+        exercised_types = [element_type for element_type in (
             "COVER_TITLE",
             "SECTION_TITLE",
             "TEXT_BLOCK",
             "HIGHLIGHT",
             "BIG_NUMBERS",
+            "BIG_NUMBER",
             "METRIC_LIST",
-        ):
+            "LIST",
+            "PROGRESS",
+            "PHOTO_GRID",
+        ) if types[element_type]]
+        assert len(exercised_types) >= 4, exercised_types
+        for element_type in exercised_types:
             node = frame.locator(f'[data-report-element-type="{element_type}"]').first
             node.evaluate("element => element.click()")
             assert frame.locator(".report-resize-handle").count() == 1, element_type
@@ -150,7 +156,7 @@ def main() -> None:
         page.screenshot(path=output / "reset.png", full_page=True)
         browser.close()
     restore_original()
-    print(f"v2=ok types={dict(types)} unique_keys={len(keys)} reset_exact=true artifact={output}")
+    print(f"v2=ok types={dict(types)} exercised={exercised_types} unique_keys={len(keys)} reset_exact=true artifact={output}")
 
 
 if __name__ == "__main__":

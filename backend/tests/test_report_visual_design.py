@@ -79,3 +79,90 @@ def test_bike_zone_zero_uses_professional_empty_state():
     html = _premium_page_html([bike], [], {"accent_color": "#95D5B2"}, normalized({"preset": "BIKE_ZONE"}))
     assert "No se registraron usuarios" in html
     assert "premium-empty-state" in html
+
+
+def test_premium_renderer_keeps_and_enriches_siblings_on_grouped_pages():
+    bike = {"section_key": "bike-zone", "section_type": "BIKE_ZONE", "title": "Bike Zone", "content": {"fields": [{"key": "users", "label": "Usuarios", "value": 12}], "items": []}}
+    evidences = {"section_key": "evidences", "section_type": "EVIDENCES", "title": "Evidencias", "content": {"text": "Galería del evento", "fields": [], "items": []}}
+
+    html = _premium_page_html(
+        [bike, evidences],
+        [{"uri": "data:image/png;base64,audit", "caption": "Evidencia"}],
+        {"accent_color": "#95D5B2"},
+        normalized({"preset": "BIKE_ZONE"}),
+    )
+
+    assert "premium-page-sections" in html
+    assert "BIKE ZONE" in html.upper()
+    assert "Historia visual" in html
+    assert 'src="data:image/png;base64,audit"' in html
+
+
+def test_all_remaining_sections_have_controlled_premium_variants():
+    expected = {
+        "EXECUTIVE_SUMMARY": "EXECUTIVE_SUMMARY_PREMIUM",
+        "SHOW_INFO": "SHOW_INFO_EDITORIAL",
+        "SERVICES": "SERVICES_OVERVIEW",
+        "OPERATIONS": "OPERATIONS_STORY",
+        "STAFF": "STAFF_OVERVIEW",
+        "TASKS": "TASKS_PERFORMANCE",
+        "INCIDENTS": "INCIDENTS_OVERVIEW",
+        "FORMS": "FORMS_INSIGHTS",
+        "EVIDENCES": "EVIDENCE_STORY",
+        "RECOMMENDATIONS": "RECOMMENDATIONS_ACTION_PLAN",
+        "CONCLUSION": "CONCLUSION_EDITORIAL",
+    }
+    for preset in ("ECOEVENT_EDITORIAL", "EXECUTIVE", "ENVIRONMENTAL", "BIKE_ZONE", "IMPACT"):
+        for section_type, variant in expected.items():
+            assert section_variant(preset, section_type) == variant
+    for section_type in expected:
+        assert section_variant("AUTO", section_type) is None
+
+
+def test_staff_premium_uses_only_aggregate_fields():
+    staff = {
+        "section_key": "staff", "section_type": "STAFF", "title": "Equipo",
+        "content": {"fields": [{"key": "total", "label": "Personas", "value": 8}, {"key": "email", "label": "Email", "value": "private@example.test"}], "items": [{"role": "Producción", "count": 8}, {"name": "Persona privada", "phone": "+56 9 0000 0000"}]},
+    }
+    html = _premium_page_html([staff], [], {"accent_color": "#95D5B2"}, normalized({"preset": "EXECUTIVE"}))
+    assert "8" in html and "Producción" in html
+    assert "email" not in html.lower() and "phone" not in html.lower()
+    assert "private@example.test" not in html and "Persona privada" not in html
+
+
+def test_forms_premium_never_renders_individual_answers():
+    forms = {"section_key": "forms", "section_type": "FORMS", "title": "Formularios", "content": {"fields": [{"key": "responses", "label": "Respuestas", "value": 12}], "items": [{"name": "Persona privada", "answer": "Respuesta privada"}]}}
+    html = _premium_page_html([forms], [], {"accent_color": "#95D5B2"}, normalized({"preset": "EXECUTIVE"}))
+    assert "12" in html
+    assert "Persona privada" not in html and "Respuesta privada" not in html
+
+
+def test_zero_operational_sections_use_truthful_empty_states():
+    for section_type, expected in (("TASKS", "No hay tareas registradas"), ("INCIDENTS", "No se registraron incidencias"), ("FORMS", "No existen respuestas registradas")):
+        key = section_type.lower()
+        field_key = "responses" if section_type == "FORMS" else "total"
+        section = {"section_key": key, "section_type": section_type, "title": key, "content": {"fields": [{"key": field_key, "label": "Total", "value": 0}], "items": []}}
+        html = _premium_page_html([section], [], {"accent_color": "#95D5B2"}, normalized({"preset": "EXECUTIVE"}))
+        assert expected in html
+
+
+def test_carbon_premium_renders_assigned_evidence():
+    carbon = {
+        "section_key": "carbon",
+        "section_type": "CARBON",
+        "title": "Huella de carbono",
+        "content": {
+            "fields": [{"key": "total", "label": "Emisiones totales", "value": 120, "unit": "kgCO2e"}],
+            "items": [{"label": "Transporte", "value": 80, "unit": "kgCO2e"}],
+        },
+    }
+
+    html = _premium_page_html(
+        [carbon],
+        [{"uri": "data:image/png;base64,audit", "caption": "Medición"}],
+        {"accent_color": "#95D5B2"},
+        normalized({"preset": "ENVIRONMENTAL"}),
+    )
+
+    assert 'class="premium-carbon-photo"' in html
+    assert 'src="data:image/png;base64,audit"' in html
