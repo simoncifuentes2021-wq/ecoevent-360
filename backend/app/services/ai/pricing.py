@@ -19,10 +19,12 @@ class ModelPricing:
 
 
 class PricingRegistry:
-    """Pricing is configuration, never a hard-coded assumption."""
+    """Single pricing registry; local JSON may override the documented defaults."""
 
     def __init__(self, raw_json: str | None = None):
-        self._prices: dict[str, ModelPricing] = {}
+        self._prices: dict[str, ModelPricing] = {
+            "openai:gpt-5.6-luna": ModelPricing(Decimal("0.20"), Decimal("0.02"), Decimal("1.20")),
+        }
         if raw_json:
             for key, value in json.loads(raw_json).items():
                 self._prices[key.lower()] = ModelPricing(

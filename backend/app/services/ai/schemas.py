@@ -213,3 +213,11 @@ class ReportAIGenerationHistoryItem(BaseModel):
     output_tokens: int
     cached_input_tokens: int
     actual_cost_usd: float | None = None
+
+
+class ReportAIUsageSummary(BaseModel):
+    month: str
+    spent_usd: float
+    budget_usd: float
+    remaining_usd: float
+    generation_count: int

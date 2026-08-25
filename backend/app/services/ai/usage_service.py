@@ -3,6 +3,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from app.models.ai import AIGeneration
 from app.services.ai.pricing import PricingRegistry
+from app.services.ai.providers.base import AIProviderError
 
 
 def monthly_generation_count(db) -> int:
@@ -11,7 +12,7 @@ def monthly_generation_count(db) -> int:
         db.scalar(
             select(func.count())
             .select_from(AIGeneration)
-            .where(AIGeneration.created_at >= start, AIGeneration.status == "SUCCEEDED")
+            .where(AIGeneration.created_at >= start, AIGeneration.status == "SUCCEEDED", AIGeneration.capability.like("reports.%"))
         )
         or 0
     )
@@ -39,15 +40,22 @@ def estimate_report_cost(settings, estimated_input_tokens: int = 8000) -> Decima
         getattr(settings, "ai_report_provider", settings.ai_provider), getattr(settings, "ai_report_model", None) or settings.ai_model
     )
     if not pricing:
-        return Decimal("0")
+        raise AIProviderError("REPORT_AI_PRICING_NOT_CONFIGURED", "Report AI pricing is not configured for the selected provider and model")
     return pricing.cost(estimated_input_tokens, getattr(settings, "ai_report_max_output_tokens", settings.ai_max_output_tokens))
 
 
 def enforce_report_budget(db, settings) -> Decimal:
     estimate = estimate_report_cost(settings)
-    if report_monthly_spend(db) + estimate > Decimal(str(getattr(settings, "ai_report_monthly_budget_usd", getattr(settings, "ai_monthly_budget_usd", 10)))):
-        raise RuntimeError("REPORT_AI_BUDGET_EXCEEDED")
+    ensure_report_budget(
+        report_monthly_spend(db), estimate,
+        Decimal(str(getattr(settings, "ai_report_monthly_budget_usd", getattr(settings, "ai_monthly_budget_usd", 10)))),
+    )
     return estimate
+
+
+def ensure_report_budget(spent: Decimal, estimate: Decimal, budget: Decimal) -> None:
+    if spent + estimate > budget:
+        raise RuntimeError("REPORT_AI_BUDGET_EXCEEDED")
 
 
 def actual_report_cost(settings, result) -> Decimal | None:

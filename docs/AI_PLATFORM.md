@@ -54,8 +54,12 @@ para `ReportSection`, presets y variantes certificadas; no genera HTML, CSS, pá
 coordenadas, publicaciones ni modifica `layout_overrides`. Toda aplicación requiere aceptación
 humana y crea primero una revisión reversible.
 
-`AI_REPORT_PRICING_JSON` mantiene precios fuera de la lógica. Si un modelo no tiene precio
-configurado, se registran tokens pero el coste queda desconocido; no se inventa un valor.
+El registro central incluye para `openai:gpt-5.6-luna` los precios oficiales consultados el
+2026-08-25: entrada US$0.20, entrada cacheada US$0.02 y salida US$1.20 por millón de tokens.
+`AI_REPORT_PRICING_JSON` permite sobreescribirlos localmente sin dispersar precios por el código.
+Si el modelo efectivo no tiene precio, el presupuesto falla cerrado antes de llamar al proveedor.
+El editor muestra consumo, presupuesto y saldo del mes; el coste real usa los tokens reportados
+por Responses API y resta la entrada cacheada de la entrada regular.
 
 ### Privacidad y retención
 

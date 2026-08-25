@@ -332,6 +332,7 @@ def report_ai_settings(**changes):
         ai_timeout_seconds=5,
         ai_max_output_tokens=500,
         ai_temperature=0.1,
+        ai_report_pricing_json=json.dumps({"openrouter:test": {"input": 1, "cached_input": 0.5, "output": 2}}),
     )
     values.update(changes)
     return SimpleNamespace(**values)

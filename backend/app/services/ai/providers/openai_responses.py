@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from copy import deepcopy
 
 import httpx
@@ -21,7 +22,6 @@ class OpenAIResponsesProvider:
             "model": request.model,
             "instructions": request.system_prompt,
             "input": json.dumps({"context": request.context}, ensure_ascii=False),
-            "temperature": request.temperature,
             "max_output_tokens": request.max_output_tokens,
             "store": False,
         }
@@ -46,9 +46,12 @@ class OpenAIResponsesProvider:
                         json=payload,
                     )
                     if response.status_code in {400, 401, 403, 404}:
+                        details = self._safe_error_details(response)
                         raise AIProviderError(
-                            "invalid_configuration" if response.status_code in {400, 401, 403, 404} else "http_error",
-                            "OpenAI report configuration is invalid",
+                            "invalid_configuration",
+                            f"OpenAI rejected the report request ({details.get('code') or response.status_code})",
+                            status_code=response.status_code,
+                            provider_details=details,
                         )
                     if response.status_code == 429:
                         if attempts < 2:
@@ -93,6 +96,24 @@ class OpenAIResponsesProvider:
                         continue
                     raise AIProviderError("connection_error", "Could not contact OpenAI") from exc
         raise AIProviderError("provider_unavailable", "OpenAI is temporarily unavailable")
+
+    @staticmethod
+    def _safe_error_details(response: httpx.Response) -> dict:
+        """Keep actionable OpenAI metadata without persisting credentials or request data."""
+        try:
+            error = (response.json() or {}).get("error") or {}
+        except (ValueError, TypeError):
+            error = {}
+        message = str(error.get("message") or "")[:500]
+        message = re.sub(r"sk-[A-Za-z0-9_-]+", "[REDACTED]", message)
+        return {
+            "http_status": response.status_code,
+            "type": error.get("type"),
+            "code": error.get("code"),
+            "param": error.get("param"),
+            "message": message or None,
+            "request_id": response.headers.get("x-request-id"),
+        }
 
     @staticmethod
     def _output_text(data: dict) -> str:

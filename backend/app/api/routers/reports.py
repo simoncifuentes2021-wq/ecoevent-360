@@ -48,6 +48,7 @@ from app.services.ai.schemas import (
     ReportAIAssistantRequest,
     ReportAIAssistantResponse,
     ReportAIGenerationHistoryItem,
+    ReportAIUsageSummary,
     ReportAIDraftResponse,
     ReportAIEditorialApplyRequest,
     ReportAIEditorialPlanResponse,
@@ -57,6 +58,22 @@ from app.services.ai.schemas import (
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+@router.get("/ai-usage/monthly", response_model=ReportAIUsageSummary)
+def get_report_ai_monthly_usage(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user),
+):
+    from datetime import UTC, datetime
+    from decimal import Decimal
+    from app.services.ai.usage_service import monthly_generation_count, report_monthly_spend
+    spent = report_monthly_spend(db)
+    budget = Decimal(str(settings.ai_report_monthly_budget_usd))
+    return {
+        "month": datetime.now(UTC).strftime("%Y-%m"), "spent_usd": float(spent),
+        "budget_usd": float(budget), "remaining_usd": float(max(Decimal(0), budget - spent)),
+        "generation_count": monthly_generation_count(db),
+    }
 
 
 @router.post("/{report_id}/ai-assistant/proposals", response_model=ReportAIAssistantResponse)
