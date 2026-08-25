@@ -1,7 +1,8 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,3 +36,12 @@ class AIGeneration(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
     completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cached_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    estimated_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 8))
+    actual_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 8))
+    provider_request_id: Mapped[str | None] = mapped_column(String(180))
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    applied: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

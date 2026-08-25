@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     ai_monthly_budget_usd: float = 10.0
     ai_temperature: float = 0.2
+    ai_report_provider: str = "openai"
+    ai_report_api_key: str | None = None
+    ai_report_base_url: str | None = None
+    ai_report_timeout_seconds: float = 30.0
+    ai_report_max_output_tokens: int = 4000
+    ai_report_temperature: float = 0.2
+    ai_report_monthly_budget_usd: float = 10.0
+    ai_report_pending_stale_minutes: int = 15
+    ai_report_pricing_json: str | None = None
     rate_limit_ai_interpretation: str = "5/300"
     rate_limit_ai_reports: str = "10/300"
 
