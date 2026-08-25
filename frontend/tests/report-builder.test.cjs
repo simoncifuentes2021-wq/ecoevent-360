@@ -192,6 +192,24 @@ test("freeform editor starts from the existing automatic report", () => {
   assert.doesNotMatch(builder, /FreeformReportDesigner/);
 });
 
+test("report sections expose direct photo upload and professional pagination", () => {
+  const builder = read("components", "reports", "ReportBuilder.tsx");
+  const evidenceApi = read("lib", "api", "evidences.ts");
+  const reportTypes = read("types", "report.ts");
+
+  for (const pattern of [
+    /createEvidence/,
+    /Subir y usar en esta sección/,
+    /accept="image\/jpeg,image\/png,image\/webp"/,
+    /addReportEvidence/,
+    /Distribución en páginas/,
+    /Página completa/,
+    /OWN_PAGE/,
+    /GROUP_WITH/,
+    /page_overrides/,
+  ]) assert.match(`${builder}\n${evidenceApi}\n${reportTypes}`, pattern);
+});
+
 test("client portal lists only delivered authenticated publications", () => {
   const source = read("components", "client", "ClientReportsTab.tsx");
   assert.match(source, /status === "DELIVERED"/);
