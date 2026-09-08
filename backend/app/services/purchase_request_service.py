@@ -125,6 +125,23 @@ def _ensure_can_create_purchase(
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
 
 
+def _ensure_linked_purchase_destination(
+    logistics_order: LogisticsOrder,
+    delivery_mode: PurchaseDeliveryMode,
+    warehouse_id: UUID | None,
+) -> None:
+    if delivery_mode != PurchaseDeliveryMode.TO_WAREHOUSE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las compras vinculadas a pedidos logisticos deben ingresar a la bodega del pedido",
+        )
+    if warehouse_id != logistics_order.warehouse_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La bodega de la compra debe ser la misma bodega del pedido logistico",
+        )
+
+
 def _ensure_admin(user: User) -> None:
     if user.role not in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
@@ -235,6 +252,8 @@ def create_purchase_request(db: Session, payload: PurchaseRequestCreate, user: U
     if event_id and not db.get(Event, event_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
     _ensure_can_create_purchase(db, user, event_id=event_id, logistics_order=logistics_order)
+    if logistics_order:
+        _ensure_linked_purchase_destination(logistics_order, payload.delivery_mode, payload.warehouse_id)
     if payload.delivery_mode == PurchaseDeliveryMode.TO_WAREHOUSE:
         _ensure_active_warehouse(db, payload.warehouse_id)  # type: ignore[arg-type]
 
@@ -295,8 +314,8 @@ def create_purchase_request_from_order(
                 "Finish, reject or cancel it before creating another one."
             ),
         )
-    if payload.delivery_mode == PurchaseDeliveryMode.TO_WAREHOUSE:
-        _ensure_active_warehouse(db, payload.warehouse_id)  # type: ignore[arg-type]
+    _ensure_linked_purchase_destination(order, payload.delivery_mode, payload.warehouse_id)
+    _ensure_active_warehouse(db, payload.warehouse_id)  # type: ignore[arg-type]
 
     missing_items: list[tuple[LogisticsOrderItem, Decimal]] = []
     for order_item in order.items:
@@ -419,6 +438,12 @@ def update_purchase_request(db: Session, purchase_request_id: UUID, payload: Pur
     if purchase.status not in {PurchaseRequestStatus.REQUESTED, PurchaseRequestStatus.APPROVED}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Purchase request cannot be edited")
     data = payload.model_dump(exclude_unset=True)
+    if purchase.logistics_order_id:
+        logistics_order = db.get(LogisticsOrder, purchase.logistics_order_id)
+        if not logistics_order:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logistics order not found")
+        resulting_warehouse_id = data.get("warehouse_id", purchase.warehouse_id)
+        _ensure_linked_purchase_destination(logistics_order, purchase.delivery_mode, resulting_warehouse_id)
     if "warehouse_id" in data and data["warehouse_id"] is not None:
         _ensure_active_warehouse(db, data["warehouse_id"])
     for field, value in data.items():
@@ -541,6 +566,11 @@ def deliver_direct_to_event(
     db: Session, purchase_request_id: UUID, payload: PurchaseRequestReceive, user: User
 ) -> PurchaseRequest:
     purchase = get_purchase_request_or_404(db, purchase_request_id)
+    if purchase.logistics_order_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Una compra vinculada a un pedido logistico debe recibirse en su bodega",
+        )
     if purchase.delivery_mode != PurchaseDeliveryMode.DIRECT_TO_EVENT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Purchase is not DIRECT_TO_EVENT")
     if user.role not in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.LOGISTICS_OPERATOR}:

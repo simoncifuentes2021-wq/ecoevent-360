@@ -681,6 +681,9 @@ class LogisticsOrder(Base):
     )
 
     id: Mapped[UUID] = uuid_pk()
+    parent_order_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logistics_orders.id", ondelete="SET NULL")
+    )
     event_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
@@ -844,6 +847,36 @@ class LogisticsOrderItem(Base):
 
     order: Mapped[LogisticsOrder] = relationship(back_populates="items")
     item: Mapped[InventoryItem] = relationship(back_populates="logistics_order_items")
+
+
+class LogisticsPartialDispatchRequest(Base):
+    __tablename__ = "logistics_partial_dispatch_requests"
+    __table_args__ = (
+        CheckConstraint("status in ('PENDING','APPROVED','REJECTED','CANCELLED')"),
+        Index("idx_logistics_partial_dispatch_requests_order_id", "order_id"),
+        Index("idx_logistics_partial_dispatch_requests_status", "status"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    order_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logistics_orders.id", ondelete="CASCADE"), nullable=False
+    )
+    pending_order_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("logistics_orders.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'PENDING'"))
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    requested_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reviewed_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    review_notes: Mapped[str | None] = mapped_column(Text)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text("NOW()"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
 
 
 class PurchaseRequest(Base):

@@ -13,6 +13,20 @@ export function getStockBalances(params: Record<string, QueryValue> = {}) {
   return api.get<ListResponse<StockBalance>>(`/stock${toQuery(params)}`);
 }
 
+export async function getAllStockBalances(params: Record<string, QueryValue> = {}) {
+  const limit = 100;
+  const first = await getStockBalances({ ...params, page: 1, limit });
+  const items = [...first.items];
+  const pages = Math.ceil(first.total / limit);
+  const remaining = await Promise.all(
+    Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
+      getStockBalances({ ...params, page: index + 2, limit })
+    )
+  );
+  items.push(...remaining.flatMap((response) => response.items));
+  return items;
+}
+
 export function getStockBalance(id: string) {
   return api.get<StockBalance>(`/stock/${id}`);
 }

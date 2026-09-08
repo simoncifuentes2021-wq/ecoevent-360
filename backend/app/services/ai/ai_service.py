@@ -14,6 +14,7 @@ from app.core.config import Settings, settings
 from app.models.ai import AIGeneration
 from app.models.core import User
 from app.services.ai.ai_router import build_provider, build_report_provider
+from app.services.ai.model_policy import resolve_report_model
 from app.services.ai.contexts.environmental import CAPABILITY, build_environmental_context
 from app.services.ai.contexts.reports import ASSISTANT_CAPABILITY, CAPABILITY as REPORT_CAPABILITY, EDITORIAL_CAPABILITY, build_report_assistant_context, build_report_editorial_context, build_report_section_context
 from app.services.ai.prompts.environmental import PROMPT_VERSION, SYSTEM_PROMPT
@@ -298,7 +299,8 @@ class AIService:
             raise AIServiceError("not_found", str(exc)) from exc
         input_hash = _hash(context)
         provider_name = getattr(self.config, "ai_report_provider", self.config.ai_provider).strip().lower()
-        report_model = getattr(self.config, "ai_report_model", None) or self.config.ai_model
+        policy = resolve_report_model(self.config, REPORT_CAPABILITY)
+        report_model = policy.model
         cached = None
         if options.operation != "REGENERATE":
             cached = db.scalar(
@@ -334,7 +336,7 @@ class AIService:
         try:
             mark_stale_pending(db, self.config)
             try:
-                generation.estimated_cost_usd = enforce_report_budget(db, self.config)
+                generation.estimated_cost_usd = enforce_report_budget(db, self.config, model=report_model, max_output_tokens=policy.max_output_tokens)
             except RuntimeError as exc:
                 generation.status = "FAILED"
                 generation.error_code = "REPORT_AI_BUDGET_EXCEEDED"
@@ -348,7 +350,7 @@ class AIService:
                 context=context,
                 model=report_model,
                 temperature=getattr(self.config, "ai_report_temperature", self.config.ai_temperature),
-                max_output_tokens=getattr(self.config, "ai_report_max_output_tokens", self.config.ai_max_output_tokens),
+                max_output_tokens=policy.max_output_tokens,
                 output_schema=ReportAIDraft.model_json_schema(),
                 schema_name="report_section_draft",
             )
@@ -383,7 +385,8 @@ class AIService:
         )
         input_hash = _hash(context)
         provider_name = getattr(self.config, "ai_report_provider", self.config.ai_provider).strip().lower()
-        report_model = getattr(self.config, "ai_report_model", None) or self.config.ai_model
+        policy = resolve_report_model(self.config, EDITORIAL_CAPABILITY)
+        report_model = policy.model
         cached = None
         if not options.force_refresh:
             cached = db.scalar(select(AIGeneration).where(
@@ -410,7 +413,7 @@ class AIService:
         try:
             mark_stale_pending(db, self.config)
             try:
-                generation.estimated_cost_usd = enforce_report_budget(db, self.config)
+                generation.estimated_cost_usd = enforce_report_budget(db, self.config, model=report_model, max_output_tokens=policy.max_output_tokens)
             except RuntimeError as exc:
                 generation.status = "FAILED"
                 generation.error_code = "REPORT_AI_BUDGET_EXCEEDED"
@@ -421,7 +424,7 @@ class AIService:
             provider = self._provider or build_report_provider(self.config)
             request = ProviderRequest(system_prompt=EDITORIAL_SYSTEM_PROMPT, context=context,
                 model=report_model, temperature=getattr(self.config, "ai_report_temperature", self.config.ai_temperature),
-                max_output_tokens=max(getattr(self.config, "ai_report_max_output_tokens", self.config.ai_max_output_tokens), 3200),
+                max_output_tokens=max(policy.max_output_tokens, 3200),
                 output_schema=ReportAIEditorialPlan.model_json_schema(), schema_name="report_editorial_plan")
             allowed_keys = [item["section_key"] for item in context["sections"] if item["is_enabled"]]
             result = None
@@ -468,7 +471,8 @@ class AIService:
         report, context = build_report_assistant_context(db, report_id, user, options.instructions)
         input_hash = _hash(context)
         provider_name = getattr(self.config, "ai_report_provider", self.config.ai_provider).strip().lower()
-        model = getattr(self.config, "ai_report_model", None) or self.config.ai_model
+        policy = resolve_report_model(self.config, ASSISTANT_CAPABILITY)
+        model = policy.model
         cached = None if options.force_refresh else db.scalar(select(AIGeneration).where(
             AIGeneration.capability == ASSISTANT_CAPABILITY,
             AIGeneration.subject_id == report_id,
@@ -493,14 +497,14 @@ class AIService:
         try:
             mark_stale_pending(db, self.config)
             try:
-                generation.estimated_cost_usd = enforce_report_budget(db, self.config)
+                generation.estimated_cost_usd = enforce_report_budget(db, self.config, model=model, max_output_tokens=policy.max_output_tokens)
             except RuntimeError as exc:
                 raise AIProviderError("REPORT_AI_BUDGET_EXCEEDED", "Report AI monthly budget reached") from exc
             provider = self._provider or build_report_provider(self.config)
             result = await provider.generate(ProviderRequest(
                 system_prompt=ASSISTANT_SYSTEM_PROMPT, context=context, model=model,
                 temperature=getattr(self.config, "ai_report_temperature", self.config.ai_temperature),
-                max_output_tokens=getattr(self.config, "ai_report_max_output_tokens", self.config.ai_max_output_tokens),
+                max_output_tokens=policy.max_output_tokens,
                 output_schema=ReportAIAssistantProposal.model_json_schema(),
                 schema_name="report_premium_assistant_proposal",
             ))
@@ -528,7 +532,8 @@ class AIService:
             messages = {
                 "invalid_configuration": "Configuracion de IA invalida.",
                 "rate_limited": "Limite temporal del proveedor.",
-                "timeout": "No fue posible completar la generacion.",
+                "timeout": "OpenAI demoró más de lo esperado. La propuesta no se aplicó; puedes volver a intentarlo.",
+                "output_truncated": "La propuesta excedió la extensión permitida. No se aplicó ningún cambio; intenta nuevamente.",
                 "REPORT_AI_BUDGET_EXCEEDED": "Se alcanzo el presupuesto mensual configurado.",
                 "invalid_output": "Respuesta IA invalida y no fue aplicada.",
             }
@@ -582,7 +587,7 @@ class AIService:
         generation.total_tokens = result.total_tokens
         generation.provider_request_id = result.provider_request_id
         generation.attempt_count = result.attempt_count
-        generation.actual_cost_usd = actual_report_cost(self.config, result)
+        generation.actual_cost_usd = actual_report_cost(self.config, result, model=generation.model)
 
     @staticmethod
     def _assistant_response(report, generation: AIGeneration, cached: bool) -> ReportAIAssistantResponse:

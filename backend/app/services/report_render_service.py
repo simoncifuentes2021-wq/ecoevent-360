@@ -58,6 +58,27 @@ TEMPLATE_THEMES = {
     },
 }
 
+DEFAULT_SECTION_LAYOUTS = {
+    "EXECUTIVE_SUMMARY": "EDITORIAL", "EVENT_INFO": "TWO_COLUMN",
+    "SHOW_INFO": "TWO_COLUMN", "SERVICES": "METRIC_LIST",
+    "OPERATIONS": "EDITORIAL", "STAFF": "KPI_GRID",
+    "TASKS": "BIG_NUMBERS", "INCIDENTS": "METRIC_LIST",
+    "FORMS": "FEATURE_CHART", "BIKE_ZONE": "BIG_NUMBERS",
+    "WASTE": "FEATURE_CHART", "CARBON": "FEATURE_CHART",
+    "ENVIRONMENTAL_IMPACT": "FEATURE_CHART", "EVIDENCES": "PHOTO_GRID",
+    "RECOMMENDATIONS": "TEXT_IMAGE", "CONCLUSION": "EDITORIAL",
+}
+
+
+def _layout_class(section: dict) -> str:
+    return str(section.get("layout_variant") or "EDITORIAL").lower().replace("_", "-")
+
+
+def _uses_custom_composition(section: dict) -> bool:
+    default = DEFAULT_SECTION_LAYOUTS.get(str(section.get("section_type") or ""))
+    selected = str(section.get("layout_variant") or default or "EDITORIAL")
+    return default is not None and selected != default
+
 
 @dataclass(frozen=True)
 class ReportRenderDocument:
@@ -124,7 +145,7 @@ def build_html(document: ReportRenderDocument) -> str:
         if item.get("is_enabled") and item.get("section_type") != "COVER"
     ]
     by_key = {item["section_key"]: item for item in sections}
-    plans = plan_pages(sections, document.report["template_key"], document.editorial_config)
+    plans = plan_pages(list(document.sections), document.report["template_key"], document.editorial_config)
     pages = [
         {
             "recipe": plan.recipe.value,
@@ -137,11 +158,15 @@ def build_html(document: ReportRenderDocument) -> str:
         _page_html(page, evidence_by_section, all_photos, theme, index + 1, document.editorial_config)
         for index, page in enumerate(pages)
     )
+    cover_html = _cover_html(document, all_photos) if any(
+        item.get("is_enabled") and item.get("section_type") == "COVER"
+        for item in document.sections
+    ) else ""
     html = (
         '<!doctype html><html><head><meta charset="utf-8"><style>'
         + _styles(document)
         + f"</style><title>{escape(document.report['title'])}</title></head><body>"
-        + _cover_html(document, all_photos)
+        + cover_html
         + page_html
         + "</body></html>"
     )
@@ -292,12 +317,15 @@ def _freeform_chart_html(dataset: dict, color: str) -> str:
 def _styles(document: ReportRenderDocument) -> str:
     t = document.theme
     preset = str(((document.editorial_config or {}).get("visual_config") or {}).get("preset") or "AUTO")
-    premium_v2_styles = "" if preset == "AUTO" else f"""
+    section_visuals = (document.editorial_config or {}).get("section_visuals") or {}
+    has_section_premium = any(str((value or {}).get("premium_variant") or "AUTO") != "AUTO" for value in section_visuals.values())
+    premium_v2_styles = "" if preset == "AUTO" and not has_section_premium else f"""
     .premium-carbon-visual{{display:grid;gap:4mm;min-width:0}} .premium-carbon-visual .premium-chart{{min-height:48mm;padding:3mm 4mm}} .premium-carbon-visual .premium-chart svg{{max-height:48mm}} .premium-carbon-photo{{margin:0}} .premium-carbon-photo figure img{{height:54mm;border-radius:2mm}} .premium-carbon-photo figcaption{{font-size:7pt}}
-    .premium-page-sections{{display:grid;gap:8mm}} .premium-document-grid{{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:11mm;align-items:start}} .premium-document-grid.single{{grid-template-columns:1fr}}
+    .premium-page-sections{{display:grid;gap:8mm}} .premium-emphasis-high{{border-left:1.5mm solid {t['accent_color']};padding-left:4mm}} .premium-emphasis-low{{opacity:.94}} .premium-ai-priority{{display:flex;gap:3mm;margin:0 0 4mm}} .premium-ai-priority>div{{flex:1;min-width:0;border-radius:3mm;background:{t['background_color']};padding:3mm 4mm}} .premium-ai-priority small{{display:block;color:{t['muted_color']};font-size:8pt}} .premium-ai-priority strong{{font-size:15pt;color:{t['primary_color']};overflow-wrap:anywhere}} .premium-document-grid{{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:11mm;align-items:start}} .premium-document-grid.single{{grid-template-columns:1fr}}
     .premium-prose{{font-size:13pt;line-height:1.55;color:{t["text_color"]};max-width:150mm}} .premium-hero-rule{{display:flex;align-items:end;justify-content:space-between;gap:8mm;padding:4mm 0 7mm;border-bottom:1px solid #dce5e0;margin-bottom:7mm}} .premium-hero-rule strong{{font-size:47pt;line-height:.88;letter-spacing:-.05em;color:{t["primary_color"]}}} .premium-hero-rule strong small{{font-size:9pt;letter-spacing:0;margin-left:1mm}} .premium-hero-rule span{{max-width:48mm;font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:{t["muted_color"]};text-align:right}}
     .premium-progress{{height:4mm;background:#e7eeea;border-radius:9mm;overflow:hidden;margin:4mm 0 2mm}} .premium-progress i{{display:block;height:100%;background:{t["secondary_color"]};border-radius:inherit}} .premium-editorial-list{{display:grid;border-top:1px solid #dce5e0}} .premium-editorial-row{{display:grid;grid-template-columns:8mm 1fr auto;gap:4mm;padding:4mm 0;border-bottom:1px solid #dce5e0;break-inside:avoid}} .premium-editorial-row b{{color:{t["secondary_color"]}}} .premium-editorial-row strong{{color:{t["primary_color"]}}} .premium-editorial-row p{{grid-column:2/-1;margin:0;font-size:8pt;color:{t["muted_color"]}}}
     .premium-positive{{padding:8mm 0;border-top:2mm solid {t["accent_color"]};font-size:18pt;color:{t["primary_color"]}}} .premium-story-photo figure:first-child img{{height:94mm}} .premium-story-photo figure:not(:first-child) img{{height:44mm}}
+    .premium-equivalence-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6mm;margin-top:9mm}} .premium-equivalence-card{{min-width:0;padding:8mm;background:{t["background_color"]};border-radius:3mm;border-top:1.5mm solid {t["accent_color"]}}} .premium-equivalence-card span{{display:block;min-height:12mm;color:{t["muted_color"]}}} .premium-equivalence-card strong{{display:block;margin-top:5mm;font-size:28pt;line-height:1;color:{t["primary_color"]};overflow-wrap:anywhere}} .premium-equivalence-card small{{display:block;margin-top:2mm;font-size:9pt;line-height:1.3}}
     .premium-tone-ecoevent_editorial .premium-section-heading h2{{font-family:Georgia,'Times New Roman',serif;font-weight:600}} .premium-tone-ecoevent_editorial .premium-prose{{font-family:Georgia,'Times New Roman',serif;line-height:1.7}}
     .premium-tone-environmental .premium-section-heading{{border-bottom:1.5mm solid #69b849}} .premium-tone-environmental .premium-heading-icon{{background:#2d6a4f}}
     .premium-tone-bike_zone .premium-section-heading{{border-bottom:1.5mm solid #8ef0cf}} .premium-tone-bike_zone .premium-heading-icon{{background:#007c64}} .premium-tone-bike_zone .premium-hero-rule strong{{color:#007c64}}
@@ -331,12 +359,20 @@ def _styles(document: ReportRenderDocument) -> str:
     .chart-panel{{background:white;border-radius:2mm;padding:5mm;color:{t["text_color"]}}} svg{{width:100%;height:auto;max-height:105mm}}
     .photos{{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:5mm}} figure{{margin:0;break-inside:avoid}} figure:first-child:nth-last-child(1){{grid-column:span 2}} figure img{{width:100%;height:70mm;object-fit:cover;border-radius:1.5mm}} .hero-photo img{{height:112mm}} figcaption{{padding-top:1.5mm;font-size:7.5pt;color:{t["muted_color"]}}} .feature figcaption{{color:#c9dbd2}}
     .photo-strip{{display:grid;grid-template-columns:1.35fr .65fr;gap:4mm}} .photo-strip figure:first-child img{{height:105mm}} .photo-strip figure:not(:first-child) img{{height:50.5mm}} .feature-visual{{display:grid;gap:4mm}} .feature-visual figure img{{height:78mm}} .feature-visual .chart-panel svg{{max-height:65mm}}
-    .list{{display:grid;gap:2mm}} .list-row{{display:grid;grid-template-columns:1fr auto;gap:5mm;padding:3mm 0;border-bottom:1px solid #d8e2dd}} .list-row strong{{font-size:13pt;color:{t["primary_color"]}}}
+    .list{{display:grid;gap:2mm}} .list-row{{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2mm 5mm;padding:3mm 0;border-bottom:1px solid #d8e2dd}} .list-row strong{{font-size:13pt;color:{t["primary_color"]};overflow-wrap:anywhere}} .list-row p{{grid-column:1/-1;margin:0;color:{t["muted_color"]};font-size:8.5pt;line-height:1.45}}
     .quote{{font-size:19pt;line-height:1.35;color:{t["primary_color"]};padding:9mm 0 9mm 9mm;border-left:2mm solid {t["accent_color"]}}} .warning{{padding:8mm;background:{t["background_color"]};color:{t["muted_color"]};text-align:center}}
-    .layout-two-column .section-body,.layout-text-image .section-body{{display:grid;grid-template-columns:1fr 1fr;gap:7mm}} .layout-hero-image-text{{background:{t["primary_color"]};color:white;padding:8mm;border-radius:2mm}} .layout-hero-image-text h3{{color:white}}
+    .layout-two-column .section-body,.layout-text-image .section-body{{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7mm}} .section-body>*,.section-fields,.metric{{min-width:0}} .metric strong{{max-width:52%;overflow-wrap:anywhere;text-align:right}} .layout-hero-image-text{{background:{t["primary_color"]};color:white;padding:8mm;border-radius:2mm}} .layout-hero-image-text h3{{color:white}}
+    .premium-summary-dense .premium-prose{{font-size:9.5pt;line-height:1.42;max-width:none}} .premium-summary-dense .metrics{{columns:initial;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3mm;margin-top:5mm}} .premium-summary-dense .metric{{display:block;padding:3mm;background:white;border:1px solid #d8e2dd;border-radius:2mm}} .premium-summary-dense .metric strong{{display:block;max-width:none;margin-top:1.5mm;text-align:left;color:{t["primary_color"]}}}
     .layout-editorial .section-copy{{font-size:15pt;line-height:1.6}} .layout-metric-list .metrics{{columns:1}} .layout-photo-grid .section-media{{order:-1}} .layout-feature-chart{{border-top:2mm solid {t["accent_color"]}}} .layout-big-numbers .kpi strong{{font-size:38pt}}
-    .layout-hero-image-text .section-media img{{height:62mm}} .layout-text-image .section-media img{{height:52mm}} .layout-photo-grid .photos{{grid-template-columns:repeat(2,1fr)}}
+    .layout-hero-image-text .section-media img{{height:52mm}} .layout-text-image .section-media img{{height:46mm}} .layout-photo-grid .photos{{grid-template-columns:repeat(2,1fr)}} .editorial-block.layout-photo-grid .section-media img{{height:34mm}}
+    .editorial-block.layout-dense .section-copy{{font-size:9pt;line-height:1.38}} .editorial-block.layout-dense .metric,.editorial-block.layout-dense .list-row{{padding:1.6mm 0;font-size:8.5pt}} .editorial-block.layout-dense .section-media img{{height:30mm}} .editorial-block.layout-photo-grid.layout-dense .section-fields .metric{{min-height:17mm;padding:2.5mm}} .editorial-block.layout-photo-grid.layout-dense .section-fields .metric strong{{font-size:12pt}}
+    .layout-two-column .section-fields{{border-left:1px solid #d8e2dd;padding-left:6mm}} .layout-two-column .section-fields .metrics,.layout-text-image .section-fields .metrics{{columns:1}} .layout-text-image .section-body{{grid-template-columns:.78fr 1.22fr;align-items:start}} .layout-text-image .section-fields{{padding:6mm;background:white;border:1px solid #d8e2dd;border-radius:2mm}}
+    .layout-photo-grid .section-fields .metrics{{columns:initial;display:grid;grid-template-columns:repeat(2,1fr);gap:3mm}} .layout-photo-grid .section-fields .metric{{display:block;min-height:25mm;padding:4mm;background:white;border:1px solid #d8e2dd;border-radius:2mm}} .layout-photo-grid .section-fields .metric strong{{display:block;margin-top:2mm;font-size:17pt;color:{t["primary_color"]}}}
+    .layout-feature-chart .section-fields{{padding:5mm;background:white;border-radius:2mm;box-shadow:0 1mm 4mm #12372a12}} .layout-feature-chart .section-copy{{font-size:13pt;font-weight:600;color:{t["primary_color"]}}}
     .feature.layout-text-image .feature-grid{{grid-template-columns:.85fr 1.15fr}} .feature.layout-photo-grid .chart-panel{{display:none}} .feature.layout-metric-list .feature-number{{font-size:36pt}} .feature.layout-kpi-grid .metrics{{columns:1}}
+    .feature.layout-feature-chart{{min-height:0;padding-top:9mm;padding-bottom:9mm}} .feature.layout-feature-chart .lead{{font-size:9pt;line-height:1.35}} .feature.layout-feature-chart .list-row{{padding:1.5mm 0;font-size:8.5pt}} .feature.layout-feature-chart svg{{max-height:58mm}}
+    .premium-executive-summary.layout-hero-image-text{{background:{t["primary_color"]};padding:9mm;border-radius:3mm;color:white}} .premium-executive-summary.layout-hero-image-text .premium-section-heading h2,.premium-executive-summary.layout-hero-image-text .premium-section-heading small,.premium-executive-summary.layout-hero-image-text .premium-prose,.premium-executive-summary.layout-hero-image-text .premium-hero-rule strong,.premium-executive-summary.layout-hero-image-text .premium-hero-rule span{{color:white}} .premium-executive-summary.layout-hero-image-text .premium-section-heading{{border-bottom-color:{t["accent_color"]}}}
+    .premium-executive-summary.layout-photo-grid>.photos{{grid-template-columns:repeat(2,1fr);margin-bottom:7mm}} .premium-executive-summary.layout-photo-grid>.photos img{{height:46mm}} .premium-executive-summary.layout-text-image .photos img,.premium-executive-summary.layout-hero-image-text .photos img{{height:72mm}} .premium-executive-summary.layout-kpi-grid>.kpis{{grid-template-columns:repeat(3,1fr);margin-bottom:7mm}} .premium-executive-summary.layout-big-numbers .kpi strong{{font-size:34pt}}
     .environmental-story{{display:grid;grid-template-columns:.9fr 1.1fr;gap:7mm;align-items:center}}
     .environmental-title span{{font-size:8pt;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:{t["secondary_color"]}}}
     .environmental-title h2{{font-size:40pt;margin:3mm 0 0}}
@@ -408,10 +444,12 @@ def _cover_html(document: ReportRenderDocument, photos: list[dict]) -> str:
         return str(field.get("value") if field and field.get("value") is not None else fallback)
 
     selected_id = str(document.editorial_config.get("cover_evidence_id") or "")
-    photo = next(
-        (item for item in photos if str(item.get("evidence_id")) == selected_id),
-        photos[0] if photos else None,
-    )
+    photo = None
+    if document.editorial_config.get("cover_show_photo", True):
+        photo = next(
+            (item for item in photos if str(item.get("evidence_id")) == selected_id),
+            photos[0] if photos else None,
+        )
     style = f' style="background-image:url({photo["uri"]})"' if photo else ""
     cover_style = document.editorial_config.get("cover_style", "FULL_PHOTO")
     class_name = {
@@ -446,8 +484,9 @@ def _page_html(
         for photo in evidence_map.get(section.get("section_key"), [])
         if photo.get("uri")
     ]
+    unassigned_photos = [photo for photo in all_photos if not photo.get("section_key")]
     photos = section_photos or (
-        all_photos[:4]
+        unassigned_photos[:4]
         if recipe.startswith("FEATURE_")
         or recipe in {"KPI_SUMMARY", "ENVIRONMENTAL_MANAGEMENT", "CARBON_EQUIVALENCES"}
         else []
@@ -459,28 +498,41 @@ def _page_html(
     elif recipe == "ENVIRONMENTAL_OVERVIEW":
         content = _environmental_impact_html(sections)
     elif recipe == "CARBON_EQUIVALENCES":
-        content = _carbon_equivalences_html(sections, photos)
+        # A standalone Ecoequivalences section must honor every composition
+        # selected in the editor and must not synthesize a hidden carbon panel.
+        has_carbon = any(section.get("section_type") == "CARBON" for section in sections)
+        content = (
+            _carbon_equivalences_html(sections, photos)
+            if has_carbon
+            else _mixed_html(sections, photos, theme)
+        )
     elif recipe in {"BIKE_ZONE_FEATURE", "WASTE_FEATURE", "CARBON_FEATURE", "FORMS_INSIGHTS"}:
         content = _feature_html(sections, photos, theme)
     elif recipe == "EXECUTIVE_OVERVIEW":
         content = _summary_html(sections, photos, theme)
     elif recipe == "EDITORIAL_CLOSE":
-        content = _conclusion_html(sections, theme)
+        content = (
+            _mixed_html(sections, photos, theme)
+            if any(section.get("layout_variant") in {"HERO_IMAGE_TEXT", "TEXT_IMAGE", "PHOTO_GRID"} for section in sections)
+            else _conclusion_html(sections, theme)
+        )
     elif recipe == "EMPTY":
         content = f'<div class="quote"{_editable_attr("page.empty.highlight", "HIGHLIGHT", "box")}>Este reporte está preparado para crecer con la información del evento.</div>'
     else:
         content = _mixed_html(sections, photos, theme)
     editorial_config = editorial_config or {}
     visual = report_visual_design_service.normalized(editorial_config.get("visual_config"))
-    premium = _premium_page_html(sections, photos, theme, visual)
+    premium = _premium_page_html(sections, photos, theme, visual, editorial_config.get("section_visuals"))
     if premium:
         content = premium
-    return f"""<section class="page recipe-{recipe.lower()}"><header class="page-head"><span class="chapter">{escape(title)}</span><span>EcoEvent 360</span></header>{content}<footer class="folio"><span>Impacto · operación · evidencia</span><b>{number:02d}</b></footer></section>"""
+    section_keys = ",".join(str(section.get("section_key") or "") for section in sections)
+    return f"""<section class="page recipe-{recipe.lower()}" data-report-sections="{escape(section_keys)}"><header class="page-head"><span class="chapter">{escape(title)}</span><span>EcoEvent 360</span></header>{content}<footer class="folio"><span>Impacto · operación · evidencia</span><b>{number:02d}</b></footer></section>"""
 
 
-def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, visual: dict) -> str:
+def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, visual: dict, section_visuals: dict | None = None) -> str:
     preset = str(visual.get("preset") or "AUTO")
-    if preset == "AUTO":
+    section_visuals = section_visuals or {}
+    if preset == "AUTO" and not any(str((value or {}).get("premium_variant") or "AUTO") != "AUTO" for value in section_visuals.values()):
         return ""
     renderers = {
         "EVENT_INFO": _render_event_info_premium, "BIKE_ZONE": _render_bike_zone_premium,
@@ -496,20 +548,56 @@ def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, vi
     }
     rendered = []
     for section in sections:
+        section = dict(section)
+        section_key = str(section.get("section_key") or "")
+        section_visual = section_visuals.get(section_key) or {}
+        premium_variant = str(section_visual.get("premium_variant") or "AUTO")
+        emphasis = str(section_visual.get("emphasis") or "NORMAL").lower()
+        selected_metrics = list(section_visual.get("selected_metric_keys") or [])
+        if selected_metrics:
+            content = dict(section.get("content") or {})
+            fields = list(content.get("fields") or [])
+            def metric_rank(field):
+                key = str(field.get("key") or "")
+                matches = [index for index, selected in enumerate(selected_metrics) if selected == key or selected.endswith(f".{key}") or selected.endswith(f":{key}")]
+                return (matches[0] if matches else len(selected_metrics), fields.index(field))
+            content["fields"] = sorted(fields, key=metric_rank)
+            section["content"] = content
         section_type = str(section.get("section_type") or "")
-        if not report_visual_design_service.section_variant(preset, section_type):
+        if section_key == "preset_eco_equivalences":
+            rendered.append(_render_ecoequivalences_premium(section, theme, preset if preset != "AUTO" else "ECOEVENT_EDITORIAL"))
+            continue
+        if section_type == "EXECUTIVE_SUMMARY" and len(str((section.get("content") or {}).get("text") or "")) > 900:
+            rendered.append(_render_executive_summary_premium(section, photos, theme, preset if preset != "AUTO" else "ECOEVENT_EDITORIAL"))
+            continue
+        if _uses_custom_composition(section):
+            rendered.append(_mixed_html([section], photos, theme))
+            continue
+        if premium_variant == "AUTO" and not report_visual_design_service.section_variant(preset, section_type):
             rendered.append(_mixed_html([section], photos, theme))
             continue
         renderer = renderers.get(section_type)
         if renderer:
-            rendered.append(renderer(section, photos, theme, preset))
+            selected_html = ""
+            if selected_metrics:
+                selected_fields = [field for field in (section.get("content") or {}).get("fields") or [] if any(selected == str(field.get("key") or "") or selected.endswith(f'.{field.get("key")}') or selected.endswith(f':{field.get("key")}') for selected in selected_metrics)]
+                if selected_fields:
+                    selected_html = '<div class="premium-ai-priority">' + "".join(
+                        f'<div><small>{escape(report_visual_design_service.human_label(field.get("label") or field.get("key") or "Indicador"))}</small><strong>{escape(_premium_value(field))}</strong></div>'
+                        for field in selected_fields
+                    ) + '</div>'
+            rendered.append(
+                f'<div class="premium-composition layout-{_layout_class(section)} premium-emphasis-{emphasis} premium-variant-{premium_variant.lower().replace("_", "-")}">'
+                f'{selected_html}{renderer(section, photos, theme, preset if preset != "AUTO" else "ECOEVENT_EDITORIAL")}</div>'
+            )
     return '<div class="premium-page-sections">' + "".join(rendered) + "</div>" if rendered else ""
 
 
 def _premium_fields(section: dict) -> tuple[dict[str, dict], list[dict], list[dict]]:
     content = section.get("content") or {}
-    fields = [item for item in content.get("fields") or [] if item.get("is_visible", True)]
-    return {str(item.get("key")): item for item in fields}, fields, content.get("items") or []
+    fields = [item for item in content.get("fields") or [] if item.get("is_visible", True) and item.get("value") not in (None, "")]
+    items = [item for item in content.get("items") or [] if item.get("_is_visible", True) is not False]
+    return {str(item.get("key")): item for item in fields}, fields, items
 
 
 def _premium_value(field: dict | None, fallback: str = "—") -> str:
@@ -524,11 +612,29 @@ def _premium_heading(section: dict, eyebrow: str, icon: str, key: str) -> str:
     return f'<header class="premium-section-heading"{_editable_attr(f"section.{key}.heading", "SECTION_TITLE", "box")}><span class="premium-heading-icon">{report_visual_design_service.icon_svg(icon)}</span><div><small>{escape(eyebrow)}</small><h2>{escape(str(section.get("title") or "Resultados"))}</h2></div></header>'
 
 
+def _render_ecoequivalences_premium(section: dict, theme: dict, preset: str) -> str:
+    _, fields, _ = _premium_fields(section)
+    text = _premium_text(section, "summary", "description")
+    cards = "".join(
+        f'<div class="premium-equivalence-card"><span>{escape(report_visual_design_service.human_label(field.get("label") or "Equivalencia"))}</span><strong>{escape(report_visual_design_service.format_metric(field.get("value")))}<small>{escape(report_visual_design_service.normalize_unit(field.get("unit")))}</small></strong></div>'
+        for field in fields[:4]
+    )
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Referencias ambientales", "LEAF", "eco-equivalences")}<p class="premium-prose">{_safe_text(text)}</p><div class="premium-equivalence-grid">{cards}</div></article>'
+
+
 def _render_event_info_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
-    by_key, _, _ = _premium_fields(section)
+    by_key, fields, _ = _premium_fields(section)
     name = str((by_key.get("name") or {}).get("value") or section.get("title") or "Evento")
     attendees = by_key.get("real_attendees") or by_key.get("estimated_attendees")
-    metadata = "".join(f'<div><small>{escape(str(by_key[key].get("label") or key))}</small><strong>{escape(str(by_key[key].get("value") or "—"))}</strong></div>' for key in ("start_date", "end_date", "location", "city", "type") if by_key.get(key))
+    # Render every visible field. The former allowlist silently omitted edited
+    # values such as estimated attendance and could collapse real/estimated
+    # attendance into a single hero number.
+    metadata_fields = [field for field in fields if field.get("key") != "name"]
+    metadata = "".join(
+        f'<div><small>{escape(str(field.get("label") or field.get("key") or "Dato"))}</small>'
+        f'<strong>{escape(_premium_value(field))}</strong></div>'
+        for field in metadata_fields
+    )
     narrative = (section.get("content") or {}).get("text") or "Datos generales y alcance del evento reportado."
     photo = _photos(photos[:1], "premium-event-photo", "event-info", "section.event-info.photo") if photos else ""
     return f'<article class="premium-section premium-event premium-tone-{preset.lower()}">{_premium_heading(section, "Perfil del evento", "CALENDAR", "event-info")}<div class="premium-event-grid"><div><h3 class="premium-event-name"{_editable_attr("section.event-info.hero", "HERO", "box")}>{escape(name)}</h3><div class="premium-hero-number"><strong>{escape(_premium_value(attendees))}</strong><span>asistentes</span></div><p class="premium-narrative">{_safe_text(narrative)}</p></div>{photo}</div><div class="premium-metadata"{_editable_attr("section.event-info.metadata", "METADATA", "box")}>{metadata}</div></article>'
@@ -544,7 +650,7 @@ def _render_bike_zone_premium(section: dict, photos: list[dict], theme: dict, pr
     heading = _premium_heading(section, "Movilidad sostenible", "BICYCLE", "bike-zone")
     if empty:
         return f'<article class="premium-section premium-bike premium-empty">{heading}<div class="premium-empty-state"{_editable_attr("section.bike-zone.hero", "EMPTY_STATE", "box")}><h3>Bike Zone</h3><p>No se registraron usuarios de Bike Zone en este evento.</p></div></article>'
-    secondary = "".join(f'<div><strong>{escape(_premium_value(field))}</strong><span>{escape(str(field.get("label") or "Indicador"))}</span></div>' for field in fields[1:4])
+    secondary = "".join(f'<div><strong>{escape(_premium_value(field))}</strong><span>{escape(report_visual_design_service.human_label(field.get("label") or "Indicador"))}</span></div>' for field in fields[1:4])
     chart = report_chart_service.bar_chart(items, theme["accent_color"])
     chart_html = f'<div class="premium-chart"{_editable_attr("section.bike-zone.chart", "CHART", "box")}>{chart}</div>' if chart else ""
     text = (section.get("content") or {}).get("text") or "Movilidad activa integrada a la experiencia del evento."
@@ -615,11 +721,13 @@ def _premium_text(section: dict, *item_keys: str) -> str:
 def _premium_list(items: list[dict], element_key: str) -> str:
     rows = []
     for index, item in enumerate(items[:8], 1):
-        label = item.get("label") or item.get("name") or item.get("role") or item.get("summary") or "Detalle"
+        label = report_visual_design_service.human_label(item.get("label") or item.get("name") or item.get("role") or item.get("summary") or "Detalle")
         value = item.get("value", item.get("quantity", item.get("count")))
         rendered = report_visual_design_service.format_metric(value) if value is not None else ""
         description = item.get("description") or item.get("action") or ""
-        detail = f'<p>{_safe_text(description)}</p>' if description else ""
+        priority = {"HIGH": "Prioridad alta", "MEDIUM": "Prioridad media", "LOW": "Prioridad baja"}.get(str(item.get("priority") or "").upper(), "")
+        detail_text = " · ".join(part for part in (priority, str(description or "")) if part)
+        detail = f'<p>{_safe_text(detail_text)}</p>' if detail_text else ""
         rows.append(f'<div class="premium-editorial-row"><b>{index:02d}</b><span>{escape(str(label))}</span><strong>{escape(rendered)}</strong>{detail}</div>')
     return f'<div class="premium-editorial-list"{_editable_attr(element_key, "LIST", "box")}>{"".join(rows)}</div>' if rows else ""
 
@@ -636,7 +744,40 @@ def _render_executive_summary_premium(section: dict, photos: list[dict], theme: 
     hero = fields[0] if fields else None
     hero_html = f'<div class="premium-hero-rule"{_editable_attr("section.executive-summary.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(hero))}<small>{escape(_premium_unit(hero))}</small></strong><span>{escape(str((hero or {}).get("label") or "Lectura ejecutiva"))}</span></div>' if hero else ""
     findings = [item for item in items if str(item.get("summary") or "") != narrative]
-    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Resumen ejecutivo", "CHART", "executive-summary")}{hero_html}<div class="premium-document-grid"><div><p class="premium-prose"{_editable_attr("section.executive-summary.summary", "TEXT_BLOCK", "box")}>{_safe_text(narrative)}</p>{_premium_list(findings, "section.executive-summary.findings")}</div><div>{_metrics(fields[1:5], "section.executive-summary.kpis")}</div></div></article>'
+    variant = str(section.get("layout_variant") or "EDITORIAL")
+    variant_class = variant.lower().replace("_", "-")
+    prose = f'<p class="premium-prose"{_editable_attr("section.executive-summary.summary", "TEXT_BLOCK", "box")}>{_safe_text(narrative)}</p>'
+    finding_list = _premium_list(findings, "section.executive-summary.findings")
+    metrics = _metrics(fields[1:5] if hero else fields[:5], "section.executive-summary.kpis")
+    gallery = _photos(
+        photos[:4] if variant == "PHOTO_GRID" else photos[:1],
+        "photos",
+        "executive-summary",
+        "section.executive-summary.gallery",
+    ) if photos and variant in {"HERO_IMAGE_TEXT", "PHOTO_GRID", "TEXT_IMAGE"} else ""
+    chart = report_chart_service.bar_chart(items, theme["accent_color"])
+    chart_html = f'<div class="premium-chart"{_editable_attr("section.executive-summary.chart", "CHART", "box")}>{chart}</div>' if chart and variant == "FEATURE_CHART" else ""
+    dense_summary = len(narrative) > 900
+    if dense_summary:
+        body = f'{prose}{metrics}'
+    elif variant == "KPI_GRID":
+        body = _kpis(fields[:6], "executive-summary") + prose + finding_list
+    elif variant == "BIG_NUMBERS":
+        body = hero_html + _kpis(fields[1:5], "executive-summary") + prose + finding_list
+    elif variant == "METRIC_LIST":
+        body = prose + _metrics(fields[:8], "section.executive-summary.metrics") + finding_list
+    elif variant in {"TWO_COLUMN", "TEXT_IMAGE"}:
+        body = f'<div class="premium-document-grid"><div>{prose}{finding_list}</div><div>{gallery or metrics}</div></div>'
+    elif variant == "HERO_IMAGE_TEXT":
+        body = f'<div class="premium-document-grid"><div>{hero_html}{prose}{finding_list}</div><div>{gallery}</div></div>'
+    elif variant == "PHOTO_GRID":
+        body = f'{gallery}{prose}{finding_list}{metrics}'
+    elif variant == "FEATURE_CHART":
+        body = f'<div class="premium-document-grid"><div>{prose}{finding_list}</div><div>{chart_html or metrics}</div></div>'
+    else:
+        body = f'{hero_html}<div class="premium-document-grid"><div>{prose}{finding_list}</div><div>{metrics}</div></div>'
+    dense_class = " premium-summary-dense" if dense_summary else ""
+    return f'<article class="premium-section premium-executive-summary layout-{variant_class}{dense_class} premium-tone-{preset.lower()}">{_premium_heading(section, "Resumen ejecutivo", "CHART", "executive-summary")}{body}</article>'
 
 
 def _render_show_info_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
@@ -721,7 +862,10 @@ def _render_conclusion_premium(section: dict, photos: list[dict], theme: dict, p
     if not text and not items:
         return _premium_empty(section, "Cierre", "TARGET", "conclusion", "La conclusión estará disponible cuando se incorpore contenido aprobado.", preset)
     photo = _photos(photos[:1], "premium-event-photo", "conclusion", "section.conclusion.photo") if photos else ""
-    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Cierre editorial", "TARGET", "conclusion")}<div class="premium-document-grid"><div><p class="quote"{_editable_attr("section.conclusion.hero", "HIGHLIGHT", "box")}>{_safe_text(text)}</p>{_premium_list(items[:3], "section.conclusion.summary")}</div>{photo}</div></article>'
+    public_text = _safe_text(text)
+    if not public_text:
+        public_text = "El evento consolida resultados ambientales trazables y oportunidades concretas para fortalecer su próxima edición."
+    return f'<article class="premium-section premium-tone-{preset.lower()}">{_premium_heading(section, "Cierre editorial", "TARGET", "conclusion")}<div class="premium-document-grid"><div><p class="quote"{_editable_attr("section.conclusion.hero", "HIGHLIGHT", "box")}>{public_text}</p>{_premium_list(items[:3], "section.conclusion.summary")}</div>{photo}</div></article>'
 
 
 def _environmental_management_html(sections: list[dict], photos: list[dict]) -> str:
@@ -731,15 +875,25 @@ def _environmental_management_html(sections: list[dict], photos: list[dict]) -> 
     bike_content = (bike or {}).get("content") or {}
     waste_values = (waste_content.get("items") or [])[:8]
     bike_fields = (bike_content.get("fields") or [])[:3]
+    panels = []
+    if waste:
+        panels.append(
+            f'<article class="environmental-panel waste-panel"><h3{_editable_attr("section.waste.title", "SECTION_TITLE", "box")}>Reciclaje</h3>'
+            f'{_items(waste_values, "section.waste.items") if waste_values else _metrics((waste_content.get("fields") or [])[:8], "section.waste.metrics")}</article>'
+        )
+    if bike:
+        panels.append(
+            f'<article class="environmental-panel bike-panel"><h3{_editable_attr("section.bike-zone.title", "SECTION_TITLE", "box")}>Bicicletero</h3>'
+            f'{_kpis(bike_fields, _stable_part(bike.get("section_key")))}'
+            f'<p{_editable_attr("section.bike-zone.text.summary", "TEXT_BLOCK", "box")}>{_safe_text(bike_content.get("text") or "Movilidad sustentable durante el evento.")}</p></article>'
+        )
     return (
         '<div class="environmental-story">'
         f'<div class="environmental-title"><span{_editable_attr("environmental-management.subtitle", "HIGHLIGHT", "box")}>Reporte de impacto</span>'
         f'<h2{_editable_attr("environmental-management.title", "SECTION_TITLE", "box")}>Gestión<br>Ambiental</h2></div>'
         f"{_photos(photos[:2], 'environmental-portraits', 'environmental-management')}"
         '<div class="environmental-panels">'
-        f'<article class="environmental-panel waste-panel"><h3{_editable_attr("section.waste.title", "SECTION_TITLE", "box")}>Reciclaje</h3>{_items(waste_values, "section.waste.items") if waste_values else _metrics((waste_content.get("fields") or [])[:8], "section.waste.metrics")}</article>'
-        f'<article class="environmental-panel bike-panel"><h3{_editable_attr("section.bike-zone.title", "SECTION_TITLE", "box")}>Bicicletero</h3>{_kpis(bike_fields, _stable_part((bike or {}).get("section_key")))}'
-        f'<p{_editable_attr("section.bike-zone.text.summary", "TEXT_BLOCK", "box")}>{_safe_text(bike_content.get("text") or "Movilidad sustentable durante el evento.")}</p></article>'
+        f'{"".join(panels)}'
         "</div></div>"
     )
 
@@ -930,8 +1084,8 @@ def _carbon_cards(fields: list[dict], items: list[dict]) -> str:
         value = ""
         if item.get("value") is not None:
             value = (
-                f"<strong>{escape(str(item['value']))} "
-                f"{escape(str(item.get('unit') or ''))}</strong>"
+                f"<strong>{escape(report_visual_design_service.format_metric(item['value']))} "
+                f"{escape(report_visual_design_service.normalize_unit(item.get('unit')))}</strong>"
             )
         description = item.get("description")
         body = f"<p>{_safe_text(description)}</p>" if description else value
@@ -939,27 +1093,26 @@ def _carbon_cards(fields: list[dict], items: list[dict]) -> str:
             body = value + body
         cards.append(
             '<article class="carbon-card"><span class="carbon-check">✓</span>'
-            f"<div><h4>{escape(str(item.get('label') or 'Indicador'))}</h4>{body}</div></article>"
+            f"<div><h4>{escape(report_visual_design_service.human_label(item.get('label') or 'Indicador'))}</h4>{body}</div></article>"
         )
     return f'<div class="carbon-cards"{_editable_attr("section.carbon.big-numbers", "BIG_NUMBERS", "box")}>{"".join(cards)}</div>'
 
 
 def _summary_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
-    fields = [
-        field for section in sections for field in (section.get("content") or {}).get("fields", [])
-    ][:6]
-    text = next(
-        (
-            (section.get("content") or {}).get("text")
-            for section in sections
-            if (section.get("content") or {}).get("text")
-        ),
-        "Una lectura ejecutiva de los principales resultados del evento.",
+    executive = next(
+        (section for section in sections if section.get("section_type") == "EXECUTIVE_SUMMARY"),
+        None,
     )
-    items = [
-        item for section in sections for item in (section.get("content") or {}).get("items", [])
-    ]
-    return f'<h2{_editable_attr("section.executive.title", "SECTION_TITLE", "box")}>El impacto,<br>en perspectiva.</h2><p class="lead"{_editable_attr("section.executive.text.summary", "TEXT_BLOCK", "box")}>{_safe_text(text)}</p>{_kpis(fields[:6], "executive")}{_metrics(fields[6:], "section.executive.metrics")}{_items(items, "section.executive.items")}{_photos(photos[:2], "photos", "executive", "section.executive.gallery")}'
+    if executive:
+        executive_html = _render_executive_summary_premium(
+            executive, photos, theme, "AUTO"
+        )
+        companion_sections = [section for section in sections if section is not executive]
+        companions = _mixed_html(companion_sections, [], theme) if companion_sections else ""
+        return executive_html + companions
+    # Event/show facts can use this page recipe without an executive summary.
+    # Keep their selected visual composition instead of forcing a fixed layout.
+    return _mixed_html(sections, photos, theme)
 
 
 def _evidence_html(section: dict, photos: list[dict]) -> str:
@@ -987,13 +1140,17 @@ def _feature_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
     intro = _safe_text(content.get("text") or _feature_intro(section_type))
     chart = report_chart_service.bar_chart(items, theme["accent_color"])
     section_key = _stable_part(section.get("section_key"))
-    photo_html = _photos(photos[:2], "photos", section_key, f"section.{section_key}.gallery")
+    photo_html = (
+        _photos(photos[:2], "photos", section_key, f"section.{section_key}.gallery")
+        if section.get("layout_variant") in {"HERO_IMAGE_TEXT", "TEXT_IMAGE", "PHOTO_GRID"}
+        else ""
+    )
     chart_html = f'<div class="chart-panel"{_editable_attr(f"{section_key}.chart.main", "CHART", "box")}>{chart}</div>' if chart else ""
     visual = f'<div class="feature-visual">{photo_html}{chart_html}</div>'
     if not visual:
         visual = '<div class="chart-panel"><div class="warning">Los indicadores se actualizarán al incorporar nuevos registros.</div></div>'
     lead = fields[0] if fields else None
-    number = f'<div class="feature-number"{_editable_attr(f"section.{section_key}.big-number", "BIG_NUMBER", "box")}>{escape(str(lead.get("value") if lead and lead.get("value") is not None else "—"))}<small> {escape(str(lead.get("unit") or "")) if lead else ""}</small><span>{escape(str(lead.get("label") or "")) if lead else ""}</span></div>'
+    number = f'<div class="feature-number"{_editable_attr(f"section.{section_key}.big-number", "BIG_NUMBER", "box")}>{escape(report_visual_design_service.format_metric(lead.get("value"))) if lead else ""}<small> {escape(report_visual_design_service.normalize_unit(lead.get("unit"))) if lead else ""}</small><span>{escape(report_visual_design_service.human_label(lead.get("label") or "")) if lead else ""}</span></div>'
     companions = "".join(
         f'<article class="editorial-block"><h3>{escape(item["title"])}</h3>{_metrics((item.get("content") or {}).get("fields") or [])}</article>'
         for item in sections[1:]
@@ -1018,14 +1175,25 @@ def _mixed_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
             if content.get("text")
             else '<div class="section-copy"></div>'
         )
-        fields_html = (
-            _kpis(fields[:4], _stable_part(section.get("section_key")))
-            if section.get("layout_variant") in {"KPI_GRID", "BIG_NUMBERS"}
-            else _metrics(fields, f"{section_key}.metrics")
-        )
+        if section.get("layout_variant") in {"KPI_GRID", "BIG_NUMBERS"}:
+            # Keep the visual hierarchy without silently dropping fields after
+            # the first four (dates and attendance commonly live later).
+            fields_html = _kpis(fields[:4], _stable_part(section.get("section_key")))
+            fields_html += _metrics(fields[4:], f"{section_key}.remaining-metrics")
+        else:
+            fields_html = _metrics(fields, f"{section_key}.metrics")
         media = ""
         if section.get("layout_variant") in {"HERO_IMAGE_TEXT", "TEXT_IMAGE", "PHOTO_GRID"}:
-            amount = 4 if section.get("layout_variant") == "PHOTO_GRID" else 1
+            # Dense sections get a compact two-photo gallery so their fields
+            # remain inside the printable A4 area instead of being clipped.
+            amount = (
+                4
+                if section.get("layout_variant") == "PHOTO_GRID"
+                and len(fields) + len(items) <= 4
+                else 2
+                if section.get("layout_variant") == "PHOTO_GRID"
+                else 1
+            )
             media = f'<div class="section-media">{_photos(photos[:amount], "photos", _stable_part(section.get("section_key")), f"{section_key}.gallery")}</div>'
         chart = report_chart_service.bar_chart(items, theme["accent_color"])
         if section.get("layout_variant") == "FEATURE_CHART" and chart:
@@ -1033,13 +1201,25 @@ def _mixed_html(sections: list[dict], photos: list[dict], theme: dict) -> str:
             media = f'<div class="section-media chart-panel"{_editable_attr(key, "CHART", "box")}>{chart}</div>'
         body = f'<div class="section-body">{copy}<div class="section-fields">{fields_html}{_items(items, f"{section_key}.items")}</div>{media}</div>'
         variant = str(section.get("layout_variant") or "EDITORIAL").lower().replace("_", "-")
+        dense = " layout-dense" if len(fields) + len(items) >= 4 or len(str(content.get("text") or "")) > 700 else ""
         blocks.append(
-            f'<article class="editorial-block compact layout-{variant}"><div class="section-rule"></div><h3{_editable_attr(f"{section_key}.title", "SECTION_TITLE", "box")}>{escape(section["title"])}</h3>{body}</article>'
+            f'<article class="editorial-block compact layout-{variant}{dense}"><div class="section-rule"></div><h3{_editable_attr(f"{section_key}.title", "SECTION_TITLE", "box")}>{escape(section["title"])}</h3>{body}</article>'
         )
     columns = "two-up" if len(blocks) > 1 else ""
     page_key = _section_part(sections[0]) if sections else "results"
-    photo_html = _photos(photos[:3], "photo-strip", "mixed-strip", f"page.{page_key}.gallery") if photos else ""
-    return f'<h2{_editable_attr(f"page.{page_key}.title", "SECTION_TITLE", "box")}>Resultados que<br>construyen historia.</h2>{photo_html}<div class="blocks {columns}">{"".join(blocks)}</div>'
+    # Images belong to the selected section composition. A second page-level
+    # strip duplicated them and pushed valid information outside the A4 page.
+    page_titles = {
+        "event_info": "Información del evento", "show_info": "Información de la función",
+        "services": "Servicios implementados", "operations": "Desarrollo operacional",
+        "staff": "Equipo de trabajo", "tasks": "Avance y cumplimiento",
+        "incidents": "Gestión de incidencias", "forms": "Participación y respuestas",
+        "bike_zone": "Movilidad sostenible", "waste": "Gestión de residuos",
+        "carbon": "Huella de carbono", "environmental_impact": "Impacto ambiental",
+        "preset_eco_equivalences": "Ecoequivalencias", "evidences": "Registro visual",
+        "recommendations": "Plan de acción", "conclusion": "Cierre del informe",
+    }
+    return f'<h2{_editable_attr(f"page.{page_key}.title", "SECTION_TITLE", "box")}>{escape(page_titles.get(page_key, "Resultados del evento"))}</h2><div class="blocks {columns}">{"".join(blocks)}</div>'
 
 
 def _conclusion_html(sections: list[dict], theme: dict) -> str:
@@ -1055,23 +1235,26 @@ def _conclusion_html(sections: list[dict], theme: dict) -> str:
 
 
 def _kpis(fields: list[dict], key_prefix: str | None = None) -> str:
+    fields = [item for item in fields if item.get("value") not in (None, "")]
     if not fields:
         return ""
     cards = []
     for item in fields:
         key = f"{_stable_part(key_prefix)}.kpi.{_stable_part(item.get('key') or item.get('label'))}"
         attribute = _editable_attr(key, "KPI") if key_prefix else ""
-        value = escape(str(item.get("value") if item.get("value") is not None else "—"))
-        label = f"{escape(str(item.get('unit') or ''))} {escape(str(item.get('label') or ''))}"
+        value = escape(report_visual_design_service.format_metric(item.get("value")))
+        unit = report_visual_design_service.normalize_unit(item.get("unit"))
+        label = f"{escape(unit)} {escape(report_visual_design_service.human_label(item.get('label') or 'Indicador'))}"
         cards.append(f'<div class="kpi"{attribute}><strong>{value}</strong><span>{label}</span></div>')
     return f'<div class="kpis">{"".join(cards)}</div>'
 
 
 def _metrics(fields: list[dict], element_key: str | None = None) -> str:
+    fields = [field for field in fields if field.get("value") not in (None, "")]
     if not fields:
         return ""
     rows = "".join(
-        f'<div class="metric"><span>{escape(str(field.get("label") or ""))}</span><strong>{escape(str(field.get("value") if field.get("value") is not None else "—"))} {escape(str(field.get("unit") or ""))}</strong></div>'
+        f'<div class="metric"><span>{escape(report_visual_design_service.human_label(field.get("label") or ""))}</span><strong>{escape(report_visual_design_service.format_metric(field.get("value")))} {escape(report_visual_design_service.normalize_unit(field.get("unit")))}</strong></div>'
         for field in fields[:12]
     )
     attribute = _editable_attr(element_key, "METRIC_LIST", "box") if element_key else ""
@@ -1092,11 +1275,14 @@ def _items(items: list[dict], element_key: str | None = None) -> str:
         raw_value = item.get("value")
         if raw_value is None:
             raw_value = item.get("total_kg", item.get("total_kgco2e"))
-        value = str(raw_value if raw_value is not None else "—")
-        if item.get("unit"):
-            value = f"{value} {item['unit']}"
+        value = report_visual_design_service.format_metric(raw_value) if raw_value is not None else ""
+        if item.get("unit") and value:
+            value = f"{value} {report_visual_design_service.normalize_unit(item['unit'])}"
+        description = item.get("description") or item.get("action") or ""
+        value_html = f'<strong>{escape(value)}</strong>' if value else ""
+        description_html = f'<p>{_safe_text(description)}</p>' if description else ""
         rows.append(
-            f'<div class="list-row"><span>{escape(str(label))}</span><strong>{escape(value)}</strong></div>'
+            f'<div class="list-row"><span>{escape(report_visual_design_service.human_label(label))}</span>{value_html}{description_html}</div>'
         )
     attribute = _editable_attr(element_key, "LIST", "box") if element_key else ""
     return f'<div class="list"{attribute}>{"".join(rows)}</div>'
@@ -1122,7 +1308,31 @@ def _photos(
 
 
 def _safe_text(value: Any) -> str:
-    return escape(str(value or "")).replace("\n", "<br>")
+    text = str(value or "")
+    text = re.sub(
+        r"La base disponible permite estructurar un reporte ambiental trazable, con m[oó]dulos diferenciados para",
+        "El evento presenta resultados trazables en",
+        text,
+        flags=re.IGNORECASE,
+    )
+    forbidden = re.compile(
+        r"\b(?:esta secci[oó]n debe|la secci[oó]n debe|la lectura debe|debe limitarse|"
+        r"deben rotularse|no se debe inferir|requiere conservarse|sin completar el dato|"
+        r"los datos suministrados|informaci[oó]n disponible permite comunicar|"
+        r"no debe(?:n)?\s+(?:presentarse|interpretarse|comunicarse)|"
+        r"debe(?:n)?\s+(?:permanecer|conservar|rotular|limitar|interpretar|comunicar(?:se)?|mostrar)|"
+        r"el plan de acci[oó]n debe|la base disponible permite estructurar|la comunicaci[oó]n final debe)\b",
+        re.IGNORECASE,
+    )
+    marker = re.compile(r"\[(?:PHONE|EMAIL|DOCUMENT_ID|PRIVATE_URL|SECRET)\]")
+    blocks = [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", text)]
+    public = [part for part in blocks if part and not forbidden.search(part) and not marker.search(part)]
+    result = "\n".join(public).replace("aprobado por usuario no disponible", "").replace(" ·  · ", " · ").strip(" ·")
+    def number(match):
+        return report_visual_design_service.format_metric(match.group(0))
+    result = re.sub(r"(?<![\w])\d+\.\d{2,}(?![\w])", number, result)
+    result = result.replace("kgCO2e", "kg CO₂e").replace("kg CO2e", "kg CO₂e")
+    return escape(result).replace("\n", "<br>")
 
 
 def _feature_intro(section_type: str | None) -> str:

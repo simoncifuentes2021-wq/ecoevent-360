@@ -79,6 +79,17 @@ class StockMovementCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_correction_reason(self):
+        manual_movement_types = {
+            StockMovementType.INITIAL_STOCK,
+            StockMovementType.ADJUSTMENT_IN,
+            StockMovementType.ADJUSTMENT_OUT,
+            StockMovementType.DAMAGE,
+            StockMovementType.LOSS,
+            StockMovementType.RECOVER_DAMAGED,
+            StockMovementType.CORRECTION,
+        }
+        if self.movement_type not in manual_movement_types:
+            raise ValueError("This movement type is controlled by its operational workflow")
         if self.movement_type in {
             StockMovementType.CORRECTION,
             StockMovementType.LOSS,

@@ -97,12 +97,12 @@ def apply_report_ai_assistant_proposal(
     from app.services import report_builder_service
     from app.services.ai import report_assistant_service
     report = report_builder_service.get_editor(db, report_id, current_user)
-    revision, updated = report_assistant_service.apply_proposal(
+    revision, updated, visual_audit = report_assistant_service.apply_proposal(
         db, report, payload.generation_id, payload.edit_version, current_user,
         payload.accepted_section_keys, payload.apply_preset,
     )
-    create_audit_log(db, user=current_user, action="REPORT_AI_ASSISTANT_PROPOSAL_APPLIED", module="reports", entity_type="Report", entity_id=report.id, event_id=report.event_id, metadata={"generation_id": str(payload.generation_id), "rollback_revision_id": str(revision.id)}, request=request)
-    return {"revision_id": revision.id, "report": updated}
+    create_audit_log(db, user=current_user, action="REPORT_AI_ASSISTANT_PROPOSAL_APPLIED", module="reports", entity_type="Report", entity_id=report.id, event_id=report.event_id, metadata={"generation_id": str(payload.generation_id), "rollback_revision_id": str(revision.id), "visual_audit_passed": visual_audit["final"]["passed"], "visual_corrections": visual_audit["corrections_applied"]}, request=request)
+    return {"revision_id": revision.id, "report": updated, "visual_audit": visual_audit}
 
 
 @router.get("/{report_id}/ai-generations", response_model=list[ReportAIGenerationHistoryItem])

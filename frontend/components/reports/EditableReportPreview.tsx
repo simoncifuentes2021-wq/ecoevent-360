@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, ChevronDown, ChevronUp, Lock, Maximize2, Redo2, RotateCcw, Undo2, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getReportLayoutOverrides, resetReportLayoutOverride, saveReportLayoutOverride, saveReportLayoutOverrides } from "@/lib/api/reports";
@@ -27,6 +27,8 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overridesRef = useRef<Record<string, ReportLayoutOverride>>({});
   const pendingViewportRef = useRef<ViewportAnchor>();
+  const persistentViewportRef = useRef<ViewportAnchor>({ x: 0, y: 0 });
+  const removeFrameScrollListenerRef = useRef<() => void>();
   const [overrides, setOverrides] = useState<Record<string, ReportLayoutOverride>>({});
   const [selected, setSelected] = useState<string[]>([]);
   const [editing, setEditing] = useState(false);
@@ -53,16 +55,22 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
     const anchor = elementKey
       ? doc.querySelector<HTMLElement>(`[data-report-element-key="${CSS.escape(elementKey)}"]`)
       : null;
-    pendingViewportRef.current = {
+    const viewport = {
       x: view.scrollX,
       y: view.scrollY,
       elementKey,
       elementTop: anchor?.getBoundingClientRect().top,
     };
+    pendingViewportRef.current = viewport;
+    persistentViewportRef.current = viewport;
   }, []);
 
+  // Capture the old iframe position in React's layout cleanup, before a new
+  // srcDoc navigation can reset it to the cover.
+  useLayoutEffect(() => () => rememberViewport(), [html, rememberViewport]);
+
   const restoreViewport = useCallback(() => {
-    const saved = pendingViewportRef.current;
+    const saved = pendingViewportRef.current || persistentViewportRef.current;
     const frame = iframeRef.current;
     const view = frame?.contentWindow;
     const doc = frame?.contentDocument;
@@ -213,6 +221,15 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
   useEffect(() => { decorate(); }, [decorate, html]);
 
   const iframeLoaded = useCallback(() => {
+    removeFrameScrollListenerRef.current?.();
+    const view = iframeRef.current?.contentWindow;
+    if (view) {
+      const rememberScroll = () => {
+        persistentViewportRef.current = { x: view.scrollX, y: view.scrollY };
+      };
+      view.addEventListener("scroll", rememberScroll, { passive: true });
+      removeFrameScrollListenerRef.current = () => view.removeEventListener("scroll", rememberScroll);
+    }
     decorate();
     window.requestAnimationFrame(restoreViewport);
     window.setTimeout(restoreViewport, 120);
@@ -221,6 +238,8 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
       pendingViewportRef.current = undefined;
     }, 350);
   }, [decorate, restoreViewport]);
+
+  useEffect(() => () => removeFrameScrollListenerRef.current?.(), []);
 
   const selectedItems = useCallback((): EditorItem[] => selected.map(key => {
     const node = iframeRef.current?.contentDocument?.querySelector<HTMLElement>(`[data-report-element-key="${CSS.escape(key)}"]`);
@@ -240,7 +259,12 @@ export function EditableReportPreview({ reportId, html, plan, onSelectSection, o
   const unlocked = selectedItems();
   const sameSizeEnabled = canEqualSize(unlocked);
   const changeZoom = (next: number) => setZoom(clamp(next, 30, 100));
-  const goPage = (number: number, sectionKey?: string) => { if (sectionKey) onSelectSection(sectionKey); iframeRef.current?.contentWindow?.scrollTo({ top: (number - 1) * 1123, behavior: "smooth" }); };
+  const goPage = (number: number, sectionKey?: string) => {
+    if (sectionKey) onSelectSection(sectionKey);
+    const top = (number - 1) * 1123;
+    persistentViewportRef.current = { x: 0, y: top };
+    iframeRef.current?.contentWindow?.scrollTo({ top, behavior: "smooth" });
+  };
 
   useEffect(() => {
     if (!editing) return;

@@ -106,13 +106,28 @@ def format_metric(value: Any, unit: str | None = None, *, precision: int | None 
     rendered = f"{number:.{digits}f}".rstrip("0").rstrip(".") if digits else f"{number:.0f}"
     if rendered in {"-0", ""}:
         rendered = "0"
-    return rendered.replace(".", ",")
+    integer, dot, fraction = rendered.partition(".")
+    sign = "-" if integer.startswith("-") else ""
+    unsigned = integer.lstrip("-")
+    grouped = f"{int(unsigned):,}".replace(",", ".") if unsigned.isdigit() else unsigned
+    return f"{sign}{grouped}{',' + fraction if dot else ''}"
 
 
 def normalize_unit(unit: str | None) -> str:
     return {"kgCO2e": "kg CO₂e", "tCO2e": "t CO₂e", "attendees": "asistentes"}.get(
         str(unit or ""), str(unit or "")
     )
+
+
+def human_label(value: Any) -> str:
+    raw = str(value or "").strip()
+    known = {
+        "checked_in": "Ingresos registrados",
+        "checked_out": "Retiros registrados",
+        "check_in": "Ingresos registrados",
+        "check_out": "Retiros registrados",
+    }
+    return known.get(raw.lower(), raw.replace("_", " ").strip())
 
 
 def section_enrichment(section: dict[str, Any], visual: dict[str, Any], override: dict[str, Any] | None, editable_attr) -> str:

@@ -28,6 +28,7 @@ export function UserFilters({
           { label: "Admin", value: "ADMIN" },
           { label: "Cliente", value: "CLIENT" },
           { label: "Supervisor", value: "SUPERVISOR" },
+          { label: "Operador logístico", value: "LOGISTICS_OPERATOR" },
           { label: "Trabajador", value: "WORKER" }
         ]}
         value={role}

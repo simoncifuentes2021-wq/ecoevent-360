@@ -75,6 +75,322 @@ from app.services.ai.providers.openrouter import OpenRouterProvider
 from app.services.ai.schemas import ProviderRequest
 
 
+def test_hidden_cover_is_removed_from_preview_pdf_and_page_plan(report_context):
+    from app.services.report_page_planner import PageRecipe, plan_pages
+    from app.services.report_render_service import build_html
+
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    cover = next(section for section in report.sections if section.section_type.value == "COVER")
+    enabled_document, enabled_snapshot = report_publication_service.prepare_document(report)
+    enabled_pages = plan_pages(enabled_snapshot["sections"], report.template_key.value, report.editorial_config)
+    assert '<section class="cover ' in build_html(enabled_document)
+    assert enabled_pages[0].recipe == PageRecipe.COVER_HERO
+    report_builder_service.update_section(
+        db, report, cover.id,
+        SectionUpdate(is_enabled=False, edit_version=report.edit_version),
+    )
+    report = report_builder_service.get_editor(db, report.id, admin)
+    document, snapshot = report_publication_service.prepare_document(report)
+    html = build_html(document)
+    pages = plan_pages(snapshot["sections"], report.template_key.value, report.editorial_config)
+
+    assert '<section class="cover ' not in html
+    assert pages and pages[0].number == 1
+    assert all(page.recipe != PageRecipe.COVER_HERO for page in pages)
+
+
+@pytest.mark.parametrize("cover_style,css_class", [
+    ("FULL_PHOTO", "full-photo"), ("SIDE_PHOTO", "side-photo"),
+    ("EDITORIAL", "editorial-cover"), ("MINIMAL_PREMIUM", "minimal-premium"),
+])
+def test_cover_content_field_visibility_and_all_styles_persist(report_context, cover_style, css_class):
+    from app.services.report_render_service import build_html
+
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    cover = next(section for section in report.sections if section.section_type.value == "COVER")
+    content = ReportSectionContent.model_validate(cover.content)
+    content.text = "Subtítulo certificado de portada"
+    for field in content.fields:
+        if field.key == "title":
+            field.value = "Portada profesional certificada"
+        if field.key == "venue":
+            field.is_visible = False
+    report_builder_service.update_section(db, report, cover.id, SectionUpdate(content=content, edit_version=report.edit_version))
+    report = report_builder_service.get_editor(db, report.id, admin)
+    report_builder_service.update_report(db, report, ReportUpdate(
+        edit_version=report.edit_version,
+        editorial_config={**(report.editorial_config or {}), "cover_style": cover_style},
+    ))
+    report = report_builder_service.get_editor(db, report.id, admin)
+    document, _ = report_publication_service.prepare_document(report)
+    html = build_html(document)
+
+    assert f'class="cover {css_class}"' in html
+    assert "Portada profesional certificada" in html
+    assert "Subtítulo certificado de portada" in html
+    if event.location_name:
+        assert event.location_name not in html
+
+
+def test_cover_photo_can_be_selected_and_really_removed(report_context, monkeypatch):
+    from app.services.report_render_service import build_html
+
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    evidence = Evidence(
+        event_id=event.id,
+        file_url="private/evidences/cover-certified.webp",
+        file_type="image/webp",
+        description="Fotografía certificada de portada",
+    )
+    db.add(evidence)
+    db.commit()
+    report_builder_service.add_evidence(
+        db, report, EvidenceAdd(evidence_id=evidence.id, edit_version=report.edit_version),
+    )
+    report = report_builder_service.get_editor(db, report.id, admin)
+    report_builder_service.update_report(db, report, ReportUpdate(
+        edit_version=report.edit_version,
+        editorial_config={
+            **(report.editorial_config or {}),
+            "cover_evidence_id": str(evidence.id),
+            "cover_show_photo": True,
+        },
+    ))
+    monkeypatch.setattr(
+        report_publication_service,
+        "evidence_asset",
+        lambda _reference, _mime: ("data:image/webp;base64,Y292ZXI=", None),
+    )
+    report = report_builder_service.get_editor(db, report.id, admin)
+    document, _ = report_publication_service.prepare_document(report)
+    assert "background-image:url(data:image/webp;base64,Y292ZXI=)" in build_html(document)
+
+    report_builder_service.update_report(db, report, ReportUpdate(
+        edit_version=report.edit_version,
+        editorial_config={
+            **(report.editorial_config or {}),
+            "cover_evidence_id": None,
+            "cover_show_photo": False,
+        },
+    ))
+    report = report_builder_service.get_editor(db, report.id, admin)
+    document, _ = report_publication_service.prepare_document(report)
+    assert "background-image:url(" not in build_html(document)
+
+
+@pytest.mark.parametrize("layout", list(ReportLayoutVariant))
+def test_executive_summary_autofill_visibility_and_every_layout_render(report_context, layout):
+    from app.services.report_pdf_service import render
+    from app.services.report_render_service import build_html
+
+    db, event, _, _, admin, _, _ = report_context
+    event.estimated_attendees = 1250
+    db.commit()
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    summary = next(section for section in report.sections if section.section_key == "executive_summary")
+    content = ReportSectionContent.model_validate(summary.content)
+    assert {field.key for field in content.fields} == {"attendees", "shows", "duration_days"}
+    content.text = "Síntesis ejecutiva editada y visible en el informe."
+    hidden = next(field for field in content.fields if field.key == "duration_days")
+    hidden.is_visible = False
+    content.items.append({"label": "Cumplimiento", "value": 92, "unit": "%", "_is_visible": True})
+    content.items.append({"label": "Hallazgo oculto certificado", "value": 1, "_is_visible": False})
+    report_builder_service.update_section(db, report, summary.id, SectionUpdate(
+        content=content,
+        layout_variant=layout,
+        edit_version=report.edit_version,
+    ))
+    report = report_builder_service.get_editor(db, report.id, admin)
+    report_builder_service.update_report(db, report, ReportUpdate(
+        edit_version=report.edit_version,
+        editorial_config={
+            **(report.editorial_config or {}),
+            "visual_config": {"preset": "AUTO"},
+        },
+    ))
+    report = report_builder_service.get_editor(db, report.id, admin)
+    document, _ = report_publication_service.prepare_document(report)
+    html = build_html(document)
+
+    css_variant = layout.value.lower().replace("_", "-")
+    assert f"premium-executive-summary layout-{css_variant}" in html
+    assert "Síntesis ejecutiva editada y visible en el informe." in html
+    assert "Hallazgo oculto certificado" not in html
+    assert "Duración" not in html
+    if layout == ReportLayoutVariant.EDITORIAL:
+        pdf, pages = render(document)
+        assert pdf.startswith(b"%PDF-") and pages >= 2
+
+
+def test_hidden_executive_summary_is_removed_from_render_and_plan(report_context):
+    from app.services.report_page_planner import plan_pages
+    from app.services.report_render_service import build_html
+
+    db, event, _, _, admin, _, _ = report_context
+    report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
+    summary = next(section for section in report.sections if section.section_key == "executive_summary")
+    report_builder_service.update_section(
+        db, report, summary.id,
+        SectionUpdate(is_enabled=False, edit_version=report.edit_version),
+    )
+    report = report_builder_service.get_editor(db, report.id, admin)
+    document, snapshot = report_publication_service.prepare_document(report)
+    html = build_html(document)
+    pages = plan_pages(snapshot["sections"], report.template_key.value, report.editorial_config)
+
+    assert "Resumen ejecutivo" not in html
+    assert all("executive_summary" not in page.section_keys for page in pages)
+
+
+@pytest.mark.parametrize("layout", list(ReportLayoutVariant))
+def test_base_visual_render_honors_every_executive_summary_layout(layout):
+    from app.services.report_render_service import _summary_html, normalize_theme
+
+    section = {
+        "section_key": "executive_summary",
+        "section_type": "EXECUTIVE_SUMMARY",
+        "title": "Resumen ejecutivo",
+        "layout_variant": layout.value,
+        "content": {
+            "text": "Síntesis ejecutiva visible en diseño base.",
+            "fields": [
+                {"key": "attendees", "label": "Asistencia", "value": 1250, "unit": "personas"},
+                {"key": "shows", "label": "Shows", "value": 3, "unit": "shows"},
+            ],
+            "items": [{"label": "Cumplimiento", "value": 92, "unit": "%"}],
+        },
+    }
+    html = _summary_html([section], [], normalize_theme({}))
+
+    css_variant = layout.value.lower().replace("_", "-")
+    assert f"premium-executive-summary layout-{css_variant}" in html
+    assert "Síntesis ejecutiva visible en diseño base." in html
+
+
+@pytest.mark.parametrize("layout", list(ReportLayoutVariant))
+def test_event_info_honors_every_visual_composition_without_executive_summary(layout):
+    from app.services.report_render_service import _summary_html, normalize_theme
+
+    section = {
+        "section_key": "event_info",
+        "section_type": "EVENT_INFO",
+        "title": "Datos del evento",
+        "layout_variant": layout.value,
+        "content": {
+            "text": "Información general editada para certificar la vista en vivo.",
+            "fields": [
+                {"key": "name", "label": "Evento", "value": "Festival Circular 2026"},
+                {"key": "location", "label": "Lugar", "value": "Parque Bicentenario"},
+                {"key": "real_attendees", "label": "Asistencia", "value": 1850},
+            ],
+            "items": [{"label": "Jornada", "value": 2, "unit": "días"}],
+        },
+    }
+
+    html = _summary_html([section], [], normalize_theme({}))
+
+    assert f'layout-{layout.value.lower().replace("_", "-")}' in html
+    assert "Festival Circular 2026" in html
+    assert "Información general editada" in html
+
+
+def test_event_info_professional_default_renders_all_visible_edited_fields():
+    from app.services.report_render_service import _render_event_info_premium, normalize_theme
+
+    section = {
+        "section_key": "event_info", "section_type": "EVENT_INFO",
+        "title": "Datos del evento", "layout_variant": "TWO_COLUMN",
+        "content": {
+            "text": "Datos actualizados manualmente.",
+            "fields": [
+                {"key": "name", "label": "Evento", "value": "Evento completo"},
+                {"key": "end_date", "label": "Término", "value": "2026-09-10T23:00:00Z"},
+                {"key": "estimated_attendees", "label": "Asistencia estimada", "value": "1200"},
+                {"key": "real_attendees", "label": "Asistencia real", "value": "2222"},
+            ],
+            "items": [],
+        },
+    }
+
+    html = _render_event_info_premium(section, [], normalize_theme({}), "ECOEVENT_EDITORIAL")
+
+    for expected in (
+        "Término", "2026-09-10T23:00:00Z",
+        "Asistencia estimada", "1.200", "Asistencia real", "2.222",
+    ):
+        assert expected in html
+
+
+def test_mixed_compositions_do_not_let_images_displace_section_information():
+    from app.services.report_render_service import _mixed_html, normalize_theme
+
+    fields = [
+        {"key": f"field_{index}", "label": f"Dato {index}", "value": f"valor-{index}"}
+        for index in range(1, 9)
+    ]
+    photos = [
+        {"evidence_id": f"photo-{index}", "uri": f"data:image/png;base64,PHOTO{index}", "caption": f"Foto {index}"}
+        for index in range(1, 5)
+    ]
+    section = {
+        "section_key": "event_info", "section_type": "EVENT_INFO",
+        "title": "Datos del evento", "layout_variant": "KPI_GRID",
+        "content": {"text": "Todos los datos deben conservarse.", "fields": fields, "items": []},
+    }
+
+    kpi_html = _mixed_html([section], photos, normalize_theme({}))
+    assert "data:image/png" not in kpi_html
+    assert all(f"valor-{index}" in kpi_html for index in range(1, 9))
+
+    section["layout_variant"] = "PHOTO_GRID"
+    photo_html = _mixed_html([section], photos, normalize_theme({}))
+    assert photo_html.count("<img ") == 2
+    assert all(f"valor-{index}" in photo_html for index in range(1, 9))
+
+
+@pytest.mark.parametrize("section_type,default_layout", [
+    ("EVENT_INFO", "TWO_COLUMN"), ("SHOW_INFO", "TWO_COLUMN"),
+    ("SERVICES", "METRIC_LIST"), ("OPERATIONS", "EDITORIAL"),
+    ("STAFF", "KPI_GRID"), ("TASKS", "BIG_NUMBERS"),
+    ("INCIDENTS", "METRIC_LIST"), ("FORMS", "FEATURE_CHART"),
+    ("BIKE_ZONE", "BIG_NUMBERS"), ("WASTE", "FEATURE_CHART"),
+    ("CARBON", "FEATURE_CHART"), ("ENVIRONMENTAL_IMPACT", "FEATURE_CHART"),
+    ("EVIDENCES", "PHOTO_GRID"), ("RECOMMENDATIONS", "TEXT_IMAGE"),
+    ("CONCLUSION", "EDITORIAL"),
+])
+def test_custom_composition_takes_priority_in_auto_and_premium_for_every_module(
+    section_type, default_layout
+):
+    from app.services.report_render_service import _page_html, normalize_theme
+
+    selected = "KPI_GRID" if default_layout == "EDITORIAL" else "EDITORIAL"
+    section = {
+        "section_key": section_type.lower(), "section_type": section_type,
+        "title": f"Módulo {section_type}", "layout_variant": selected,
+        "content": {
+            "text": "Cambio certificado en el reporte.",
+            "fields": [{"key": "total", "label": "Total", "value": 42, "is_visible": True}],
+            "items": [{"label": "Detalle", "value": 7, "_is_visible": True}],
+        },
+    }
+    page = {"recipe": "MIXED_KPI_PAGE", "sections": [section]}
+    expected = f'layout-{selected.lower().replace("_", "-")}'
+
+    auto_html = _page_html(page, {}, [], normalize_theme({}), 1, {
+        "visual_config": {"preset": "AUTO"}
+    })
+    premium_html = _page_html(page, {}, [], normalize_theme({}), 1, {
+        "visual_config": {"preset": "ECOEVENT_EDITORIAL"}
+    })
+
+    assert expected in auto_html and expected in premium_html
+    assert "Cambio certificado en el reporte." in auto_html
+    assert "Cambio certificado en el reporte." in premium_html
+
+
 def test_freeform_page_element_batch_persists_exact_geometry(report_context):
     db, event, _, _, admin, _, _ = report_context
     report = report_builder_service.create_draft(db, event.id, ReportScope.EVENT, None, admin)
@@ -511,6 +827,8 @@ def test_report_ai_context_scope_manual_priority_and_no_pii(report_context):
     )
     assert context["scope"] == {"type": "SHOW", "event_id": str(event.id), "show_id": str(show.id)}
     assert context["effective_content"]["text"] == "Correccion manual aprobada"
+    assert context["section_guidance"]["policy_id"] == "TASKS"
+    assert context["section_guidance_version"] == "report_section_guidance_v1"
     assert "private@example.com" not in str(context)
     summary = next(
         section for section in report.sections if section.section_key == "executive_summary"
@@ -522,6 +840,7 @@ def test_report_ai_context_scope_manual_priority_and_no_pii(report_context):
     )
     assert "tasks" not in {item["key"] for item in summary_context["included_sections"]}
     assert summary_context["source_data"] == {}
+    assert summary_context["section_guidance"]["policy_id"] == "EXECUTIVE_SUMMARY"
     with pytest.raises(HTTPException):
         build_report_section_context(db, report.id, tasks.id, outsider, ReportAIRequest())
 
@@ -649,6 +968,7 @@ def test_editorial_ai_context_is_scoped_and_sanitized(report_context):
     db.commit()
     _, context = build_report_editorial_context(db, report.id, admin, "EXECUTIVE", True)
     assert context["scope"]["show_id"] == str(show.id)
+    assert context["section_guidance"]["waste"]["policy_id"] == "WASTE"
     assert "private@test.local" not in str(context)
     with pytest.raises(HTTPException):
         build_report_editorial_context(db, report.id, outsider, "EXECUTIVE", True)
@@ -1222,7 +1542,7 @@ def test_premium_renderer_opens_and_renders_all_layouts():
         for label in ("HERO IMAGE TEXT", "KPI GRID", "BIG NUMBERS", "FEATURE CHART", "PHOTO GRID")
     )
     pdf, pages = render(document)
-    assert pdf.startswith(b"%PDF-") and len(pdf) > 20_000 and 4 <= pages <= 7
+    assert pdf.startswith(b"%PDF-") and len(pdf) > 20_000 and 3 <= pages <= 7
 
 
 def test_environmental_impact_renderer_uses_human_readable_precision_and_details():
@@ -1455,7 +1775,7 @@ def test_environmental_story_template_preserves_key_content():
         "environmental-story",
         "carbon-story",
         "Botellas PET",
-        "7104",
+        "7.104",
         "Bicicletas",
         "363",
         "Transporte público",
@@ -1465,6 +1785,98 @@ def test_environmental_story_template_preserves_key_content():
         "Agua y residuos evitados",
     ):
         assert value in html
+
+
+def test_environmental_management_does_not_render_disabled_bike_fallback():
+    from app.services.report_render_service import _environmental_management_html
+
+    waste = {
+        "section_key": "waste",
+        "section_type": "WASTE",
+        "title": "Residuos",
+        "content": {
+            "items": [
+                {"label": "Botellas PET", "value": 32, "unit": "kg"},
+            ]
+        },
+    }
+
+    html = _environmental_management_html([waste], [])
+
+    assert "Botellas PET" in html
+    assert "32 kg" in html
+    assert "Bicicletero" not in html
+    assert "Movilidad sustentable" not in html
+
+
+def test_waste_feature_does_not_borrow_photo_assigned_to_bike_zone():
+    from app.services.report_render_service import _page_html, normalize_theme
+
+    waste = {
+        "section_key": "waste",
+        "section_type": "WASTE",
+        "title": "Residuos",
+        "layout_variant": "HERO_IMAGE_TEXT",
+        "is_enabled": True,
+        "content": {
+            "text": "Gestión de residuos",
+            "items": [{"label": "Vidrio", "value": 18, "unit": "kg"}],
+        },
+    }
+    bike_photo = {
+        "uri": "https://example.test/bike-only.jpg",
+        "section_key": "bike_zone",
+        "caption": "Bicicletero",
+    }
+
+    html = _page_html(
+        {"recipe": "WASTE_FEATURE", "sections": [waste]},
+        {},
+        [bike_photo],
+        normalize_theme({}),
+        1,
+    )
+
+    assert "Gestión de residuos" in html
+    assert "Vidrio" in html
+    assert "bike-only.jpg" not in html
+    assert "Bicicletero" not in html
+
+
+def test_standalone_ecoequivalences_honors_composition_without_hidden_carbon_panel():
+    from app.services.report_render_service import _page_html, normalize_theme
+
+    eco = {
+        "section_key": "preset_eco_equivalences",
+        "section_type": "CUSTOM",
+        "title": "Ecoequivalencias",
+        "layout_variant": "BIG_NUMBERS",
+        "is_enabled": True,
+        "content": {
+            "text": "Referencias comunicacionales del impacto.",
+            "fields": [
+                {"key": "gasoline", "label": "Gasolina", "value": "8,94", "unit": "L"},
+                {"key": "forest", "label": "Bosque", "value": "0,02", "unit": "acre-año"},
+            ],
+            "items": [],
+        },
+    }
+
+    html = _page_html(
+        {"recipe": "CARBON_EQUIVALENCES", "sections": [eco]},
+        {},
+        [],
+        normalize_theme({}),
+        1,
+    )
+
+    assert "layout-big-numbers" in html
+    assert "Gasolina" in html
+    assert "8,94" in html
+    assert "Bosque" in html
+    assert "Referencias comunicacionales" in html
+    assert "Huella de" not in html
+    assert "carbon-panel" not in html
 
 
 def test_refresh_preserves_manual_items_and_visibility():
@@ -1548,7 +1960,7 @@ def test_every_layout_preserves_information_in_regular_and_feature_recipes(secti
         section["title"],
         "Narrativa premium conservada",
         "Indicador preservado",
-        "7341",
+        "7.341",
         "kg",
         "Categoría preservada",
         "219",

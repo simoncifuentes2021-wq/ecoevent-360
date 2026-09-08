@@ -2,22 +2,25 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, Plus, Search, Trash2 } from "lucide-react";
+import { Eye, Plus, Trash2 } from "lucide-react";
 
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { ErrorState } from "@/components/common/ErrorState";
 import { ModalShell } from "@/components/common/ModalShell";
+import { WarehouseProductCatalog } from "@/components/logistics/WarehouseProductCatalog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api";
-import { getInventoryItems } from "@/lib/api/inventory";
+import { getAllInventoryItems } from "@/lib/api/inventory";
 import { createEventLogisticsOrder, getEventLogisticsOrders } from "@/lib/api/logistics-orders";
+import { getAllStockBalances } from "@/lib/api/stock";
 import { getUsers } from "@/lib/api/users";
 import { getWarehouses } from "@/lib/api/warehouses";
 import type { InventoryItem } from "@/types/inventory";
 import type { LogisticsOrder, LogisticsOrderCreate, LogisticsOrderItemCreate, LogisticsOrderStatus } from "@/types/logistics-order";
+import type { StockBalance } from "@/types/stock";
 import type { User } from "@/types/user";
 import type { Warehouse } from "@/types/warehouse";
 
@@ -60,6 +63,7 @@ export function LogisticsOrdersTab({ eventId, eventName, role }: { eventId: stri
   const [orders, setOrders] = useState<LogisticsOrder[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<InventoryItem[]>([]);
+  const [stock, setStock] = useState<StockBalance[]>([]);
   const [operators, setOperators] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,22 +75,24 @@ export function LogisticsOrdersTab({ eventId, eventName, role }: { eventId: stri
     setLoading(true);
     setError(null);
     try {
-      const [orderResponse, warehouseResponse, productResponse, userResponse] = await Promise.all([
+      const [orderResponse, warehouseResponse, allProducts, allStock, userResponse] = await Promise.all([
         getEventLogisticsOrders(eventId, { limit: 100 }),
         getWarehouses({ is_active: true, limit: 100 }),
-        getInventoryItems({ is_active: true, limit: 100 }),
+        getAllInventoryItems({ is_active: true }),
+        canCreate ? getAllStockBalances() : Promise.resolve([]),
         getUsers({ role: "LOGISTICS_OPERATOR", is_active: true, limit: 100 })
       ]);
       setOrders(orderResponse.items);
       setWarehouses(warehouseResponse.items);
-      setProducts(productResponse.items);
+      setProducts(allProducts);
+      setStock(allStock);
       setOperators(userResponse.items.filter((user) => user.role === "LOGISTICS_OPERATOR" && user.is_active));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No pudimos cargar los pedidos logisticos.");
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [canCreate, eventId]);
 
   useEffect(() => {
     void load();
@@ -146,6 +152,7 @@ export function LogisticsOrdersTab({ eventId, eventName, role }: { eventId: stri
           eventName={eventName}
           operators={operators}
           products={products}
+          stock={stock}
           warehouses={warehouses}
           onClose={() => setFormOpen(false)}
           onSubmit={submit}
@@ -159,6 +166,7 @@ function OrderFormModal({
   eventName,
   warehouses,
   products,
+  stock,
   operators,
   onClose,
   onSubmit
@@ -166,6 +174,7 @@ function OrderFormModal({
   eventName?: string;
   warehouses: Warehouse[];
   products: InventoryItem[];
+  stock: StockBalance[];
   operators: User[];
   onClose: () => void;
   onSubmit: (data: LogisticsOrderCreate) => Promise<void>;
@@ -184,18 +193,6 @@ function OrderFormModal({
   const [productQuery, setProductQuery] = useState("");
   const duplicateProductId = findDuplicateProductId(form.items);
   const selectedProductIds = useMemo(() => new Set(form.items.map((row) => row.item_id)), [form.items]);
-  const filteredProducts = useMemo(() => {
-    const query = productQuery.trim().toLowerCase();
-    return products
-      .filter((product) => !selectedProductIds.has(product.id))
-      .filter((product) => {
-        if (!query) return true;
-        return [product.name, product.sku, product.description, product.unit, product.item_type]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(query));
-      })
-      .slice(0, 8);
-  }, [productQuery, products, selectedProductIds]);
   const total = useMemo(
     () =>
       form.items.reduce((sum, row) => {
@@ -309,49 +306,16 @@ function OrderFormModal({
               <p className="text-sm text-muted-foreground">Busca productos por nombre, SKU o tipo. El precio visible es referencia; el backend guarda el snapshot.</p>
             </div>
           </div>
-          <Card>
-            <CardContent className="space-y-3">
-              <label className="grid gap-2 text-sm font-semibold">
-                Buscar producto
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    className="pl-9"
-                    placeholder="Nombre, SKU, tipo o unidad"
-                    value={productQuery}
-                    onChange={(event) => setProductQuery(event.target.value)}
-                  />
-                </div>
-              </label>
-              <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">
-                {filteredProducts.length === 0 ? (
-                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                    {products.length === form.items.length ? "Todos los productos disponibles ya fueron agregados." : "No encontramos productos con esa busqueda."}
-                  </div>
-                ) : (
-                  filteredProducts.map((product) => (
-                    <button
-                      className="grid gap-3 rounded-md border bg-white p-3 text-left transition hover:border-primary hover:bg-emerald-50 md:grid-cols-[1fr_110px_120px_100px]"
-                      key={product.id}
-                      onClick={() => addProduct(product)}
-                      type="button"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold">{product.name}</p>
-                        <p className="text-xs text-muted-foreground">{product.sku || "Sin SKU"}</p>
-                      </div>
-                      <Info label="Tipo" value={product.item_type} />
-                      <Info label="Unidad" value={product.unit || "-"} />
-                      <div className="flex items-center justify-between gap-2 md:justify-end">
-                        <span className="text-sm font-semibold">{money(product.unit_price || 0)}</span>
-                        <Plus className="h-4 w-4 text-primary" />
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <WarehouseProductCatalog
+            onAdd={addProduct}
+            onQueryChange={setProductQuery}
+            products={products}
+            query={productQuery}
+            selectedProductIds={selectedProductIds}
+            stock={stock}
+            warehouseId={form.warehouse_id}
+            warehouses={warehouses}
+          />
 
           <div className="space-y-3">
             <div>

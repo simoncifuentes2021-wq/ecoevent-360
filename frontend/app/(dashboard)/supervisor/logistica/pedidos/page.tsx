@@ -1,49 +1,30 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, Plus, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 
-import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
-import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { ModalShell } from "@/components/common/ModalShell";
 import { PageHeader } from "@/components/common/PageHeader";
 import { RoleGuard } from "@/components/layout/RoleGuard";
-import { Badge } from "@/components/ui/badge";
+import { LogisticsOrdersOverview, logisticsStatusLabels } from "@/components/logistics/LogisticsOrdersOverview";
+import { WarehouseProductCatalog } from "@/components/logistics/WarehouseProductCatalog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api";
 import { getEvents } from "@/lib/api/events";
-import { getInventoryItems } from "@/lib/api/inventory";
+import { getAllInventoryItems } from "@/lib/api/inventory";
 import { createEventLogisticsOrder, getLogisticsOrders } from "@/lib/api/logistics-orders";
+import { getAllStockBalances } from "@/lib/api/stock";
 import { getUsers } from "@/lib/api/users";
 import { getWarehouses } from "@/lib/api/warehouses";
 import type { Event } from "@/types/event";
 import type { InventoryItem } from "@/types/inventory";
 import type { LogisticsOrder, LogisticsOrderCreate, LogisticsOrderStatus } from "@/types/logistics-order";
+import type { StockBalance } from "@/types/stock";
 import type { User } from "@/types/user";
 import type { Warehouse } from "@/types/warehouse";
-
-const statusLabels: Record<LogisticsOrderStatus, string> = {
-  REQUESTED: "Solicitado",
-  ASSIGNED: "Asignado",
-  STOCK_REVIEW: "Revision stock",
-  RESERVED: "Stock reservado",
-  INSUFFICIENT_STOCK: "Stock insuficiente",
-  IN_PREPARATION: "En preparacion",
-  LOADED: "Cargado",
-  OUT_OF_WAREHOUSE: "Salida de bodega",
-  DELIVERED: "Entregado",
-  PARTIALLY_DELIVERED: "Entrega parcial",
-  OUTCOME_PENDING: "Resultado pendiente",
-  OUTCOME_RECORDED: "Resultados registrados",
-  WITH_DIFFERENCES: "Con diferencias",
-  CLOSED: "Cerrado",
-  OBSERVED: "Observado",
-  CANCELLED: "Cancelado"
-};
 
 const statuses: LogisticsOrderStatus[] = [
   "ASSIGNED",
@@ -65,6 +46,7 @@ export default function SupervisorLogisticsOrdersPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<InventoryItem[]>([]);
+  const [stock, setStock] = useState<StockBalance[]>([]);
   const [operators, setOperators] = useState<User[]>([]);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
@@ -76,17 +58,19 @@ export default function SupervisorLogisticsOrdersPage() {
     setLoading(true);
     setError(null);
     try {
-      const [orderResponse, eventResponse, warehouseResponse, productResponse, operatorResponse] = await Promise.all([
+      const [orderResponse, eventResponse, warehouseResponse, allProducts, allStock, operatorResponse] = await Promise.all([
         getLogisticsOrders({ page: 1, limit: 100 }),
         getEvents({ page: 1, limit: 100 }),
         getWarehouses({ is_active: true, limit: 100 }),
-        getInventoryItems({ is_active: true, limit: 100 }),
+        getAllInventoryItems({ is_active: true }),
+        getAllStockBalances(),
         getUsers({ role: "LOGISTICS_OPERATOR", is_active: true, limit: 100 })
       ]);
       setOrders(orderResponse.items);
       setEvents(eventResponse.items);
       setWarehouses(warehouseResponse.items);
-      setProducts(productResponse.items);
+      setProducts(allProducts);
+      setStock(allStock);
       setOperators(operatorResponse.items.filter((user) => user.role === "LOGISTICS_OPERATOR" && user.is_active));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No pudimos cargar los pedidos logisticos.");
@@ -116,16 +100,6 @@ export default function SupervisorLogisticsOrdersPage() {
     });
   }, [orders, q, status]);
 
-  const columns: DataTableColumn<LogisticsOrder>[] = [
-    { key: "title", header: "Pedido", cell: (order) => <span className="font-semibold">{order.title}</span> },
-    { key: "event", header: "Evento", cell: (order) => order.event?.name || "-" },
-    { key: "warehouse", header: "Bodega", cell: (order) => order.warehouse?.name || "-" },
-    { key: "operator", header: "Operador", cell: (order) => order.assigned_operator?.full_name || "-" },
-    { key: "items", header: "Productos", cell: (order) => order.items.length },
-    { key: "total", header: "Total estimado", cell: (order) => money(order.total_estimated_amount) },
-    { key: "status", header: "Estado", cell: (order) => <StatusBadge status={order.status} /> }
-  ];
-
   async function submitQuickOrder(eventId: string, data: LogisticsOrderCreate) {
     await createEventLogisticsOrder(eventId, data);
     setFormOpen(false);
@@ -147,9 +121,21 @@ export default function SupervisorLogisticsOrdersPage() {
           </Button>
         </div>
 
-        <Card>
-          <CardContent>
-            <div className="grid gap-3 md:grid-cols-[1fr_260px]">
+        <section className="grid gap-3 sm:grid-cols-3">
+          <Summary icon={ClipboardList} label="Pedidos visibles" value={orders.length} />
+          <Summary icon={AlertTriangle} label="Requieren atención" value={orders.filter((order) => ["INSUFFICIENT_STOCK", "WITH_DIFFERENCES", "OBSERVED"].includes(order.status)).length} warning />
+          <Summary icon={CheckCircle2} label="Completados" value={orders.filter((order) => order.status === "CLOSED").length} />
+        </section>
+
+        <Card className="border-slate-200 shadow-sm">
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                <SlidersHorizontal className="h-4 w-4 text-emerald-700" /> Buscar y filtrar
+              </div>
+              <span className="text-xs font-semibold text-slate-500">{filtered.length} resultados</span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-[1fr_260px_auto]">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
@@ -163,39 +149,32 @@ export default function SupervisorLogisticsOrdersPage() {
                 <option value="">Todos los estados</option>
                 {statuses.map((item) => (
                   <option key={item} value={item}>
-                    {statusLabels[item]}
+                    {logisticsStatusLabels[item]}
                   </option>
                 ))}
               </select>
+              <Button disabled={!q && !status} type="button" variant="ghost" onClick={() => { setQ(""); setStatus(""); }}>
+                <X className="h-4 w-4" /> Limpiar
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {!loading && !error && filtered.length === 0 ? (
-          <EmptyState title="Sin pedidos logisticos" description="Cuando crees pedidos desde la pestana Logistica de tus eventos, apareceran aqui." />
-        ) : (
-          <DataTable
-            actions={(order) => (
-              <Link href={`/supervisor/logistica/pedidos/${order.id}`}>
-                <Button size="sm" type="button" variant="secondary">
-                  <Eye className="h-4 w-4" />
-                  Ver
-                </Button>
-              </Link>
-            )}
-            columns={columns}
-            data={filtered}
-            emptyTitle="Sin pedidos logisticos"
-            error={error}
-            getRowKey={(order) => order.id}
-            loading={loading}
-          />
-        )}
+        <LogisticsOrdersOverview
+          orders={filtered}
+          loading={loading}
+          error={error}
+          onRetry={load}
+          hrefFor={(order) => `/supervisor/logistica/pedidos/${order.id}`}
+          emptyTitle="Sin pedidos logísticos"
+          emptyDescription="Cuando crees pedidos desde la pestaña Logística de tus eventos, aparecerán aquí."
+        />
         {formOpen ? (
           <QuickOrderModal
             events={events}
             operators={operators}
             products={products}
+            stock={stock}
             warehouses={warehouses}
             onClose={() => setFormOpen(false)}
             onSubmit={submitQuickOrder}
@@ -226,6 +205,7 @@ function QuickOrderModal({
   events,
   warehouses,
   products,
+  stock,
   operators,
   onClose,
   onSubmit
@@ -233,6 +213,7 @@ function QuickOrderModal({
   events: Event[];
   warehouses: Warehouse[];
   products: InventoryItem[];
+  stock: StockBalance[];
   operators: User[];
   onClose: () => void;
   onSubmit: (eventId: string, data: LogisticsOrderCreate) => Promise<void>;
@@ -250,18 +231,6 @@ function QuickOrderModal({
   const [error, setError] = useState<string | null>(null);
   const [productQuery, setProductQuery] = useState("");
   const selectedProductIds = useMemo(() => new Set(form.items.map((item) => item.item_id)), [form.items]);
-  const filteredProducts = useMemo(() => {
-    const query = productQuery.trim().toLowerCase();
-    return products
-      .filter((product) => !selectedProductIds.has(product.id))
-      .filter((product) => {
-        if (!query) return true;
-        return [product.name, product.sku, product.unit, product.item_type]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(query));
-      })
-      .slice(0, 8);
-  }, [productQuery, products, selectedProductIds]);
   const total = useMemo(
     () =>
       form.items.reduce((sum, row) => {
@@ -363,40 +332,16 @@ function QuickOrderModal({
           </label>
         </div>
 
-        <Card>
-          <CardContent className="space-y-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                className="pl-9"
-                placeholder="Buscar producto por nombre, SKU o tipo"
-                value={productQuery}
-                onChange={(event) => setProductQuery(event.target.value)}
-              />
-            </div>
-            <div className="grid max-h-64 gap-2 overflow-y-auto pr-1">
-              {filteredProducts.length === 0 ? (
-                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">No hay productos disponibles con esa busqueda.</div>
-              ) : (
-                filteredProducts.map((product) => (
-                  <button
-                    className="grid gap-2 rounded-md border bg-white p-3 text-left transition hover:border-primary hover:bg-emerald-50 md:grid-cols-[1fr_100px_110px]"
-                    key={product.id}
-                    onClick={() => addProduct(product)}
-                    type="button"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold">{product.name}</p>
-                      <p className="text-xs text-muted-foreground">{product.sku || "Sin SKU"}</p>
-                    </div>
-                    <span className="text-sm">{product.unit || "-"}</span>
-                    <span className="text-sm font-semibold">{money(product.unit_price || 0)}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <WarehouseProductCatalog
+          onAdd={addProduct}
+          onQueryChange={setProductQuery}
+          products={products}
+          query={productQuery}
+          selectedProductIds={selectedProductIds}
+          stock={stock}
+          warehouseId={form.warehouse_id}
+          warehouses={warehouses}
+        />
 
         <div className="space-y-3">
           {form.items.map((row, index) => {
@@ -440,16 +385,17 @@ function QuickOrderModal({
   );
 }
 
-function StatusBadge({ status }: { status: LogisticsOrderStatus }) {
-  const tone =
-    status === "CANCELLED"
-      ? "danger"
-      : status === "INSUFFICIENT_STOCK" || status === "WITH_DIFFERENCES"
-        ? "warning"
-        : status === "CLOSED"
-          ? "neutral"
-          : "success";
-  return <Badge tone={tone}>{statusLabels[status]}</Badge>;
+function Summary({ icon: Icon, label, value, warning = false }: { icon: typeof ClipboardList; label: string; value: number; warning?: boolean }) {
+  return (
+    <Card className={warning ? "border-amber-200 bg-amber-50/40" : "border-slate-200"}>
+      <CardContent className="flex items-center gap-3 p-4">
+        <span className={`grid h-10 w-10 place-items-center rounded-xl ${warning ? "bg-amber-100 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <div><p className="text-xs font-semibold text-slate-500">{label}</p><p className="text-2xl font-extrabold text-slate-950">{value}</p></div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function money(value: string | number) {

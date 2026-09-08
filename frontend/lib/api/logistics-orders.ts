@@ -3,6 +3,7 @@ import { toQuery, type QueryValue } from "@/lib/api/query";
 import type { ListResponse } from "@/types/common";
 import type {
   LogisticsOrder,
+  LogisticsOrderAvailability,
   LogisticsOrderClose,
   LogisticsOrderCreate,
   LogisticsOrderDeliveryConfirm,
@@ -12,8 +13,11 @@ import type {
   LogisticsOrderItemDeliver,
   LogisticsOrderItemLoad,
   LogisticsOrderItemOutcome,
+  LogisticsPartialDispatchApproval,
+  LogisticsPartialDispatchRequest,
   LogisticsOrderOutcomeConfirm,
   LogisticsOrderStockCheck,
+  LogisticsOrderStockTransferCreate,
   LogisticsOrderUpdate
 } from "@/types/logistics-order";
 
@@ -39,6 +43,30 @@ export function getLogisticsOrder(id: string) {
 
 export function checkLogisticsOrderStock(id: string) {
   return api.get<LogisticsOrderStockCheck>(`/logistics-orders/${id}/stock-check`);
+}
+
+export function getLogisticsOrderStockAvailability(id: string) {
+  return api.get<LogisticsOrderAvailability>(`/logistics-orders/${id}/stock-availability`);
+}
+
+export function transferStockToLogisticsOrder(id: string, data: LogisticsOrderStockTransferCreate) {
+  return api.post<LogisticsOrder>(`/logistics-orders/${id}/stock-transfers`, data);
+}
+
+export function getPartialDispatchRequest(id: string) {
+  return api.get<LogisticsPartialDispatchRequest | null>(`/logistics-orders/${id}/partial-dispatch-request`);
+}
+
+export function createPartialDispatchRequest(id: string, reason: string) {
+  return api.post<LogisticsPartialDispatchRequest>(`/logistics-orders/${id}/partial-dispatch-request`, { reason });
+}
+
+export function approvePartialDispatchRequest(id: string, review_notes?: string | null) {
+  return api.post<LogisticsPartialDispatchApproval>(`/logistics-partial-dispatch-requests/${id}/approve`, { review_notes });
+}
+
+export function rejectPartialDispatchRequest(id: string, review_notes?: string | null) {
+  return api.post<LogisticsPartialDispatchRequest>(`/logistics-partial-dispatch-requests/${id}/reject`, { review_notes });
 }
 
 export function reserveLogisticsOrderStock(id: string) {
@@ -71,6 +99,10 @@ export function confirmLogisticsOrderDelivery(id: string, data: LogisticsOrderDe
 
 export function registerLogisticsOrderItemOutcome(id: string, data: LogisticsOrderItemOutcome) {
   return api.patch<LogisticsOrderItem>(`/logistics-order-items/${id}/outcome`, data);
+}
+
+export function markAllLogisticsOrderConsumablesConsumed(id: string) {
+  return api.post<LogisticsOrder>(`/logistics-orders/${id}/outcomes/mark-consumables-consumed`, {});
 }
 
 export function confirmLogisticsOrderOutcome(id: string, data: LogisticsOrderOutcomeConfirm) {

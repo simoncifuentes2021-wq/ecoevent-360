@@ -13,8 +13,8 @@ export function Sidebar({ user, onNavigate }: { user: AuthUser; onNavigate?: () 
   const items = roleNavigation[user.role];
 
   return (
-    <aside className="flex h-full min-h-screen w-72 flex-col border-r bg-white/95 px-3 py-4 shadow-soft">
-      <Link className="mb-6 flex items-center gap-3 px-3" href="/">
+    <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r bg-white/95 px-3 py-4 shadow-soft md:sticky md:top-0 md:h-screen md:min-h-screen md:w-72">
+      <Link className="mb-4 flex shrink-0 items-center gap-3 px-3" href="/" onClick={onNavigate}>
         <span className="grid h-11 w-11 place-items-center rounded-lg bg-primary text-primary-foreground">
           <Leaf className="h-5 w-5" />
         </span>
@@ -23,7 +23,10 @@ export function Sidebar({ user, onNavigate }: { user: AuthUser; onNavigate?: () 
           <span className="block text-xs text-muted-foreground">Operacion sostenible</span>
         </span>
       </Link>
-      <nav className="grid gap-1">
+      <nav
+        aria-label="Navegación principal"
+        className="grid min-h-0 flex-1 touch-pan-y auto-rows-max gap-1 overflow-y-auto overscroll-contain pb-4 pr-1 [-webkit-overflow-scrolling:touch]"
+      >
         {items.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -62,7 +65,7 @@ export function Sidebar({ user, onNavigate }: { user: AuthUser; onNavigate?: () 
           );
         })}
       </nav>
-      <div className="mt-auto rounded-lg border bg-slate-50 p-3 text-xs text-slate-600">
+      <div className="mt-2 shrink-0 rounded-lg border bg-slate-50 p-3 text-xs text-slate-600">
         <p className="font-semibold text-slate-900">Vista segun rol</p>
         <p className="mt-1">Solo veras acciones disponibles para tu perfil.</p>
       </div>

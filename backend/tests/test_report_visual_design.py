@@ -1,5 +1,7 @@
 from app.schemas.report_schema import ReportEditorialConfig
-from app.services.report_render_service import _editable_attr
+from types import SimpleNamespace
+
+from app.services.report_render_service import _editable_attr, _styles
 from app.services.report_render_service import _premium_page_html
 from app.services.report_visual_design_service import (
     SECTION_ICONS,
@@ -16,6 +18,33 @@ def test_visual_config_is_controlled_and_defaults_to_original_design():
     assert config.visual_config.preset == "AUTO"
     assert config.section_visuals == {}
     assert normalized(None)["preset"] == "AUTO"
+
+
+def test_ai_section_visuals_activate_premium_without_hiding_metrics():
+    section = {
+        "section_key": "waste", "section_type": "WASTE", "title": "Residuos",
+        "layout_variant": "FEATURE_CHART", "content": {"items": [], "fields": [
+            {"key": "total", "label": "Total", "value": 10, "unit": "kg"},
+            {"key": "recovery_rate", "label": "Recuperación", "value": 70, "unit": "%"},
+        ]},
+    }
+    html = _premium_page_html([section], [], {"accent_color": "#95D5B2"}, normalized(None), {
+        "waste": {"premium_variant": "WASTE_CIRCULARITY", "emphasis": "HIGH", "selected_metric_keys": ["waste.recovery_rate"]}
+    })
+    assert "premium-emphasis-high" in html
+    assert "premium-variant-waste-circularity" in html
+    assert "premium-ai-priority" in html
+    assert "70" in html and "10" in html
+
+
+def test_ai_premium_styles_use_the_normalized_theme_without_runtime_name_errors():
+    document = SimpleNamespace(
+        theme={"primary_color": "#12372A", "secondary_color": "#2D6A4F", "accent_color": "#95D5B2", "background_color": "#F4F7F5", "text_color": "#15231D", "muted_color": "#61736A"},
+        editorial_config={"visual_config": {"preset": "ENVIRONMENTAL"}},
+    )
+    css = _styles(document)
+    assert ".premium-ai-priority" in css
+    assert "#95D5B2" in css
 
 
 def test_internal_icon_allowlist_never_renders_input_as_markup():
@@ -60,6 +89,13 @@ def test_metric_formatting_is_human_readable_and_keeps_small_precision():
     assert format_metric("0.223593700422500000", "L") == "0,22"
     assert format_metric("100.0", "kgCO2e") == "100"
     assert format_metric("0.000525925") == "0,00053"
+
+
+def test_report_labels_are_humanized_without_internal_enum_names():
+    from app.services.report_visual_design_service import human_label
+
+    assert human_label("Checked_In") == "Ingresos registrados"
+    assert human_label("checked_out") == "Retiros registrados"
 
 
 def test_premium_page_replaces_content_with_editable_internal_section_blocks():

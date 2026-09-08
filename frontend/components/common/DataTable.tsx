@@ -25,7 +25,8 @@ export function DataTable<T>({
   page,
   limit,
   total,
-  onPageChange
+  onPageChange,
+  stickyHeader = false
 }: {
   columns: DataTableColumn<T>[];
   data: T[];
@@ -39,6 +40,7 @@ export function DataTable<T>({
   limit?: number;
   total?: number;
   onPageChange?: (page: number) => void;
+  stickyHeader?: boolean;
 }) {
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} />;
@@ -52,9 +54,9 @@ export function DataTable<T>({
           <EmptyState description={emptyDescription || "No hay registros para mostrar con los filtros actuales."} title={emptyTitle} />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className={stickyHeader ? "max-h-[70vh] overflow-auto" : "overflow-x-auto"}>
               <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="text-xs uppercase text-muted-foreground">
+                <thead className={`${stickyHeader ? "sticky top-0 z-20 bg-white shadow-[0_1px_0_0_hsl(var(--border))]" : ""} text-xs uppercase text-muted-foreground`}>
                   <tr className="border-b">
                     {columns.map((column) => (
                       <th className={`py-3 pr-4 ${column.className ?? ""}`} key={column.key}>

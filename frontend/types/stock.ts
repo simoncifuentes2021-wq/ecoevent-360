@@ -44,7 +44,9 @@ export type StockMovementType =
   | "RESERVE"
   | "UNRESERVE"
   | "OUT_TO_EVENT"
-  | "RETURN_FROM_EVENT";
+  | "RETURN_FROM_EVENT"
+  | "TRANSFER_OUT"
+  | "TRANSFER_IN";
 
 export type StockMovement = {
   id: string;

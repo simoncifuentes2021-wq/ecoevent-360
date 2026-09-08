@@ -45,7 +45,9 @@ const movementTypeLabels: Record<StockMovementType, string> = {
   RESERVE: "Reserva",
   UNRESERVE: "Libera reserva",
   OUT_TO_EVENT: "Salida a evento",
-  RETURN_FROM_EVENT: "Retorno desde evento"
+  RETURN_FROM_EVENT: "Retorno desde evento",
+  TRANSFER_OUT: "Transferencia enviada",
+  TRANSFER_IN: "Transferencia recibida"
 };
 
 type MovementFormState = {
@@ -187,6 +189,7 @@ export default function StockMovementsPage() {
           loading={loading}
           onPageChange={setPage}
           page={page}
+          stickyHeader
           total={total}
           actions={(item) => (
             <Button size="sm" type="button" variant="secondary" onClick={() => setEvidenceTarget(item)}>
@@ -363,8 +366,8 @@ function movementWarning(type: StockMovementType, amount: number | null, stock?:
 }
 
 function movementTone(type: StockMovementType) {
-  if (["ADJUSTMENT_IN", "INITIAL_STOCK", "RECOVER_DAMAGED"].includes(type)) return "success";
-  if (["DAMAGE", "LOSS", "ADJUSTMENT_OUT"].includes(type)) return "warning";
+  if (["ADJUSTMENT_IN", "INITIAL_STOCK", "RECOVER_DAMAGED", "TRANSFER_IN"].includes(type)) return "success";
+  if (["DAMAGE", "LOSS", "ADJUSTMENT_OUT", "TRANSFER_OUT"].includes(type)) return "warning";
   return "neutral";
 }
 

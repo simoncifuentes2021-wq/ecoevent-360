@@ -1,7 +1,7 @@
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AIInterpretation(BaseModel):
@@ -153,6 +153,14 @@ class ReportAISectionProposal(BaseModel):
     findings: list[ReportAIClaim] = Field(default_factory=list, max_length=10)
     selected_metric_keys: list[str] = Field(default_factory=list, max_length=30)
     selected_evidence_ids: list[UUID] = Field(default_factory=list, max_length=20)
+    page_mode: Literal["AUTO", "KEEP_WITH_NEXT", "OWN_PAGE", "GROUP_WITH", "NEW_PAGE"] = "AUTO"
+    group_with: str | None = Field(default=None, pattern=r"^[a-z0-9_-]{1,100}$")
+
+    @model_validator(mode="after")
+    def validate_group(self):
+        if (self.page_mode == "GROUP_WITH") != (self.group_with is not None):
+            raise ValueError("GROUP_WITH requires group_with")
+        return self
 
 
 class ReportAIAssistantProposal(BaseModel):

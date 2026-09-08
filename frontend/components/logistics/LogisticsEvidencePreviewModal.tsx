@@ -5,7 +5,7 @@ import { Download, ExternalLink, FileText, RotateCcw, ZoomIn, ZoomOut } from "lu
 
 import { ModalShell } from "@/components/common/ModalShell";
 import { Button } from "@/components/ui/button";
-import { fileUrl } from "@/lib/files";
+import { usePrivateFileUrl } from "@/hooks/usePrivateFileUrl";
 import type { LogisticsEvidence } from "@/types/logistics-evidence";
 
 export function LogisticsEvidencePreviewModal({
@@ -16,7 +16,7 @@ export function LogisticsEvidencePreviewModal({
   onClose: () => void;
 }) {
   const [zoom, setZoom] = useState(1);
-  const url = fileUrl(evidence.file_url);
+  const { url, error } = usePrivateFileUrl(evidence.file_url);
   const isImage = evidence.file_type?.startsWith("image/") || evidence.mime_type?.startsWith("image/");
   const isPdf = evidence.file_type === "application/pdf" || evidence.mime_type === "application/pdf";
   const title = evidence.notes || evidence.file_name || "Evidencia";
@@ -26,7 +26,7 @@ export function LogisticsEvidencePreviewModal({
   return (
     <ModalShell title="Vista de evidencia" description={title} size="lg" onClose={onClose}>
       <div className="space-y-4">
-        {isImage ? (
+        {isImage && url ? (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-2">
               <span className="text-sm font-semibold text-slate-700">{Math.round(zoom * 100)}%</span>
@@ -66,8 +66,12 @@ export function LogisticsEvidencePreviewModal({
               </div>
             </div>
           </>
-        ) : isPdf ? (
+        ) : isPdf && url ? (
           <iframe className="h-[68vh] w-full rounded-lg border bg-slate-100" src={url} title={title} />
+        ) : isImage || isPdf ? (
+          <div className="grid min-h-[16rem] place-items-center rounded-lg border bg-slate-50 p-6 text-center text-sm text-slate-600">
+            {error || "Cargando evidencia..."}
+          </div>
         ) : (
           <div className="grid min-h-[16rem] place-items-center rounded-lg border bg-slate-50 p-6 text-center">
             <div>
@@ -77,20 +81,25 @@ export function LogisticsEvidencePreviewModal({
             </div>
           </div>
         )}
-        <div className="flex flex-wrap justify-end gap-2">
-          <a href={url} rel="noreferrer" target="_blank">
-            <Button type="button" variant="secondary">
-              <ExternalLink className="h-4 w-4" />
-              Abrir aparte
-            </Button>
-          </a>
-          <a download href={url} rel="noreferrer" target="_blank">
-            <Button type="button" variant="secondary">
-              <Download className="h-4 w-4" />
-              Descargar
-            </Button>
-          </a>
-        </div>
+        {error && !isImage && !isPdf ? (
+          <p className="text-sm text-red-600">{error}</p>
+        ) : null}
+        {url ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            <a href={url} rel="noreferrer" target="_blank">
+              <Button type="button" variant="secondary">
+                <ExternalLink className="h-4 w-4" />
+                Abrir aparte
+              </Button>
+            </a>
+            <a download={evidence.file_name || true} href={url}>
+              <Button type="button" variant="secondary">
+                <Download className="h-4 w-4" />
+                Descargar
+              </Button>
+            </a>
+          </div>
+        ) : null}
       </div>
     </ModalShell>
   );

@@ -7,10 +7,10 @@ import { Camera, ChevronDown, Eye, FileText, Trash2, Upload } from "lucide-react
 
 import { ErrorState } from "@/components/common/ErrorState";
 import { LogisticsEvidencePreviewModal } from "@/components/logistics/LogisticsEvidencePreviewModal";
+import { LogisticsEvidenceThumbnail } from "@/components/logistics/LogisticsEvidenceThumbnail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { fileUrl } from "@/lib/files";
 import { deleteLogisticsEvidence, getLogisticsEvidences, uploadLogisticsEvidence } from "@/lib/api/logistics-evidences";
 import type { LogisticsEvidence, LogisticsEvidenceStage } from "@/types/logistics-evidence";
 
@@ -193,13 +193,15 @@ export function LogisticsEvidenceUploader({
             {items.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {items.map((item) => {
-                  const url = fileUrl(item.file_url);
                   const isImage = item.file_type?.startsWith("image/");
                   return (
                     <div className="rounded-lg border bg-white p-2 transition hover:border-primary" key={item.id}>
                       <button className="block w-full text-left" type="button" onClick={() => setPreview(item)}>
                         {isImage ? (
-                          <img alt={item.notes || item.file_name || "Evidencia logistica"} className="h-28 w-full rounded-md object-cover" src={url} />
+                          <LogisticsEvidenceThumbnail
+                            className="h-28 w-full rounded-md object-cover"
+                            evidence={item}
+                          />
                         ) : (
                           <div className="grid h-28 place-items-center rounded-md bg-slate-100 text-sm font-semibold">
                             <FileText className="h-6 w-6" />

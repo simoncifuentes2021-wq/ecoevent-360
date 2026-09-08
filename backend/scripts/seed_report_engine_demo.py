@@ -21,15 +21,33 @@ from app.db.session import SessionLocal  # noqa: E402
 from app.models.core import (  # noqa: E402
     CarbonFactor,
     CarbonRecord,
+    EnergyRecord,
     Evidence,
     Event,
+    EventService,
+    EventStaff,
+    EventZone,
+    FuelRecord,
+    Incident,
     ReportEvidence,
+    Service,
     Task,
+    User,
+    WaterRecord,
     WasteRecord,
     WasteType,
 )
+from app.models.environmental import EnvironmentalAction, EnvironmentalActionMetric  # noqa: E402
 from app.models.enums import (  # noqa: E402
     CarbonScope,
+    EnvironmentalActionStatus,
+    EnvironmentalActionType,
+    EnvironmentalEnergyInputMode,
+    EnvironmentalEnergySource,
+    EnvironmentalMetricKey,
+    EnvironmentalReviewStatus,
+    IncidentStatus,
+    PriorityLevel,
     ReportScope,
     ReportLayoutVariant,
     TaskStatus,
@@ -86,6 +104,32 @@ def main() -> int:
 
         shows = sorted(event.sessions, key=lambda item: item.sort_order)
         main_show = shows[0]
+        zones = [
+            EventZone(event_id=event.id, name="Escenario principal", description="Produccion, artistas y energia."),
+            EventZone(event_id=event.id, name="Zona de publico", description="Accesos, experiencia y puntos limpios."),
+            EventZone(event_id=event.id, name="Backstage y carga", description="Logistica, proveedores y almacenamiento."),
+        ]
+        db.add_all(zones)
+        db.flush()
+
+        service_rows = [
+            ("Gestion integral de residuos", "Sostenibilidad", "jornada", Decimal("3"), Decimal("480000")),
+            ("Torres fotovoltaicas", "Energia limpia", "torre", Decimal("4"), Decimal("350000")),
+            ("Operacion Bike Zone", "Movilidad sostenible", "jornada", Decimal("3"), Decimal("260000")),
+            ("Medicion de huella de carbono", "Consultoria ambiental", "informe", Decimal("1"), Decimal("950000")),
+        ]
+        for name, category, unit, quantity, unit_price in service_rows:
+            service = db.scalar(select(Service).where(Service.name == name))
+            if service is None:
+                service = Service(name=name, category=category, unit=unit, base_price=unit_price, description=f"Servicio demo de {category.lower()}.")
+                db.add(service)
+                db.flush()
+            db.add(EventService(event_id=event.id, service_id=service.id, quantity=quantity, unit_price=unit_price, total_price=quantity * unit_price, notes="Servicio confirmado y ejecutado para la demostracion."))
+
+        staff_users = list(db.scalars(select(User).order_by(User.created_at.asc()).limit(4)).all())
+        for index, user in enumerate(staff_users):
+            db.add(EventStaff(event_id=event.id, user_id=user.id, role_in_event=["Direccion del evento", "Supervision ambiental", "Coordinacion logistica", "Operacion en terreno"][index], shift_start=event.start_date, shift_end=event.end_date))
+
         db.add_all(
             [
                 Task(
@@ -110,8 +154,42 @@ def main() -> int:
                     status=TaskStatus.COMPLETED,
                     created_by=admin.id,
                 ),
+                Task(event_id=event.id, session_id=main_show.id, zone_id=zones[0].id, title="Verificar generacion fotovoltaica", description="Lectura de energia por torre y hora validada durante la operacion.", status=TaskStatus.COMPLETED, priority=PriorityLevel.HIGH, created_by=admin.id),
+                Task(event_id=event.id, session_id=shows[1].id, zone_id=zones[1].id, title="Auditar segregacion de residuos", description="Revision de contenedores, senaletica y retiro por gestor.", status=TaskStatus.IN_PROGRESS, priority=PriorityLevel.MEDIUM, created_by=admin.id),
             ]
         )
+
+        db.add_all([
+            Incident(event_id=event.id, session_id=main_show.id, zone_id=zones[1].id, title="Saturacion puntual de contenedor PET", description="Se reemplazo el contenedor y se reforzo la frecuencia de retiro en 12 minutos.", incident_type="AMBIENTAL", status=IncidentStatus.RESOLVED, priority=PriorityLevel.MEDIUM, reported_by=admin.id, assigned_to=admin.id, resolved_at=datetime.now()),
+            Incident(event_id=event.id, session_id=shows[1].id, zone_id=zones[0].id, title="Lectura irregular en medidor secundario", description="Se contrasto con el medidor principal sin perdida de suministro ni impacto al publico.", incident_type="ENERGIA", status=IncidentStatus.CLOSED, priority=PriorityLevel.LOW, reported_by=admin.id, assigned_to=admin.id, resolved_at=datetime.now(), closed_at=datetime.now()),
+        ])
+
+        db.add_all([
+            EnergyRecord(event_id=event.id, source="Torres fotovoltaicas", kwh=Decimal("36"), hours_used=Decimal("12"), notes="0,75 kWh por torre/hora x 4 torres x 12 h.", recorded_by=admin.id),
+            EnergyRecord(event_id=event.id, source="Red electrica recinto", kwh=Decimal("85742"), hours_used=Decimal("42"), notes="Lectura consolidada del medidor principal.", recorded_by=admin.id),
+            FuelRecord(event_id=event.id, vehicle_name="Camion logistica", vehicle_plate="DEMO-01", fuel_type="Diesel", liters=Decimal("186.5"), kilometers=Decimal("742"), trips=8, recorded_by=admin.id),
+            WaterRecord(event_id=event.id, source="Red potable", liters=Decimal("184500"), usage_type="Sanitarios, hidratacion y limpieza", notes="Lectura inicial y final del recinto.", recorded_by=admin.id),
+        ])
+
+        solar_action = EnvironmentalAction(
+            event_id=event.id, session_id=main_show.id,
+            action_type=EnvironmentalActionType.SOLAR_ENERGY,
+            status=EnvironmentalActionStatus.CALCULATED,
+            review_status=EnvironmentalReviewStatus.APPROVED,
+            name="Torre fotovoltaica para iluminacion y carga",
+            description="Cuatro torres solares sustituyeron generadores diesel en el escenario y accesos.",
+            quantity_used=Decimal("4"), hours_used=Decimal("12"),
+            energy_per_unit_hour_kwh=Decimal("0.75"), energy_kwh=Decimal("36"),
+            energy_input_mode=EnvironmentalEnergyInputMode.PER_UNIT_HOUR,
+            energy_source=EnvironmentalEnergySource.CALCULATED,
+            notes="Calculo validado: 0,75 x 4 x 12 = 36 kWh.", created_by=admin.id,
+        )
+        db.add(solar_action)
+        db.flush()
+        db.add_all([
+            EnvironmentalActionMetric(action_id=solar_action.id, metric_key=EnvironmentalMetricKey.ENERGY_KWH, unit="kWh", calculated_value=Decimal("36"), calculation_method="Energia por torre/hora x cantidad x horas", calculation_snapshot={"energy_per_unit_hour_kwh": 0.75, "quantity_used": 4, "hours_used": 12, "energy_kwh": 36}),
+            EnvironmentalActionMetric(action_id=solar_action.id, metric_key=EnvironmentalMetricKey.CO2E_AVOIDED_KG, unit="kgCO2e", calculated_value=Decimal("31.68"), calculation_method="Comparacion con generacion diesel de referencia", calculation_snapshot={"energy_kwh": 36, "avoided_factor_kgco2e_per_kwh": 0.88}),
+        ])
 
         evidences = []
         for index, (width, height, color) in enumerate(

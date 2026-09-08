@@ -66,6 +66,7 @@ export type LogisticsOrderItem = {
 
 export type LogisticsOrder = {
   id: string;
+  parent_order_id: string | null;
   event_id: string;
   warehouse_id: string;
   requested_by: string;
@@ -101,6 +102,27 @@ export type LogisticsOrder = {
   items: LogisticsOrderItem[];
 };
 
+export type LogisticsPartialDispatchRequest = {
+  id: string;
+  order_id: string;
+  pending_order_id: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+  reason: string;
+  requested_by: string | null;
+  reviewed_by: string | null;
+  review_notes: string | null;
+  requested_at: string;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LogisticsPartialDispatchApproval = {
+  request: LogisticsPartialDispatchRequest;
+  dispatch_order: LogisticsOrder;
+  pending_order: LogisticsOrder;
+};
+
 export type LogisticsOrderItemCreate = {
   item_id: string;
   quantity_requested: number;
@@ -119,9 +141,7 @@ export type LogisticsOrderCreate = {
 
 export type LogisticsOrderUpdate = Partial<
   Pick<LogisticsOrderCreate, "warehouse_id" | "title" | "description" | "delivery_zone" | "delivery_notes">
-> & {
-  status?: LogisticsOrderStatus;
-};
+>;
 
 export type LogisticsOrderStockCheckItem = {
   item_id: string;
@@ -145,6 +165,42 @@ export type LogisticsOrderStockCheck = {
   warehouse_name: string;
   can_reserve_all: boolean;
   items: LogisticsOrderStockCheckItem[];
+};
+
+export type LogisticsOrderWarehouseAvailability = {
+  warehouse_id: string;
+  warehouse_name: string;
+  is_order_warehouse: boolean;
+  quantity_on_hand: string | number;
+  quantity_reserved: string | number;
+  quantity_damaged: string | number;
+  available_quantity: string | number;
+  can_transfer: boolean;
+};
+
+export type LogisticsOrderItemAvailability = {
+  logistics_order_item_id: string;
+  item_id: string;
+  item_name_snapshot: string;
+  unit_snapshot: string | null;
+  quantity_requested: string | number;
+  quantity_reserved: string | number;
+  quantity_missing: string | number;
+  warehouses: LogisticsOrderWarehouseAvailability[];
+};
+
+export type LogisticsOrderAvailability = {
+  order_id: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  items: LogisticsOrderItemAvailability[];
+};
+
+export type LogisticsOrderStockTransferCreate = {
+  logistics_order_item_id: string;
+  source_warehouse_id: string;
+  quantity: number;
+  notes?: string | null;
 };
 
 export type LogisticsOrderItemLoad = {

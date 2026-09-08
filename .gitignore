@@ -3,31 +3,72 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+pytest-cache-files-*/
 .ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
 .venv/
 venv/
+build/
+dist/
 uploads/
 backend/uploads/
 
 # FastAPI / env
 .env
-.env.local
-.env.production
-backend/.env
-backend/.env.*
+.env.*
+!.env.example
+!**/.env.example
 
 # Node / Next
 node_modules/
 .next/
 out/
-frontend/.env.local
+coverage/
+*.tsbuildinfo
 frontend/.next/
+frontend/.next-*/
 frontend/node_modules/
 frontend/tsconfig.tsbuildinfo
+.turbo/
+.eslintcache
+.stylelintcache
 
-# Logs and local OS files
+# Browser and end-to-end test output
+playwright-report/
+test-results/
+blob-report/
+
+# Generated previews, reports and local verification artifacts
+/artifacts/
+/output/
+/tmp/
+
+# Generated project artifacts
+graphify-out/
+.worktrees/
+backups/
+
+# Local AI assistant tooling and machine-specific hooks
+.codex/
+.agents/
+
+# Logs, temporary files, editors and local OS files
 *.log
 .tmp/
 backend/.tmp/
+.idea/
+.vscode/
+.fleet/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
+Desktop.ini

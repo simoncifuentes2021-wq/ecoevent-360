@@ -10,6 +10,7 @@ from app.services.ai.privacy import sanitize
 from app.services.report_data_binding_registry import catalog
 from app.services import report_visual_design_service
 from app.services.ai.comparison_service import compare
+from app.services.ai.prompts.report_sections import SECTION_GUIDANCE_VERSION, guidance_for, guidance_map
 
 CAPABILITY = "reports.section_draft"
 EDITORIAL_CAPABILITY = "reports.editorial_plan"
@@ -69,6 +70,7 @@ def build_report_assistant_context(db: Session, report_id: UUID, user: User, ins
                 key = str(item.get("key") or item.get("metric_key") or index)
                 sources.setdefault(f"{section.section_key}.items.{key}", {"value": value, "unit": item.get("unit"), "source": section.section_key, "show_id": item.get("show_id")})
     context = {
+        "section_guidance_version": SECTION_GUIDANCE_VERSION,
         "scope": {"event_id": str(report.event_id), "show_id": str(report.session_id) if report.session_id else None},
         "request": {"instructions": instructions},
         "current": {
@@ -84,6 +86,7 @@ def build_report_assistant_context(db: Session, report_id: UUID, user: User, ins
         "sources": sources,
         "multishow_comparisons": comparisons,
         "evidences": [{"id": str(e.evidence_id), "section_key": next((s.section_key for s in report.sections if s.id == e.section_id), None), "caption": e.caption or e.evidence.description, "show_id": str(e.evidence.session_id) if e.evidence.session_id else None, "taken_at": e.evidence.taken_at.isoformat() if e.evidence.taken_at else None} for e in report.evidences if e.is_enabled],
+        "section_guidance": guidance_map(report.sections),
     }
     return report, sanitize(context)
 
@@ -97,6 +100,7 @@ def build_report_section_context(
         raise ValueError("Section not found")
     current_text = options.current_text if options.current_text is not None else (section.content or {}).get("text")
     context = {
+        "section_guidance_version": SECTION_GUIDANCE_VERSION,
         "scope": {"type": report.scope.value, "event_id": str(report.event_id), "show_id": str(report.session_id) if report.session_id else None},
         "section": {"key": section.section_key, "type": section.section_type.value, "title": section.title},
         "request": {"operation": options.operation, "style": options.style, "length": options.length},
@@ -107,6 +111,7 @@ def build_report_section_context(
         },
         "source_data": section.source_snapshot or {},
         "source_metadata": section.source_metadata or {},
+        "section_guidance": guidance_for(section.section_type.value, section.section_key),
     }
     if section.section_type.value in {"EXECUTIVE_SUMMARY", "CONCLUSION"}:
         context["source_data"] = {}
@@ -125,6 +130,7 @@ def build_report_section_context(
 def build_report_editorial_context(db: Session, report_id: UUID, user: User, style: str, include_text_rewrites: bool):
     report = report_builder_service.get_editor(db, report_id, user)
     context = {
+        "section_guidance_version": SECTION_GUIDANCE_VERSION,
         "scope": {"type": report.scope.value, "event_id": str(report.event_id), "show_id": str(report.session_id) if report.session_id else None},
         "request": {"style": style, "include_text_rewrites": include_text_rewrites},
         "report": {"title": report.title, "template": report.template_key.value, "theme": report.theme, "editorial_config": report.editorial_config},
@@ -143,5 +149,6 @@ def build_report_editorial_context(db: Session, report_id: UUID, user: User, sty
             }
             for section in report.sections
         ],
+        "section_guidance": guidance_map(report.sections),
     }
     return report, _safe(context)

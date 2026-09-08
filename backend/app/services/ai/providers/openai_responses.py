@@ -66,6 +66,10 @@ class OpenAIResponsesProvider:
                         raise AIProviderError("provider_unavailable", "OpenAI is temporarily unavailable")
                     response.raise_for_status()
                     data = response.json()
+                    if data.get("status") == "incomplete":
+                        reason = (data.get("incomplete_details") or {}).get("reason")
+                        code = "output_truncated" if reason == "max_output_tokens" else "invalid_provider_response"
+                        raise AIProviderError(code, f"OpenAI returned an incomplete response ({reason or 'unknown reason'})")
                     content = data.get("output_text") or self._output_text(data)
                     if not content:
                         raise AIProviderError("invalid_provider_response", "OpenAI returned no structured output")

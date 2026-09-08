@@ -36,6 +36,8 @@ def validate_premium_proposal(proposal: ReportAIAssistantProposal, context: dict
     for section in proposal.sections:
         if section.section_key not in allowed_sections:
             raise AIProviderError("invalid_section", "Proposal selected an unknown section")
+        if section.group_with and (section.group_with not in allowed_sections or section.group_with == section.section_key):
+            raise AIProviderError("invalid_group", "Proposal selected an invalid section grouping")
         if section.premium_variant not in allowed_variants:
             raise AIProviderError("invalid_variant", "Proposal selected an unknown premium variant")
         expected_variant = (context["allowlists"].get("variants_by_preset") or {}).get(proposal.recommended_preset, {}).get(section.section_key, "AUTO")

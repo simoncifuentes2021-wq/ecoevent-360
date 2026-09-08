@@ -9,6 +9,7 @@ from app.models.core import User
 from app.models.enums import LogisticsOrderStatus, UserRole
 from app.schemas.logistics_order_schema import (
     LogisticsOrderAssign,
+    LogisticsOrderAvailabilityResponse,
     LogisticsOrderClose,
     LogisticsOrderCreate,
     LogisticsOrderDeliveryConfirm,
@@ -20,9 +21,14 @@ from app.schemas.logistics_order_schema import (
     LogisticsOrderItemRead,
     LogisticsOrderItemUpdate,
     LogisticsOrderListResponse,
+    LogisticsPartialDispatchApprovalResult,
+    LogisticsPartialDispatchRequestCreate,
+    LogisticsPartialDispatchRequestRead,
+    LogisticsPartialDispatchReview,
     LogisticsOrderOutcomeConfirm,
     LogisticsOrderRead,
     LogisticsOrderStockCheckResponse,
+    LogisticsOrderStockTransferCreate,
     LogisticsOrderUpdate,
 )
 from app.services import logistics_order_service
@@ -143,6 +149,141 @@ def check_logistics_order_stock(
     current_user: User = Depends(get_current_active_user),
 ):
     return logistics_order_service.check_logistics_order_stock(db, order_id, current_user)
+
+
+@router.get(
+    "/logistics-orders/{order_id}/stock-availability",
+    response_model=LogisticsOrderAvailabilityResponse,
+)
+def get_logistics_order_stock_availability(
+    order_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return logistics_order_service.get_logistics_order_stock_availability(db, order_id, current_user)
+
+
+@router.post("/logistics-orders/{order_id}/stock-transfers", response_model=LogisticsOrderRead)
+def transfer_stock_to_logistics_order(
+    order_id: UUID,
+    payload: LogisticsOrderStockTransferCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    order = logistics_order_service.transfer_stock_to_logistics_order(
+        db,
+        order_id,
+        payload,
+        current_user,
+    )
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_ORDER_STOCK_TRANSFERRED",
+        module="logistics_orders",
+        entity_type="LogisticsOrder",
+        entity_id=order.id,
+        event_id=order.event_id,
+        new_data={
+            "source_warehouse_id": str(payload.source_warehouse_id),
+            "destination_warehouse_id": str(order.warehouse_id),
+            "logistics_order_item_id": str(payload.logistics_order_item_id),
+            "quantity": str(payload.quantity),
+        },
+        request=request,
+    )
+    return order
+
+
+@router.get(
+    "/logistics-orders/{order_id}/partial-dispatch-request",
+    response_model=LogisticsPartialDispatchRequestRead | None,
+)
+def get_partial_dispatch_request(
+    order_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return logistics_order_service.get_partial_dispatch_request(db, order_id, current_user)
+
+
+@router.post(
+    "/logistics-orders/{order_id}/partial-dispatch-request",
+    response_model=LogisticsPartialDispatchRequestRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_partial_dispatch_request(
+    order_id: UUID,
+    payload: LogisticsPartialDispatchRequestCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = logistics_order_service.create_partial_dispatch_request(db, order_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_PARTIAL_DISPATCH_REQUESTED",
+        module="logistics_orders",
+        entity_type="LogisticsPartialDispatchRequest",
+        entity_id=result.id,
+        event_id=logistics_order_service.get_logistics_order_or_404(db, order_id).event_id,
+        new_data=serialize_model_for_audit(result),
+        request=request,
+    )
+    return result
+
+
+@router.post(
+    "/logistics-partial-dispatch-requests/{request_id}/approve",
+    response_model=LogisticsPartialDispatchApprovalResult,
+)
+def approve_partial_dispatch_request(
+    request_id: UUID,
+    payload: LogisticsPartialDispatchReview,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = logistics_order_service.approve_partial_dispatch_request(db, request_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_PARTIAL_DISPATCH_APPROVED",
+        module="logistics_orders",
+        entity_type="LogisticsPartialDispatchRequest",
+        entity_id=request_id,
+        event_id=result.dispatch_order.event_id,
+        new_data={"dispatch_order_id": str(result.dispatch_order.id), "pending_order_id": str(result.pending_order.id)},
+        request=request,
+    )
+    return result
+
+
+@router.post(
+    "/logistics-partial-dispatch-requests/{request_id}/reject",
+    response_model=LogisticsPartialDispatchRequestRead,
+)
+def reject_partial_dispatch_request(
+    request_id: UUID,
+    payload: LogisticsPartialDispatchReview,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = logistics_order_service.reject_partial_dispatch_request(db, request_id, payload, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_PARTIAL_DISPATCH_REJECTED",
+        module="logistics_orders",
+        entity_type="LogisticsPartialDispatchRequest",
+        entity_id=request_id,
+        new_data=serialize_model_for_audit(result),
+        request=request,
+    )
+    return result
 
 
 @router.post("/logistics-orders/{order_id}/reserve", response_model=LogisticsOrderRead)
@@ -321,6 +462,31 @@ def register_logistics_order_item_outcome(
         request=request,
     )
     return item
+
+
+@router.post(
+    "/logistics-orders/{order_id}/outcomes/mark-consumables-consumed",
+    response_model=LogisticsOrderRead,
+)
+def mark_all_consumables_consumed(
+    order_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    order = logistics_order_service.mark_all_consumables_consumed(db, order_id, current_user)
+    create_audit_log(
+        db,
+        user=current_user,
+        action="LOGISTICS_ORDER_CONSUMABLE_OUTCOMES_RECORDED",
+        module="logistics_orders",
+        entity_type="LogisticsOrder",
+        entity_id=order.id,
+        event_id=order.event_id,
+        new_data=serialize_model_for_audit(order),
+        request=request,
+    )
+    return order
 
 
 @router.post("/logistics-orders/{order_id}/confirm-outcome", response_model=LogisticsOrderRead)

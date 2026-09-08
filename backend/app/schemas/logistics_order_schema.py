@@ -188,12 +188,13 @@ class LogisticsOrderCreate(BaseModel):
 
 
 class LogisticsOrderUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     warehouse_id: UUID | None = None
     title: str | None = Field(default=None, min_length=1, max_length=180)
     description: str | None = None
     delivery_zone: str | None = Field(default=None, max_length=180)
     delivery_notes: str | None = None
-    status: LogisticsOrderStatus | None = None
 
 
 class LogisticsOrderAssign(BaseModel):
@@ -258,6 +259,7 @@ class LogisticsOrderRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    parent_order_id: UUID | None = None
     event_id: UUID
     warehouse_id: UUID
     requested_by: UUID
@@ -293,6 +295,37 @@ class LogisticsOrderRead(BaseModel):
     items: list[LogisticsOrderItemRead] = []
 
 
+class LogisticsPartialDispatchRequestCreate(BaseModel):
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+class LogisticsPartialDispatchReview(BaseModel):
+    review_notes: str | None = Field(default=None, max_length=1000)
+
+
+class LogisticsPartialDispatchRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    order_id: UUID
+    pending_order_id: UUID | None = None
+    status: str
+    reason: str
+    requested_by: UUID | None = None
+    reviewed_by: UUID | None = None
+    review_notes: str | None = None
+    requested_at: datetime
+    reviewed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class LogisticsPartialDispatchApprovalResult(BaseModel):
+    request: LogisticsPartialDispatchRequestRead
+    dispatch_order: LogisticsOrderRead
+    pending_order: LogisticsOrderRead
+
+
 class LogisticsOrderListResponse(BaseModel):
     items: list[LogisticsOrderRead]
     total: int
@@ -322,3 +355,52 @@ class LogisticsOrderStockCheckResponse(BaseModel):
     warehouse_name: str
     can_reserve_all: bool
     items: list[LogisticsOrderStockCheckItem]
+
+
+class LogisticsOrderWarehouseAvailability(BaseModel):
+    warehouse_id: UUID
+    warehouse_name: str
+    is_order_warehouse: bool
+    quantity_on_hand: Decimal
+    quantity_reserved: Decimal
+    quantity_damaged: Decimal
+    available_quantity: Decimal
+    can_transfer: bool
+
+
+class LogisticsOrderItemAvailability(BaseModel):
+    logistics_order_item_id: UUID
+    item_id: UUID
+    item_name_snapshot: str
+    unit_snapshot: str | None = None
+    quantity_requested: Decimal
+    quantity_reserved: Decimal
+    quantity_missing: Decimal
+    warehouses: list[LogisticsOrderWarehouseAvailability]
+
+
+class LogisticsOrderAvailabilityResponse(BaseModel):
+    order_id: UUID
+    warehouse_id: UUID
+    warehouse_name: str
+    items: list[LogisticsOrderItemAvailability]
+
+
+class LogisticsOrderStockTransferCreate(BaseModel):
+    logistics_order_item_id: UUID
+    source_warehouse_id: UUID
+    quantity: Decimal = Field(gt=0)
+    notes: str | None = None
+
+    @field_validator("quantity")
+    @classmethod
+    def quantity_must_be_whole(cls, value: Decimal) -> Decimal:
+        return validate_whole_quantity(value)
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def clean_notes(cls, value):
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value

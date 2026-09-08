@@ -128,12 +128,19 @@ class ReportSectionVisualConfig(BaseModel):
     ] | None = None
     show_icon: bool = True
     show_trend: bool = True
+    premium_variant: Annotated[str, StringConstraints(pattern=r"^[A-Z0-9_]{1,100}$")] = "AUTO"
+    emphasis: Literal["LOW", "NORMAL", "HIGH"] = "NORMAL"
+    selected_metric_keys: list[
+        Annotated[str, StringConstraints(pattern=r"^[a-zA-Z0-9_.:-]{1,180}$")]
+    ] = Field(default_factory=list, max_length=30)
 
 
 class ReportEditorialConfig(BaseModel):
     mode: Literal["AUTO", "CUSTOM"] = "AUTO"
     cover_style: Literal["FULL_PHOTO", "SIDE_PHOTO", "EDITORIAL", "MINIMAL_PREMIUM"] = "FULL_PHOTO"
     cover_evidence_id: UUID | None = None
+    cover_show_photo: bool = True
+    target_page_count: int | None = Field(default=None, ge=1, le=50)
     featured_kpi_ids: list[Annotated[str, StringConstraints(pattern=r"^[a-z0-9_.-]{1,100}$")]] = (
         Field(default_factory=list, max_length=6)
     )
@@ -479,6 +486,7 @@ class ReportEditor(ReportRead):
 class ReportAIEditorialApplyResponse(BaseModel):
     revision_id: UUID
     report: ReportEditor
+    visual_audit: dict | None = None
 
 
 class AvailableEvidence(BaseModel):

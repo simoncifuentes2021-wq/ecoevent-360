@@ -8,10 +8,10 @@ import { ChevronDown, Eye, FileText, Images, Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LogisticsEvidencePreviewModal } from "@/components/logistics/LogisticsEvidencePreviewModal";
+import { LogisticsEvidenceThumbnail } from "@/components/logistics/LogisticsEvidenceThumbnail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { fileUrl } from "@/lib/files";
 import { deleteLogisticsEvidence, getLogisticsEvidences } from "@/lib/api/logistics-evidences";
 import type { LogisticsEvidence, LogisticsEvidenceStage } from "@/types/logistics-evidence";
 
@@ -126,7 +126,6 @@ export function LogisticsEvidenceGallery({
             {items.length > 0 ? (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {items.map((item) => {
-                  const url = fileUrl(item.file_url);
                   const isImage = item.file_type?.startsWith("image/");
                   const source = item.logistics_order_item_id
                     ? itemNames.get(item.logistics_order_item_id) || "Producto del pedido"
@@ -156,7 +155,10 @@ export function LogisticsEvidenceGallery({
                       </div>
                       {isImage ? (
                         <button className="block w-full" type="button" onClick={() => setPreview(item)}>
-                          <img alt={item.notes || item.file_name || "Evidencia"} className="h-36 w-full rounded-md object-cover" src={url} />
+                          <LogisticsEvidenceThumbnail
+                            className="h-36 w-full rounded-md object-cover"
+                            evidence={item}
+                          />
                         </button>
                       ) : (
                         <button className="grid h-36 w-full place-items-center rounded-md bg-slate-100 text-sm font-semibold" type="button" onClick={() => setPreview(item)}>

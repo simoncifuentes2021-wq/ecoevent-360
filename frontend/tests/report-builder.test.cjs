@@ -115,6 +115,10 @@ test("canonical preview editor supports box resize, bounds and viewport persiste
     /onSaved\(false\)/,
     /applySavedOverride/,
     /suppressPreviewRefresh/,
+    /persistentViewportRef/,
+    /addEventListener\("scroll", rememberScroll/,
+    /getReportHtmlPreview\(currentReport\.id\)/,
+    /setPreviewHtml\(latestHtml\)/,
   ]) assert.match(`${editor}\n${builder}\n${types}`, pattern);
   assert.doesNotMatch(editor, /dangerouslySetInnerHTML|ReportElement|FreeformReportDesigner/);
 });
@@ -251,4 +255,56 @@ test("premium report assistant previews a grounded diff before reversible apply"
     /getReportAIGenerations/,
   ]) assert.match(`${builder}\n${api}\n${types}`, pattern);
   assert.doesNotMatch(builder, /ReportAssistantPanel[\s\S]*createReportElement/);
+});
+
+test("cover exposes complete editing and visibility controls", () => {
+  const builder = read("components/reports/ReportBuilder.tsx");
+  const api = read("lib/api/reports.ts");
+  for (const pattern of [
+    /Mostrar \$\{item\.title\}/,
+    /section\.section_type === "COVER"/,
+    /FULL_PHOTO/,
+    /SIDE_PHOTO/,
+    /EDITORIAL/,
+    /MINIMAL_PREMIUM/,
+    /Subt.tulo/,
+    /Fotograf.a principal/,
+    /Subir fotograf.a a la secci.n/,
+    /Subir y usar en esta secci.n/,
+    /onSelectCover\(null\)/,
+    /cover_show_photo: evidenceId !== null/,
+    /cover_show_photo: true/,
+    /getReportHtmlPreview/,
+    /updateReportSection/,
+    /updateReportEditorialConfig/,
+  ]) assert.match(`${builder}\n${api}`, pattern);
+});
+
+test("executive summary exposes every persisted report control", () => {
+  const builder = read("components/reports/ReportBuilder.tsx");
+  for (const pattern of [
+    /Mostrar \$\{item\.title\}/,
+    /layout-thumbnail-selector/,
+    /HERO_IMAGE_TEXT/,
+    /KPI_GRID/,
+    /TWO_COLUMN/,
+    /METRIC_LIST/,
+    /FEATURE_CHART/,
+    /PHOTO_GRID/,
+    /EDITORIAL/,
+    /TEXT_IMAGE/,
+    /BIG_NUMBERS/,
+    /Ubicaci.n de esta secci.n/,
+    /OWN_PAGE/,
+    /NEW_PAGE/,
+    /GROUP_WITH/,
+    /KEEP_WITH_NEXT/,
+    /Texto del apartado/,
+    /Asistente de redacci.n/,
+    /Fotograf.as de la secci.n/,
+    /removeReportEvidence/,
+    /Quitar de la secci.n/,
+    /updateReportSection/,
+    /getReportHtmlPreview/,
+  ]) assert.match(builder, pattern);
 });

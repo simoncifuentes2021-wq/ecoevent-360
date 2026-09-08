@@ -91,14 +91,42 @@ def build_sections(
         ),
     ]
     result["cover"] = _section(cover)
+    executive_fields = [
+        _field(
+            "attendees",
+            "Asistencia",
+            (session.real_attendees or session.expected_attendees) if show else (event.real_attendees or event.estimated_attendees),
+            "SHOW" if show else "EVENT",
+            "personas",
+        ),
+        _field(
+            "shows",
+            "Shows incluidos",
+            1 if show else len(event.sessions),
+            "SHOW" if show else "EVENT",
+            "shows",
+        ),
+        _field(
+            "duration_days",
+            "Duración",
+            max(1, (event.end_date.date() - event.start_date.date()).days + 1),
+            "EVENT",
+            "días",
+        ),
+    ]
+    executive_narrative = (
+        f"Este reporte consolida los principales resultados de "
+        f"{session.name if show else event.name}."
+    )
     result["executive_summary"] = _section(
-        [],
+        executive_fields,
         [
             {
-                "summary": f"Este reporte consolida los principales resultados de {session.name if show else event.name}."
+                "summary": executive_narrative
             }
         ],
     )
+    result["executive_summary"][0]["text"] = executive_narrative
     result["event_info"] = _section(
         [
             _field("name", "Nombre", event.name, "EVENT"),

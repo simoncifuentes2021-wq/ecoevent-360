@@ -385,6 +385,8 @@ class StockMovementType(StrEnum):
     UNRESERVE = "UNRESERVE"
     OUT_TO_EVENT = "OUT_TO_EVENT"
     RETURN_FROM_EVENT = "RETURN_FROM_EVENT"
+    TRANSFER_OUT = "TRANSFER_OUT"
+    TRANSFER_IN = "TRANSFER_IN"
 
 
 class PurchaseRequestStatus(StrEnum):

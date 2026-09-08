@@ -32,6 +32,16 @@ def _report(db: Session, report_id: UUID, user: User) -> Report:
     return report_builder_service.get_editor(db, report_id, user)
 
 
+def _client_safe_evidence_caption(value: str | None) -> str | None:
+    """Hide technical fixture labels without discarding an explicitly selected image."""
+    caption = str(value or "").strip()
+    if not caption or re.search(
+        r"\b(?:fixture|placeholder|dummy|prueba visual)\b", caption, re.IGNORECASE
+    ):
+        return None
+    return caption
+
+
 def prepare_document(
     report: Report, *, publication_number: int | None = None
 ) -> tuple[ReportRenderDocument, dict]:
@@ -88,16 +98,21 @@ def prepare_document(
     for item in sorted(report.evidences, key=lambda value: value.sort_order):
         if not item.is_enabled:
             continue
+        caption = _client_safe_evidence_caption(item.caption or item.evidence.description)
         uri, warning = evidence_asset(item.evidence.file_url, item.evidence.file_type)
         evidences.append(
             {
                 "evidence_id": str(item.evidence_id),
                 "section_key": section_key.get(item.section_id),
-                "caption": item.caption or item.evidence.description,
+                "caption": caption,
                 "uri": uri,
                 "warning": warning,
             }
         )
+    if not evidences:
+        for section in snapshot.get("sections", []):
+            if section.get("section_type") == "EVIDENCES":
+                section["is_enabled"] = False
     theme = theme_for_template(report.template_key.value, report.theme)
     document = ReportRenderDocument(
         report={

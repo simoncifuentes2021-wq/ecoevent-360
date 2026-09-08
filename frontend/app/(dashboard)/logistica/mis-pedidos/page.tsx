@@ -1,36 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ClipboardList, Eye } from "lucide-react";
+import { ClipboardCheck, PackageCheck, Truck } from "lucide-react";
 
-import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
-import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
 import { RoleGuard } from "@/components/layout/RoleGuard";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { LogisticsOrdersOverview } from "@/components/logistics/LogisticsOrdersOverview";
 import { getMyLogisticsOrders } from "@/lib/api/logistics-orders";
-import type { LogisticsOrder, LogisticsOrderStatus } from "@/types/logistics-order";
-
-const statusLabels: Record<LogisticsOrderStatus, string> = {
-  REQUESTED: "Solicitado",
-  ASSIGNED: "Asignado",
-  STOCK_REVIEW: "Revision stock",
-  RESERVED: "Stock reservado",
-  INSUFFICIENT_STOCK: "Stock insuficiente",
-  IN_PREPARATION: "En preparacion",
-  LOADED: "Cargado",
-  OUT_OF_WAREHOUSE: "Salida de bodega",
-  DELIVERED: "Entregado",
-  PARTIALLY_DELIVERED: "Entrega parcial",
-  OUTCOME_PENDING: "Resultado pendiente",
-  OUTCOME_RECORDED: "Resultados registrados",
-  WITH_DIFFERENCES: "Con diferencias",
-  CLOSED: "Cerrado",
-  OBSERVED: "Observado",
-  CANCELLED: "Cancelado"
-};
+import type { LogisticsOrder } from "@/types/logistics-order";
 
 export default function LogisticsMyOrdersPage() {
   const [orders, setOrders] = useState<LogisticsOrder[]>([]);
@@ -54,54 +31,44 @@ export default function LogisticsMyOrdersPage() {
     void load();
   }, [load]);
 
-  const columns: DataTableColumn<LogisticsOrder>[] = [
-    { key: "title", header: "Pedido", cell: (order) => <span className="font-semibold">{order.title}</span> },
-    { key: "event", header: "Evento", cell: (order) => order.event?.name || "-" },
-    { key: "warehouse", header: "Bodega", cell: (order) => order.warehouse?.name || "-" },
-    { key: "total", header: "Total estimado", cell: (order) => money(order.total_estimated_amount) },
-    { key: "created_at", header: "Fecha", cell: (order) => new Date(order.created_at).toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) },
-    {
-      key: "status",
-      header: "Estado",
-      cell: (order) => <Badge tone={order.status === "CANCELLED" ? "danger" : "success"}>{statusLabels[order.status]}</Badge>
-    }
-  ];
-
   return (
     <RoleGuard roles={["LOGISTICS_OPERATOR"]}>
       <div className="space-y-6">
         <PageHeader
+          eyebrow="Operación logística"
           title="Mis pedidos logisticos"
-          description="Pedidos logisticos asignados para preparacion futura. En esta etapa solo puedes verlos."
+          description="Tu bandeja de trabajo para preparar, despachar, entregar y cerrar cada pedido."
         />
-        {!loading && !error && orders.length === 0 ? (
-          <EmptyState
-            icon={<ClipboardList className="h-6 w-6" />}
-            title="Aun no tienes pedidos logisticos asignados"
-            description="Cuando un supervisor te asigne un pedido aparecera aqui."
-          />
-        ) : (
-          <DataTable
-            actions={(order) => (
-              <Link href={`/logistica/mis-pedidos/${order.id}`}>
-                <Button size="sm" type="button" variant="secondary">
-                  <Eye className="h-4 w-4" />
-                </Button>
-              </Link>
-            )}
-            columns={columns}
-            data={orders}
-            emptyTitle="Sin pedidos asignados"
-            error={error}
-            getRowKey={(order) => order.id}
-            loading={loading}
-          />
-        )}
+
+        <div className="grid gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white p-4 sm:grid-cols-3">
+          <GuideStep icon={ClipboardCheck} number="1" title="Revisa" text="Confirma productos y stock." />
+          <GuideStep icon={PackageCheck} number="2" title="Prepara" text="Registra carga y evidencias." />
+          <GuideStep icon={Truck} number="3" title="Entrega" text="Informa resultados y cierre." />
+        </div>
+
+        <LogisticsOrdersOverview
+          orders={orders}
+          loading={loading}
+          error={error}
+          onRetry={load}
+          hrefFor={(order) => `/logistica/mis-pedidos/${order.id}`}
+          emptyTitle="Aún no tienes pedidos logísticos asignados"
+          emptyDescription="Cuando un supervisor te asigne un pedido aparecerá aquí."
+          showOperator={false}
+        />
       </div>
     </RoleGuard>
   );
 }
 
-function money(value: string | number) {
-  return Number(value || 0).toLocaleString("es-CL", { style: "currency", currency: "CLP" });
+function GuideStep({ icon: Icon, number, title, text }: { icon: typeof Truck; number: string; title: string; text: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-white/80 p-3 shadow-sm">
+      <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700">
+        <Icon className="h-5 w-5" />
+        <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-emerald-700 text-[9px] font-bold text-white">{number}</span>
+      </span>
+      <div><p className="text-sm font-bold text-slate-900">{title}</p><p className="text-xs text-slate-500">{text}</p></div>
+    </div>
+  );
 }

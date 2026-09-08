@@ -106,6 +106,10 @@ def plan_pages(
     """Plan visible content without persisting derived pagination."""
     config = config or {}
     overrides = config.get("page_overrides") or {}
+    has_cover = any(
+        section.get("is_enabled") and section.get("section_type") == "COVER"
+        for section in sections
+    )
     visible = [
         visible_section(section)
         for section in sections
@@ -123,22 +127,45 @@ def plan_pages(
     if summary:
         executive = [item for item in summary if item.get("section_type") == "EXECUTIVE_SUMMARY"]
         facts = [item for item in summary if item not in executive]
+        executive_own_page = any(
+            (overrides.get(item.get("section_key")) or {}).get("mode")
+            in {"OWN_PAGE", "NEW_PAGE"}
+            for item in executive
+        )
         combined_fields = sum(
             len((item.get("content") or {}).get("fields") or []) for item in summary
         )
-        if executive and facts and combined_fields > 8:
+        if executive and facts and (combined_fields > 8 or executive_own_page):
             pages.append((PageRecipe.EXECUTIVE_OVERVIEW, executive))
             pages.append((PageRecipe.MIXED_KPI_PAGE, facts))
         else:
             pages.append((PageRecipe.EXECUTIVE_OVERVIEW, summary))
     operations = take(OPERATIONS)
     if operations:
-        pages.append((PageRecipe.OPERATIONS_SUMMARY, operations))
+        grouped = [item for item in operations if (overrides.get(item.get("section_key")) or {}).get("mode") not in {"OWN_PAGE", "NEW_PAGE"}]
+        if grouped:
+            pages.append((PageRecipe.OPERATIONS_SUMMARY, grouped))
+        pages.extend(
+            (PageRecipe.OPERATIONS_SUMMARY, [item])
+            for item in operations
+            if (overrides.get(item.get("section_key")) or {}).get("mode") in {"OWN_PAGE", "NEW_PAGE"}
+        )
 
     if template == "ENVIRONMENTAL_STORY":
         management = take({"WASTE", "BIKE_ZONE"})
         if management:
-            pages.append((PageRecipe.ENVIRONMENTAL_MANAGEMENT, management))
+            force_separate = len(management) == 1 or any(
+                (overrides.get(item.get("section_key")) or {}).get("mode")
+                in {"OWN_PAGE", "NEW_PAGE"}
+                for item in management
+            )
+            if force_separate:
+                pages.extend(
+                    (FEATURE_RECIPES[item["section_type"]], [item])
+                    for item in management
+                )
+            else:
+                pages.append((PageRecipe.ENVIRONMENTAL_MANAGEMENT, management))
         footprint = take({"CARBON"})
         equivalences = [
             section
@@ -147,9 +174,27 @@ def plan_pages(
         ]
         for section in equivalences:
             visible.remove(section)
-        footprint.extend(equivalences)
-        if footprint:
-            pages.append((PageRecipe.CARBON_EQUIVALENCES, footprint))
+        carbon_and_equivalences = footprint + equivalences
+        if carbon_and_equivalences:
+            equivalence_has_custom_layout = any(
+                str(section.get("layout_variant") or "METRIC_LIST") != "METRIC_LIST"
+                for section in equivalences
+            )
+            force_separate = len(carbon_and_equivalences) == 1 or equivalence_has_custom_layout or any(
+                (overrides.get(item.get("section_key")) or {}).get("mode")
+                in {"OWN_PAGE", "NEW_PAGE"}
+                for item in carbon_and_equivalences
+            )
+            if force_separate:
+                pages.extend(
+                    (
+                        FEATURE_RECIPES.get(item.get("section_type"), PageRecipe.CARBON_EQUIVALENCES),
+                        [item],
+                    )
+                    for item in carbon_and_equivalences
+                )
+            else:
+                pages.append((PageRecipe.CARBON_EQUIVALENCES, carbon_and_equivalences))
 
     order = {
         "ENVIRONMENTAL_PREMIUM": ["ENVIRONMENTAL_IMPACT", "WASTE", "CARBON", "BIKE_ZONE", "EVIDENCES"],
@@ -193,7 +238,15 @@ def plan_pages(
             kept.append((recipe, rest))
     pages = kept
     if close_sections:
-        pages.append((PageRecipe.EDITORIAL_CLOSE, close_sections))
+        shared_close = []
+        for section in close_sections:
+            mode = (overrides.get(section.get("section_key")) or {}).get("mode", "AUTO")
+            if mode in {"OWN_PAGE", "NEW_PAGE"}:
+                pages.append((PageRecipe.EDITORIAL_CLOSE, [section]))
+            else:
+                shared_close.append(section)
+        if shared_close:
+            pages.append((PageRecipe.EDITORIAL_CLOSE, shared_close))
 
     # Explicit GROUP_WITH and KEEP_WITH_NEXT merge pages, while retaining a deterministic recipe.
     by_key = {s.get("section_key"): s for _, items in pages for s in items}
@@ -210,8 +263,17 @@ def plan_pages(
             pages[target_index][1].extend(moved)
             pages.pop(source_index)
 
+    # KEEP_WITH_NEXT joins the selected section's page with the following page.
+    for key, override in overrides.items():
+        if override.get("mode") != "KEEP_WITH_NEXT" or key not in by_key:
+            continue
+        source_index = next((i for i, (_, items) in enumerate(pages) if by_key[key] in items), None)
+        if source_index is not None and source_index + 1 < len(pages):
+            pages[source_index][1].extend(pages[source_index + 1][1])
+            pages.pop(source_index + 1)
+
     result = []
-    for index, (recipe, items) in enumerate(pages, start=2):
+    for index, (recipe, items) in enumerate(pages, start=2 if has_cover else 1):
         result.append(
             ReportPagePlan(
                 index,
@@ -221,7 +283,5 @@ def plan_pages(
                 tuple(item["section_key"] for item in items),
             )
         )
-    return [
-        ReportPagePlan(1, PageRecipe.COVER_HERO, EditorialDensity.HIGH, "Portada", ("cover",)),
-        *result,
-    ]
+    cover = [ReportPagePlan(1, PageRecipe.COVER_HERO, EditorialDensity.HIGH, "Portada", ("cover",))] if has_cover else []
+    return [*cover, *result]
