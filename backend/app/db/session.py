@@ -61,6 +61,29 @@ def set_rls_context(
     _apply_rls_context(db.connection(), context)
 
 
+def set_public_form_rls_context(
+    db: Session,
+    *,
+    form_id: UUID,
+    response_id: UUID | None = None,
+    idempotency_key: str | None = None,
+) -> None:
+    """Authorize only the current public form submission inside this transaction."""
+    connection = db.connection()
+    connection.execute(
+        text("select set_config('app.public_form_id', :value, true)"),
+        {"value": str(form_id)},
+    )
+    connection.execute(
+        text("select set_config('app.public_response_id', :value, true)"),
+        {"value": str(response_id) if response_id else ""},
+    )
+    connection.execute(
+        text("select set_config('app.public_idempotency_key', :value, true)"),
+        {"value": idempotency_key or ""},
+    )
+
+
 def clear_rls_context(db: Session) -> None:
     if db.is_active:
         db.rollback()

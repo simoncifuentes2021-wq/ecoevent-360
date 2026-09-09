@@ -5,13 +5,14 @@ from collections import Counter, defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from io import StringIO
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.permissions import can_access_event, can_manage_event
+from app.db.session import set_public_form_rls_context
 from app.models.core import (
     BikeZoneRecord,
     ClientPortalConfig,
@@ -343,12 +344,23 @@ def public_form_payload(form: EventForm, lang: str | None) -> dict:
 def submit_public_form(db: Session, slug: str, payload: FormResponseCreate) -> tuple[FormResponse, str | None]:
     form = get_public_form_or_404(db, slug)
     _ensure_form_open(form)
+    set_public_form_rls_context(
+        db,
+        form_id=form.id,
+        idempotency_key=payload.idempotency_key,
+    )
     if payload.idempotency_key:
         existing = db.scalar(select(FormResponse).where(
             FormResponse.form_id == form.id,
             FormResponse.metadata_["idempotency_key"].astext == payload.idempotency_key,
         ))
         if existing:
+            set_public_form_rls_context(
+                db,
+                form_id=form.id,
+                response_id=existing.id,
+                idempotency_key=payload.idempotency_key,
+            )
             bike = db.scalar(select(BikeZoneRecord).where(BikeZoneRecord.response_id == existing.id))
             return existing, bike.code if bike else None
     language = payload.language if payload.language in (form.available_languages or []) else form.default_language
@@ -389,7 +401,15 @@ def submit_public_form(db: Session, slug: str, payload: FormResponseCreate) -> t
     if errors:
         _raise_field_errors(errors)
 
+    response_id = uuid4()
+    set_public_form_rls_context(
+        db,
+        form_id=form.id,
+        response_id=response_id,
+        idempotency_key=payload.idempotency_key,
+    )
     response = FormResponse(
+        id=response_id,
         form_id=form.id,
         event_id=form.event_id,
         session_id=form.session_id,
@@ -410,7 +430,6 @@ def submit_public_form(db: Session, slug: str, payload: FormResponseCreate) -> t
         bike_code = _bike_code(db)
         db.add(BikeZoneRecord(response_id=response.id, event_id=form.event_id, session_id=form.session_id, code=bike_code))
     db.commit()
-    db.refresh(response)
     return response, bike_code
 
 

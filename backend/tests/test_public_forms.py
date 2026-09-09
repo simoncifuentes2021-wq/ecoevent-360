@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -5,7 +6,8 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from PIL import Image
-from sqlalchemy import delete
+from sqlalchemy import create_engine, delete
+from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.core.config import settings
@@ -312,6 +314,76 @@ def test_submit_idempotency_key_does_not_duplicate(db, ctx):
     first, _ = event_form_service.submit_public_form(db, form.public_slug, payload)
     second, _ = event_form_service.submit_public_form(db, form.public_slug, payload)
     assert second.id == first.id
+
+
+def test_public_submission_works_with_runtime_rls_and_is_idempotent(db, ctx):
+    runtime_url = os.environ.get("RLS_DATABASE_URL")
+    if not runtime_url:
+        pytest.fail("RLS_DATABASE_URL is required for public form RLS certification")
+    form = make_form(db, ctx["event"], f"{ctx['suffix']}-runtime")
+    payload = FormResponseCreate(
+        language="es",
+        answers={"email": "runtime@example.com", "transport": "bus", "rating": 5},
+        idempotency_key=f"runtime-{uuid4().hex}",
+    )
+    runtime_engine = create_engine(runtime_url)
+    try:
+        with Session(runtime_engine, expire_on_commit=False) as runtime_db:
+            first, first_bike = event_form_service.submit_public_form(
+                runtime_db, form.public_slug, payload
+            )
+            second, second_bike = event_form_service.submit_public_form(
+                runtime_db, form.public_slug, payload
+            )
+            assert first.id == second.id
+            assert first_bike is None
+            assert second_bike is None
+    finally:
+        runtime_engine.dispose()
+
+
+def test_bike_zone_public_submission_works_with_runtime_rls(db, ctx):
+    runtime_url = os.environ.get("RLS_DATABASE_URL")
+    if not runtime_url:
+        pytest.fail("RLS_DATABASE_URL is required for public form RLS certification")
+    form = EventForm(
+        event_id=ctx["event"].id,
+        title=f"Bike runtime {ctx['suffix']}",
+        form_type=EventFormType.BIKE_ZONE_REGISTRATION,
+        public_slug=f"bike-runtime-{ctx['suffix']}-{uuid4().hex[:6]}",
+        status=EventFormStatus.ACTIVE,
+        default_language="es",
+        available_languages=["es"],
+    )
+    db.add(form)
+    db.flush()
+    db.add(
+        FormField(
+            form_id=form.id,
+            label="Nombre",
+            field_key="full_name",
+            field_type=FormFieldType.TEXT,
+            is_required=True,
+            sort_order=0,
+        )
+    )
+    db.commit()
+    runtime_engine = create_engine(runtime_url)
+    try:
+        with Session(runtime_engine, expire_on_commit=False) as runtime_db:
+            response, bike_code = event_form_service.submit_public_form(
+                runtime_db,
+                form.public_slug,
+                FormResponseCreate(
+                    language="es",
+                    answers={"full_name": "Persona Bike"},
+                    idempotency_key=f"bike-{uuid4().hex}",
+                ),
+            )
+            assert response.id is not None
+            assert bike_code and bike_code.startswith("BZ-")
+    finally:
+        runtime_engine.dispose()
 
 
 def test_client_cannot_list_full_responses_but_can_see_anonymous_summary(db, ctx):
