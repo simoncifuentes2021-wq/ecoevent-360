@@ -8,8 +8,9 @@ import { ToastProvider } from "@/components/common/ToastProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://app.greenway.cl"),
   title: "EcoEvent 360",
-  description: "Gestion ambiental y sanitaria para eventos masivos"
+  description: "Gestión ambiental y sanitaria para eventos masivos"
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
