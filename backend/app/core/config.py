@@ -3,6 +3,8 @@ from functools import lru_cache
 from pydantic import AliasChoices, AnyHttpUrl, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+OFFICIAL_FRONTEND_URL = "https://app.greenway.cl"
+
 
 class Settings(BaseSettings):
     app_name: str = "EcoEvent 360 API"
@@ -34,6 +36,7 @@ class Settings(BaseSettings):
     public_app_url: str | None = Field(
         default=None, validation_alias=AliasChoices("PUBLIC_APP_URL", "FRONTEND_PUBLIC_URL")
     )
+    official_frontend_url: str = OFFICIAL_FRONTEND_URL
     cloudflare_r2_bucket: str | None = None
     cloudflare_r2_account_id: str | None = None
     cloudflare_r2_access_key_id: str | None = None

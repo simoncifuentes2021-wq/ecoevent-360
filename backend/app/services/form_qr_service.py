@@ -219,6 +219,9 @@ def _target_url(form: EventForm, qr_type: str, language: str | None, public_base
 
 
 def _public_app_url(public_base_url: str | None = None) -> str:
+    official_url = settings.official_frontend_url.rstrip("/")
+    if public_base_url and public_base_url.rstrip("/") == official_url:
+        return official_url
     return (settings.public_app_url or public_base_url or "http://localhost:3000").rstrip("/")
 
 

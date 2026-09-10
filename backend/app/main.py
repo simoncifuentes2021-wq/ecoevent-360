@@ -65,9 +65,14 @@ app = FastAPI(
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+cors_origins = {
+    str(origin).rstrip("/") for origin in settings.backend_cors_origins
+}
+cors_origins.add(settings.official_frontend_url.rstrip("/"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(origin) for origin in settings.backend_cors_origins],
+    allow_origins=sorted(cors_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -30,7 +30,8 @@ DATABASE_URL=
 SECRET_KEY=
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
-BACKEND_CORS_ORIGINS=https://app.ecoevent360.cl,https://ecoevent-360.vercel.app
+BACKEND_CORS_ORIGINS=https://app.greenway.cl,https://ecoevent-360.vercel.app
+PUBLIC_APP_URL=https://app.greenway.cl
 CLOUDFLARE_R2_BUCKET=
 CLOUDFLARE_R2_ACCOUNT_ID=
 CLOUDFLARE_R2_ACCESS_KEY_ID=
@@ -119,7 +120,8 @@ Tipos permitidos:
 
 ```bash
 NEXT_PUBLIC_API_URL=https://api.tudominio.cl/api/v1
-BACKEND_CORS_ORIGINS=https://app.tudominio.cl,https://ecoevent-360.vercel.app
+BACKEND_CORS_ORIGINS=https://app.greenway.cl,https://ecoevent-360.vercel.app
+PUBLIC_APP_URL=https://app.greenway.cl
 ```
 
 ## 6. Checklist final
