@@ -236,6 +236,54 @@ def test_chile_transport_requires_region_and_metropolitan_commune(db, ctx):
     assert field_errors(exc.value)["residence_commune"] == "Este campo es obligatorio"
 
 
+def test_bike_zone_has_no_country_and_only_requires_commune_for_metropolitan_region(db, ctx):
+    form = event_form_service.create_form(
+        db,
+        ctx["event"].id,
+        EventFormCreate(title="Bike Zone", form_type=EventFormType.BIKE_ZONE_REGISTRATION, generate_template=True),
+        ctx["admin"],
+    )
+    fields = {field.field_key: field for field in form.fields}
+
+    assert "country_origin" not in fields
+    assert "country_residence" not in fields
+    assert fields["residence_region"].field_type == FormFieldType.SELECT
+    assert fields["residence_region"].is_required is True
+    assert fields["residence_commune"].field_type == FormFieldType.SELECT
+    assert fields["residence_commune"].is_required is False
+
+    form.status = EventFormStatus.ACTIVE
+    db.commit()
+    base_answers = {
+        "full_name": "Prueba Bike",
+        "email": "bike@example.com",
+        "phone": "+56912345678",
+        "bike_brand": "Trek",
+        "bike_model": "Marlin",
+        "bike_color": "Verde",
+        "event_ticket_number": "TICKET-1",
+    }
+
+    with pytest.raises(HTTPException) as exc:
+        event_form_service.submit_public_form(
+            db,
+            form.public_slug,
+            FormResponseCreate(
+                language="es",
+                answers={**base_answers, "residence_region": "Metropolitana de Santiago"},
+            ),
+        )
+    assert field_errors(exc.value)["residence_commune"] == "Este campo es obligatorio"
+
+    response, _ = event_form_service.submit_public_form(
+        db,
+        form.public_slug,
+        FormResponseCreate(language="es", answers={**base_answers, "residence_region": "Valparaíso"}),
+    )
+    assert response.raw_data["residence_region"] == "Valparaíso"
+    assert "residence_commune" not in response.raw_data
+
+
 def test_non_chile_transport_does_not_require_region_or_commune(db, ctx):
     form = event_form_service.create_form(
         db,

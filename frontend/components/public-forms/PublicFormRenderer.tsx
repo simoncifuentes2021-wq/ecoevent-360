@@ -110,7 +110,14 @@ function FieldControl({ field, value, error, conditionallyRequired = false, onCh
 }
 
 function isFieldVisible(field: PublicFormField, answers: Record<string, unknown>, fields: PublicFormField[]) {
-  if (!fields.some((item) => item.field_key === "country_residence" || item.field_key === "country_origin")) return true;
+  const hasCountryField = fields.some((item) => item.field_key === "country_residence" || item.field_key === "country_origin");
+  const hasRegionField = fields.some((item) => item.field_key === "residence_region");
+  if (!hasCountryField) {
+    if (hasRegionField && field.field_key === "residence_commune") {
+      return answers.residence_region === "Metropolitana de Santiago";
+    }
+    return true;
+  }
   const country = answers.country_residence ?? answers.country_origin;
   if (field.field_key === "residence_region") return country === "Chile";
   if (field.field_key === "residence_commune") return country === "Chile" && answers.residence_region === "Metropolitana de Santiago";
@@ -118,7 +125,11 @@ function isFieldVisible(field: PublicFormField, answers: Record<string, unknown>
 }
 
 function isFieldConditionallyRequired(field: PublicFormField, answers: Record<string, unknown>, fields: PublicFormField[]) {
-  if (!fields.some((item) => item.field_key === "country_residence" || item.field_key === "country_origin")) return false;
+  const hasCountryField = fields.some((item) => item.field_key === "country_residence" || item.field_key === "country_origin");
+  const hasRegionField = fields.some((item) => item.field_key === "residence_region");
+  if (!hasCountryField) {
+    return hasRegionField && field.field_key === "residence_commune" && answers.residence_region === "Metropolitana de Santiago";
+  }
   const country = answers.country_residence ?? answers.country_origin;
   return (field.field_key === "residence_region" && country === "Chile")
     || (field.field_key === "residence_commune" && answers.residence_region === "Metropolitana de Santiago");

@@ -858,8 +858,9 @@ def _bike_zone_template(form: EventForm) -> list[dict]:
         _field("Modelo de bicicleta", "bike_model", FormFieldType.TEXT, True, 6),
         _field("Color de bicicleta", "bike_color", FormFieldType.TEXT, True, 7),
         _field("Región de residencia", "residence_region", FormFieldType.SELECT, True, 8, analytics_key="residence_region", options=CHILE_REGION_OPTIONS),
-        _field("Número de ticket", "event_ticket_number", FormFieldType.TEXT, True, 9),
-        _field("Comentarios", "comments", FormFieldType.TEXTAREA, False, 10, analytics_key="comments"),
+        _field("Comuna de residencia", "residence_commune", FormFieldType.SELECT, False, 9, analytics_key="residence_commune", options=METROPOLITAN_COMMUNE_OPTIONS),
+        _field("Número de ticket", "event_ticket_number", FormFieldType.TEXT, True, 10),
+        _field("Comentarios", "comments", FormFieldType.TEXTAREA, False, 11, analytics_key="comments"),
     ]
 
 
@@ -883,6 +884,7 @@ DEFAULT_FIELD_TRANSLATIONS = {
         "bike_model": {"es": "Modelo de bicicleta", "en": "Bike model", "pt": "Modelo da bicicleta", "ko": "자전거 모델"},
         "bike_color": {"es": "Color de bicicleta", "en": "Bike color", "pt": "Cor da bicicleta", "ko": "자전거 색상"},
         "residence_region": {"es": "Región de residencia", "en": "Region of residence", "pt": "Região de residência", "ko": "거주 지역"},
+        "residence_commune": {"es": "Comuna de residencia", "en": "Commune of residence", "pt": "Comuna de residência", "ko": "거주 코뮤"},
         "event_ticket_number": {"es": "Número de ticket", "en": "Ticket number", "pt": "Número do ingresso", "ko": "티켓 번호"},
         "comments": {"es": "Comentarios", "en": "Comments", "pt": "Comentários", "ko": "의견"},
     },
