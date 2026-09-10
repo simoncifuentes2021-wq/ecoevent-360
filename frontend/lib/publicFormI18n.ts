@@ -13,6 +13,7 @@ type PublicFormCopy = {
   unavailableDefault: string;
   submitError: string;
   successTitle: string;
+  successMessage: string;
   bikeZoneCode: string;
   bikeZoneInstruction: string;
   responseCode: string;
@@ -36,6 +37,7 @@ const COPY: Record<PublicFormLanguage, PublicFormCopy> = {
     unavailableDefault: "No pudimos cargar este formulario. Revisa el enlace o intenta nuevamente más tarde.",
     submitError: "No se pudo enviar el formulario.",
     successTitle: "Respuesta recibida",
+    successMessage: "Respuesta recibida correctamente.",
     bikeZoneCode: "Código Bike Zone",
     bikeZoneInstruction: "Usa este código para check-in y check-out.",
     responseCode: "Código de respuesta",
@@ -57,6 +59,7 @@ const COPY: Record<PublicFormLanguage, PublicFormCopy> = {
     unavailableDefault: "We could not load this form. Check the link or try again later.",
     submitError: "The form could not be submitted.",
     successTitle: "Response received",
+    successMessage: "Your response was received successfully.",
     bikeZoneCode: "Bike Zone code",
     bikeZoneInstruction: "Use this code for check-in and check-out.",
     responseCode: "Response code",
@@ -78,6 +81,7 @@ const COPY: Record<PublicFormLanguage, PublicFormCopy> = {
     unavailableDefault: "Não foi possível carregar este formulário. Verifique o link ou tente novamente mais tarde.",
     submitError: "Não foi possível enviar o formulário.",
     successTitle: "Resposta recebida",
+    successMessage: "Sua resposta foi recebida com sucesso.",
     bikeZoneCode: "Código Bike Zone",
     bikeZoneInstruction: "Use este código para check-in e check-out.",
     responseCode: "Código da resposta",
@@ -99,6 +103,7 @@ const COPY: Record<PublicFormLanguage, PublicFormCopy> = {
     unavailableDefault: "양식을 불러올 수 없습니다. 링크를 확인하거나 나중에 다시 시도하세요.",
     submitError: "양식을 제출할 수 없습니다.",
     successTitle: "응답이 접수되었습니다",
+    successMessage: "응답이 성공적으로 접수되었습니다.",
     bikeZoneCode: "Bike Zone 코드",
     bikeZoneInstruction: "체크인 및 체크아웃 시 이 코드를 사용하세요.",
     responseCode: "응답 코드",
@@ -136,6 +141,33 @@ const OPTION_LABELS: Record<string, Record<PublicFormLanguage, string>> = {
   caminando: { es: "Caminando", en: "Walking", pt: "Caminhando", ko: "도보" },
   app_transporte: { es: "App de transporte", en: "Ride-hailing app", pt: "Aplicativo de transporte", ko: "차량 호출 앱" },
   otro: { es: "Otro", en: "Other", pt: "Outro", ko: "기타" },
+  Argentina: { es: "Argentina", en: "Argentina", pt: "Argentina", ko: "아르헨티나" },
+  Bolivia: { es: "Bolivia", en: "Bolivia", pt: "Bolívia", ko: "볼리비아" },
+  Brasil: { es: "Brasil", en: "Brazil", pt: "Brasil", ko: "브라질" },
+  "Canadá": { es: "Canadá", en: "Canada", pt: "Canadá", ko: "캐나다" },
+  Chile: { es: "Chile", en: "Chile", pt: "Chile", ko: "칠레" },
+  Colombia: { es: "Colombia", en: "Colombia", pt: "Colômbia", ko: "콜롬비아" },
+  "Costa Rica": { es: "Costa Rica", en: "Costa Rica", pt: "Costa Rica", ko: "코스타리카" },
+  Cuba: { es: "Cuba", en: "Cuba", pt: "Cuba", ko: "쿠바" },
+  Ecuador: { es: "Ecuador", en: "Ecuador", pt: "Equador", ko: "에콰도르" },
+  "El Salvador": { es: "El Salvador", en: "El Salvador", pt: "El Salvador", ko: "엘살바도르" },
+  "España": { es: "España", en: "Spain", pt: "Espanha", ko: "스페인" },
+  "Estados Unidos": { es: "Estados Unidos", en: "United States", pt: "Estados Unidos", ko: "미국" },
+  Francia: { es: "Francia", en: "France", pt: "França", ko: "프랑스" },
+  Guatemala: { es: "Guatemala", en: "Guatemala", pt: "Guatemala", ko: "과테말라" },
+  Honduras: { es: "Honduras", en: "Honduras", pt: "Honduras", ko: "온두라스" },
+  Italia: { es: "Italia", en: "Italy", pt: "Itália", ko: "이탈리아" },
+  "México": { es: "México", en: "Mexico", pt: "México", ko: "멕시코" },
+  Nicaragua: { es: "Nicaragua", en: "Nicaragua", pt: "Nicarágua", ko: "니카라과" },
+  "Panamá": { es: "Panamá", en: "Panama", pt: "Panamá", ko: "파나마" },
+  Paraguay: { es: "Paraguay", en: "Paraguay", pt: "Paraguai", ko: "파라과이" },
+  "Perú": { es: "Perú", en: "Peru", pt: "Peru", ko: "페루" },
+  Portugal: { es: "Portugal", en: "Portugal", pt: "Portugal", ko: "포르투갈" },
+  "Reino Unido": { es: "Reino Unido", en: "United Kingdom", pt: "Reino Unido", ko: "영국" },
+  "República Dominicana": { es: "República Dominicana", en: "Dominican Republic", pt: "República Dominicana", ko: "도미니카 공화국" },
+  Uruguay: { es: "Uruguay", en: "Uruguay", pt: "Uruguai", ko: "우루과이" },
+  Venezuela: { es: "Venezuela", en: "Venezuela", pt: "Venezuela", ko: "베네수엘라" },
+  Otro: { es: "Otro", en: "Other", pt: "Outro", ko: "기타" },
 };
 
 const ERROR_TRANSLATIONS: Record<string, Record<PublicFormLanguage, string>> = {
