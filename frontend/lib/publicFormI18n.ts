@@ -109,10 +109,76 @@ const COPY: Record<PublicFormLanguage, PublicFormCopy> = {
   },
 };
 
+const FIELD_LABELS: Record<string, Record<PublicFormLanguage, string>> = {
+  event_name: { es: "Nombre del evento", en: "Event name", pt: "Nome do evento", ko: "이벤트 이름" },
+  venue_name: { es: "Nombre del venue / recinto", en: "Venue", pt: "Local / recinto", ko: "장소" },
+  full_name: { es: "Nombre completo", en: "Full name", pt: "Nome completo", ko: "성명" },
+  email: { es: "Correo electrónico", en: "Email", pt: "E-mail", ko: "이메일" },
+  phone: { es: "Teléfono", en: "Phone", pt: "Telefone", ko: "전화번호" },
+  company: { es: "Empresa", en: "Company", pt: "Empresa", ko: "회사" },
+  country_origin: { es: "País de origen", en: "Country of origin", pt: "País de origem", ko: "출신 국가" },
+  country_residence: { es: "País de residencia", en: "Country of residence", pt: "País de residência", ko: "거주 국가" },
+  residence_region: { es: "Región de residencia", en: "Region of residence", pt: "Região de residência", ko: "거주 지역" },
+  residence_commune: { es: "Comuna de residencia", en: "Commune of residence", pt: "Comuna de residência", ko: "거주 코뮌" },
+  transport_mode: { es: "Tipo de transporte utilizado para llegar", en: "Type of transport used to arrive", pt: "Tipo de transporte utilizado para chegar", ko: "이용한 교통수단" },
+  bike_brand: { es: "Marca de bicicleta", en: "Bike brand", pt: "Marca da bicicleta", ko: "자전거 브랜드" },
+  bike_model: { es: "Modelo de bicicleta", en: "Bike model", pt: "Modelo da bicicleta", ko: "자전거 모델" },
+  bike_color: { es: "Color de bicicleta", en: "Bike color", pt: "Cor da bicicleta", ko: "자전거 색상" },
+  event_ticket_number: { es: "Número de ticket", en: "Ticket number", pt: "Número do ingresso", ko: "티켓 번호" },
+  comments: { es: "Comentarios", en: "Comments", pt: "Comentários", ko: "의견" },
+};
+
+const OPTION_LABELS: Record<string, Record<PublicFormLanguage, string>> = {
+  auto: { es: "Auto", en: "Car", pt: "Carro", ko: "자동차" },
+  metro: { es: "Metro", en: "Metro", pt: "Metrô", ko: "지하철" },
+  bus: { es: "Bus", en: "Bus", pt: "Ônibus", ko: "버스" },
+  bicicleta: { es: "Bicicleta", en: "Bicycle", pt: "Bicicleta", ko: "자전거" },
+  caminando: { es: "Caminando", en: "Walking", pt: "Caminhando", ko: "도보" },
+  app_transporte: { es: "App de transporte", en: "Ride-hailing app", pt: "Aplicativo de transporte", ko: "차량 호출 앱" },
+  otro: { es: "Otro", en: "Other", pt: "Outro", ko: "기타" },
+};
+
+const ERROR_TRANSLATIONS: Record<string, Record<PublicFormLanguage, string>> = {
+  "Campo no reconocido": { es: "Campo no reconocido", en: "Unknown field", pt: "Campo não reconhecido", ko: "알 수 없는 필드입니다" },
+  "Este campo es obligatorio": { es: "Este campo es obligatorio", en: "This field is required", pt: "Este campo é obrigatório", ko: "필수 입력 항목입니다" },
+  "Correo inválido": { es: "Correo inválido", en: "Invalid email address", pt: "E-mail inválido", ko: "유효하지 않은 이메일입니다" },
+  "Teléfono inválido": { es: "Teléfono inválido", en: "Invalid phone number", pt: "Telefone inválido", ko: "유효하지 않은 전화번호입니다" },
+  "Debe seleccionar una opción válida": { es: "Debe seleccionar una opción válida", en: "Please select a valid option", pt: "Selecione uma opção válida", ko: "유효한 옵션을 선택하세요" },
+  "Debe seleccionar una o más opciones válidas": { es: "Debe seleccionar una o más opciones válidas", en: "Please select one or more valid options", pt: "Selecione uma ou mais opções válidas", ko: "하나 이상의 유효한 옵션을 선택하세요" },
+  "Debe ser verdadero o falso": { es: "Debe ser verdadero o falso", en: "The value must be true or false", pt: "O valor deve ser verdadeiro ou falso", ko: "값은 참 또는 거짓이어야 합니다" },
+  "Valor inválido": { es: "Valor inválido", en: "Invalid value", pt: "Valor inválido", ko: "유효하지 않은 값입니다" },
+};
+
 export function normalizePublicFormLanguage(language?: string | null): PublicFormLanguage {
   return language === "en" || language === "pt" || language === "ko" ? language : "es";
 }
 
 export function publicFormCopy(language?: string | null): PublicFormCopy {
   return COPY[normalizePublicFormLanguage(language)];
+}
+
+export function publicFormFieldLabel(fieldKey: string, currentLabel: string, language?: string | null): string {
+  const lang = normalizePublicFormLanguage(language);
+  return FIELD_LABELS[fieldKey]?.[lang] ?? currentLabel;
+}
+
+export function publicFormOptionLabel(value: string, currentLabel: string, language?: string | null): string {
+  const lang = normalizePublicFormLanguage(language);
+  return OPTION_LABELS[value]?.[lang] ?? currentLabel;
+}
+
+export function translatePublicFormError(message: string, language?: string | null): string {
+  const lang = normalizePublicFormLanguage(language);
+  const direct = ERROR_TRANSLATIONS[message]?.[lang];
+  if (direct) return direct;
+
+  const maxLength = message.match(/^Debe tener máximo (\d+) caracteres$/);
+  if (maxLength) {
+    const count = maxLength[1];
+    if (lang === "en") return `Must be at most ${count} characters`;
+    if (lang === "pt") return `Deve ter no máximo ${count} caracteres`;
+    if (lang === "ko") return `최대 ${count}자까지 입력할 수 있습니다`;
+  }
+
+  return message;
 }
