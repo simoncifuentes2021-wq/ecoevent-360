@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api";
 import { submitPublicForm } from "@/lib/api/publicForms";
-import { publicFormCopy } from "@/lib/publicFormI18n";
+import { publicFormCopy, publicFormFieldLabel, publicFormOptionLabel, translatePublicFormError } from "@/lib/publicFormI18n";
 import type { FormSubmitResult, PublicEventForm, PublicFormField } from "@/types/eventForm";
 
 type FieldError = { field_key: string; message: string };
@@ -47,11 +47,11 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
       setResult(await submitPublicForm(form.public_slug, { language, answers }));
     } catch (err) {
       if (err instanceof ApiError && Array.isArray(err.rawDetail)) {
-        const nextErrors = fieldErrorsFromDetail(err.rawDetail);
+        const nextErrors = fieldErrorsFromDetail(err.rawDetail, language);
         setFieldErrors(nextErrors);
-        setError(Object.keys(nextErrors).length ? null : err.message);
+        setError(Object.keys(nextErrors).length ? null : translatePublicFormError(err.message, language));
       } else {
-        setError(err instanceof Error ? err.message : copy.submitError);
+        setError(err instanceof Error ? translatePublicFormError(err.message, language) : copy.submitError);
       }
     } finally {
       setLoading(false);
@@ -101,9 +101,10 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
 
 function FieldControl({ field, value, error, conditionallyRequired = false, language, onChange }: { field: PublicFormField; value: unknown; error?: string; conditionallyRequired?: boolean; language: string; onChange: (value: unknown) => void }) {
   const required = field.is_required || conditionallyRequired ? <span className="text-rose-600"> *</span> : null;
+  const label = publicFormFieldLabel(field.field_key, field.label, language);
   return (
     <label className="block text-sm font-semibold text-slate-800">
-      {field.label}{required}
+      {label}{required}
       {field.help_text ? <span className="mt-1 block text-xs font-normal text-slate-500">{field.help_text}</span> : null}
       <Control error={error} field={field} language={language} value={value} onChange={onChange} />
       {error ? <span className="mt-1 block text-xs font-semibold text-rose-700">{error}</span> : null}
@@ -148,7 +149,7 @@ function Control({ field, value, error, language, onChange }: { field: PublicFor
     return (
       <select className={`${common} h-11 w-full rounded-md border bg-white px-3 text-sm`} disabled={field.is_readonly} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
         <option value="">{copy.selectPlaceholder}</option>
-        {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        {field.options.map((option) => <option key={option.value} value={option.value}>{publicFormOptionLabel(option.value, option.label, language)}</option>)}
       </select>
     );
   }
@@ -159,7 +160,7 @@ function Control({ field, value, error, language, onChange }: { field: PublicFor
         {field.options.map((option) => (
           <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium" key={option.value}>
             <input checked={selected.includes(option.value)} type="checkbox" onChange={(event) => onChange(event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value))} />
-            {option.label}
+            {publicFormOptionLabel(option.value, option.label, language)}
           </label>
         ))}
       </div>
@@ -178,13 +179,13 @@ function Control({ field, value, error, language, onChange }: { field: PublicFor
   return <Input className={`${common} ${readonlyClass}`} max={field.max_value ? Number(field.max_value) : undefined} maxLength={field.max_length ?? undefined} min={field.min_value ? Number(field.min_value) : field.field_type === "RATING_1_5" || field.field_type === "RATING_1_7" ? 1 : undefined} placeholder={field.placeholder ?? ""} readOnly={field.is_readonly} type={type} value={String(value ?? "")} onChange={(event) => onChange(type === "number" ? event.target.value : event.target.value)} />;
 }
 
-function fieldErrorsFromDetail(detail: unknown[]) {
+function fieldErrorsFromDetail(detail: unknown[], language: string) {
   const errors: Record<string, string> = {};
   detail.forEach((item) => {
     if (!item || typeof item !== "object") return;
     const candidate = item as Partial<FieldError>;
     if (typeof candidate.field_key === "string" && typeof candidate.message === "string") {
-      errors[candidate.field_key] = candidate.message;
+      errors[candidate.field_key] = translatePublicFormError(candidate.message, language);
     }
   });
   return errors;
