@@ -13,7 +13,7 @@ from app.db.session import SessionLocal
 from app.core.config import settings
 from app.models.core import Client, Event, EventForm, EventSession, EventStaff, FormField, FormFieldOption, User
 from app.models.enums import EventFormStatus, EventFormType, EventStatus, FormFieldType, UserRole
-from app.schemas.event_form_schema import EventFormCreate, FormQRCodeCreate, FormResponseCreate
+from app.schemas.event_form_schema import EventFormCreate, EventFormRead, FormQRCodeCreate, FormResponseCreate
 from app.services import event_form_service, form_qr_service
 
 
@@ -436,6 +436,37 @@ def test_admin_generates_form_qr(db, ctx):
     )
     assert qr.target_url.endswith(f"/f/{form.public_slug}")
     assert qr.file_path
+
+
+def test_show_form_link_and_qr_include_slugified_show_name(db, ctx):
+    show = EventSession(event_id=ctx["event"].id, name="Show Ñuñoa Día 1")
+    db.add(show)
+    db.flush()
+    form = event_form_service.create_form(
+        db,
+        ctx["event"].id,
+        EventFormCreate(
+            title=f"Functional Form {ctx['suffix']}",
+            session_id=show.id,
+            form_type=EventFormType.CUSTOM,
+            generate_template=False,
+        ),
+        ctx["admin"],
+    )
+
+    qr = form_qr_service.create_form_qr(
+        db,
+        form.id,
+        FormQRCodeCreate(label="QR Show", qr_type="FORM"),
+        ctx["admin"],
+        public_base_url="https://app.greenway.cl",
+    )
+
+    assert form.session_name == "Show Ñuñoa Día 1"
+    assert EventFormRead.model_validate(form).session_name == "Show Ñuñoa Día 1"
+    assert qr.target_url == (
+        f"https://app.greenway.cl/f/show-nunoa-dia-1/{form.public_slug}"
+    )
 
 
 def test_generated_qr_png_is_decodable(db, ctx):

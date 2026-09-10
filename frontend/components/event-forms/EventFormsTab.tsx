@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { closeEventForm, createEventForm, getEventFormResponses, getEventForms, getEventFormSummary, publishEventForm } from "@/lib/api/eventForms";
 import { getEvent } from "@/lib/api/events";
 import { getEventSessions } from "@/lib/api/eventSessions";
+import { publicFormPath } from "@/lib/publicFormPath";
 import type { Event } from "@/types/event";
 import type { EventForm, EventFormSummary, EventFormType, FormResponse } from "@/types/eventForm";
 import type { EventSession } from "@/types/eventSession";
@@ -107,7 +108,7 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
   }
 
   async function copyLink(item: EventForm) {
-    await navigator.clipboard.writeText(`${baseUrl}/f/${item.public_slug}`);
+    await navigator.clipboard.writeText(`${baseUrl}${publicFormPath(item)}`);
   }
 
   async function loadDetails(item: EventForm) {
@@ -149,11 +150,11 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
                 <div>
                   <h3 className="font-bold text-slate-950">{item.title}</h3>
                   <p className="text-sm text-slate-600">{typeLabels[item.form_type]} · {item.status} · {item.fields?.length ?? 0} campos</p>
-                  <p className="mt-1 text-xs font-semibold text-emerald-700">/f/{item.public_slug}</p>
+                  <p className="mt-1 break-all text-xs font-semibold text-emerald-700">{publicFormPath(item)}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" type="button" variant="secondary" onClick={() => copyLink(item)}><Copy className="h-4 w-4" />Copiar</Button>
-                  <Button size="sm" type="button" variant="secondary" onClick={() => window.open(`/f/${item.public_slug}`, "_blank")}><ExternalLink className="h-4 w-4" />Abrir</Button>
+                  <Button size="sm" type="button" variant="secondary" onClick={() => window.open(publicFormPath(item), "_blank")}><ExternalLink className="h-4 w-4" />Abrir</Button>
                   <Button size="sm" type="button" variant="secondary" onClick={() => setQrForm(item)}><QrCode className="h-4 w-4" />QR</Button>
                   <Button size="sm" type="button" variant="secondary" onClick={() => loadDetails(item)}><Eye className="h-4 w-4" />Respuestas</Button>
                   {canManage && item.status !== "ACTIVE" ? <Button size="sm" type="button" onClick={async () => { await publishEventForm(item.id); await load(); }}>Publicar</Button> : null}

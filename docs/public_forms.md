@@ -143,6 +143,13 @@ Targets:
 {PUBLIC_APP_URL}/f/{public_slug}
 ```
 
+Cuando el formulario pertenece a un show, el enlace visible incluye su nombre sin
+romper el identificador estable del formulario:
+
+```text
+{PUBLIC_APP_URL}/f/{nombre-del-show}/{public_slug}
+```
+
 Para idioma:
 
 ```text

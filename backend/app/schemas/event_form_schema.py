@@ -220,6 +220,7 @@ class EventFormRead(ORMModel):
     id: UUID
     event_id: UUID
     session_id: UUID | None = None
+    session_name: str | None = None
     title: str
     description: str | None = None
     form_type: EventFormType

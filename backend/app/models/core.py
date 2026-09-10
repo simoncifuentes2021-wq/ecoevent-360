@@ -1653,6 +1653,10 @@ class EventForm(Base):
     responses: Mapped[list["FormResponse"]] = relationship(back_populates="form")
     qr_codes: Mapped[list["FormQRCode"]] = relationship(back_populates="form")
 
+    @property
+    def session_name(self) -> str | None:
+        return self.session.name if self.session else None
+
 
 class FormField(Base):
     __tablename__ = "form_fields"

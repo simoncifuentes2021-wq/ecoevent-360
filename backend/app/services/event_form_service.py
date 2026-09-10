@@ -32,6 +32,7 @@ from app.models.core import (
 from app.models.enums import BikeZoneStatus, EventFormStatus, EventFormType, FormFieldType, UserRole
 from app.schemas.event_form_schema import EventFormCreate, EventFormUpdate, FormFieldCreate, FormFieldUpdate, FormResponseCreate
 from app.services.event_session_service import ensure_session_belongs_to_event
+from app.utils.slug import slugify_url_segment
 
 OPTION_FIELD_TYPES = {FormFieldType.SELECT, FormFieldType.MULTI_SELECT, FormFieldType.RADIO}
 PERSONAL_KEYS = {"full_name", "name", "email", "phone", "telefono", "respondent_name", "respondent_email", "respondent_phone"}
@@ -1039,7 +1040,7 @@ def _unique_slug(db: Session, title: str) -> str:
 
 
 def _slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    slug = slugify_url_segment(value)
     return slug or secrets.token_hex(4)
 
 

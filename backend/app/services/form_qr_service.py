@@ -14,6 +14,7 @@ from app.schemas.event_form_schema import FormQRCodeCreate
 from app.services import file_storage_service
 from app.services.event_form_service import get_form_or_404
 from app.utils.simple_qr import make_qr_png
+from app.utils.slug import slugify_url_segment
 
 QR_TYPES = {"FORM", "FORM_LANGUAGE", "BIKE_ZONE_PERSONAL"}
 QR_UPLOAD_FOLDER = "qrcodes"
@@ -212,10 +213,18 @@ def _validate_language(form: EventForm, qr_type: str, language: str | None) -> s
 
 
 def _target_url(form: EventForm, qr_type: str, language: str | None, public_base_url: str | None = None) -> str:
-    base = f"{_public_app_url(public_base_url)}/f/{form.public_slug}"
+    base = f"{_public_app_url(public_base_url)}{_public_form_path(form)}"
     if qr_type == "FORM_LANGUAGE" and language:
         return f"{base}?{urlencode({'lang': language})}"
     return base
+
+
+def _public_form_path(form: EventForm) -> str:
+    if form.session:
+        show_slug = slugify_url_segment(form.session.name)
+        if show_slug:
+            return f"/f/{show_slug}/{form.public_slug}"
+    return f"/f/{form.public_slug}"
 
 
 def _public_app_url(public_base_url: str | None = None) -> str:

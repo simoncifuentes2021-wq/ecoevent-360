@@ -11,6 +11,7 @@ import { FormQrList } from "@/components/event-forms/FormQrList";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import { createFormQrCode, deleteFormQrCode, getFormQrCodes } from "@/lib/api/formQr";
+import { publicFormPath } from "@/lib/publicFormPath";
 import type { EventForm } from "@/types/eventForm";
 import type { FormQrCode } from "@/types/formQr";
 
@@ -27,7 +28,7 @@ export function FormQrDialog({ form, canCreate = true, canDelete, onClose }: { f
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const baseUrl = useMemo(() => (typeof window === "undefined" ? "" : window.location.origin), []);
-  const publicUrl = `${baseUrl}/f/${form.public_slug}`;
+  const publicUrl = `${baseUrl}${publicFormPath(form)}`;
   const languages = form.available_languages?.length ? form.available_languages : [form.default_language || "es"];
 
   const load = useCallback(async () => {

@@ -8,6 +8,7 @@ import { LoadingState } from "@/components/common/LoadingState";
 import { FormQrDialog } from "@/components/event-forms/FormQrDialog";
 import { Button } from "@/components/ui/button";
 import { getEventForms, getEventFormSummary } from "@/lib/api/eventForms";
+import { publicFormPath } from "@/lib/publicFormPath";
 import type { EventForm, EventFormSummary } from "@/types/eventForm";
 
 type ClientFormsMode = "forms" | "bike_zone";
@@ -74,7 +75,7 @@ export function ClientFormsTab({ eventId, mode = "forms" }: { eventId: string; m
               </div>
               {form.status === "ACTIVE" ? (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button type="button" variant="secondary" onClick={() => window.open(`/f/${form.public_slug}`, "_blank")}><ExternalLink className="h-4 w-4" />Abrir formulario</Button>
+                  <Button type="button" variant="secondary" onClick={() => window.open(publicFormPath(form), "_blank")}><ExternalLink className="h-4 w-4" />Abrir formulario</Button>
                   <Button type="button" variant="secondary" onClick={() => setQrForm(form)}><QrCode className="h-4 w-4" />QR</Button>
                 </div>
               ) : null}
