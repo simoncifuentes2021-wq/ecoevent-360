@@ -63,7 +63,7 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
       <main className="px-4 py-8">
         <section className="mx-auto max-w-2xl rounded-lg bg-white p-6 text-center shadow-2xl">
           <h2 className="text-2xl font-bold text-slate-950">{copy.successTitle}</h2>
-          <p className="mt-2 text-slate-600">{result.message}</p>
+          <p className="mt-2 text-slate-600">{copy.successMessage}</p>
           {result.bike_zone_code ? (
             <div className="mt-5 rounded-lg bg-emerald-50 p-5">
               <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{copy.bikeZoneCode}</p>
