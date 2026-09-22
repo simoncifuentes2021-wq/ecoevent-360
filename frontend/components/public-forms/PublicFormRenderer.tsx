@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api";
 import { submitPublicForm } from "@/lib/api/publicForms";
+import { publicFormCopy, publicFormFieldLabel, publicFormOptionLabel, translatePublicFormError } from "@/lib/publicFormI18n";
 import type { FormSubmitResult, PublicEventForm, PublicFormField } from "@/types/eventForm";
 
 type FieldError = { field_key: string; message: string };
@@ -16,6 +17,7 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [result, setResult] = useState<FormSubmitResult | null>(null);
+  const copy = publicFormCopy(language);
 
   function update(key: string, value: unknown) {
     setAnswers((current) => {
@@ -38,7 +40,7 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
   }
 
   async function submit() {
-    const nextErrors = validateAnswers(form.fields, answers);
+    const nextErrors = validateAnswers(form.fields, answers, language);
     if (Object.keys(nextErrors).length) {
       setFieldErrors(nextErrors);
       setError(null);
@@ -55,11 +57,11 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
       setResult(await submitPublicForm(form.public_slug, { language, answers }));
     } catch (err) {
       if (err instanceof ApiError && Array.isArray(err.rawDetail)) {
-        const nextErrors = fieldErrorsFromDetail(err.rawDetail);
+        const nextErrors = fieldErrorsFromDetail(err.rawDetail, language);
         setFieldErrors(nextErrors);
-        setError(Object.keys(nextErrors).length ? null : err.message);
+        setError(Object.keys(nextErrors).length ? null : translatePublicFormError(err.message, language));
       } else {
-        setError(err instanceof Error ? err.message : "No se pudo enviar el formulario.");
+        setError(err instanceof Error ? translatePublicFormError(err.message, language) : copy.submitError);
       }
     } finally {
       setLoading(false);
@@ -70,18 +72,18 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
     return (
       <main className="px-4 py-8">
         <section className="mx-auto max-w-2xl rounded-lg bg-white p-6 text-center shadow-2xl">
-          <h2 className="text-2xl font-bold text-slate-950">Respuesta recibida</h2>
-          <p className="mt-2 text-slate-600">{result.message}</p>
+          <h2 className="text-2xl font-bold text-slate-950">{copy.successTitle}</h2>
+          <p className="mt-2 text-slate-600">{copy.successMessage}</p>
           {result.bike_zone_code ? (
             <div className="mt-5 rounded-lg bg-emerald-50 p-5">
-              <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Código Bike Zone</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{copy.bikeZoneCode}</p>
               <p className="mt-1 text-3xl font-black text-emerald-800">{result.bike_zone_code}</p>
-              <p className="mt-2 text-sm font-medium text-emerald-900">Usa este código para check-in y check-out.</p>
+              <p className="mt-2 text-sm font-medium text-emerald-900">{copy.bikeZoneInstruction}</p>
             </div>
           ) : null}
           {result.response_code ? (
             <p className="mt-4 text-sm text-slate-500">
-              Código de respuesta: <strong className="text-slate-700">{result.response_code}</strong>
+              {copy.responseCode}: <strong className="text-slate-700">{result.response_code}</strong>
             </p>
           ) : null}
         </section>
@@ -95,26 +97,27 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
         {form.description ? <p className="mb-5 text-sm text-slate-600">{form.description}</p> : null}
         <div className="space-y-4">
           {form.fields.filter((field) => isFieldVisible(field, answers, form.fields)).map((field) => (
-            <FieldControl key={field.field_key} conditionallyRequired={isFieldConditionallyRequired(field, answers, form.fields)} error={fieldErrors[field.field_key]} field={field} value={answers[field.field_key]} onChange={(value) => update(field.field_key, value)} />
+            <FieldControl key={field.field_key} conditionallyRequired={isFieldConditionallyRequired(field, answers, form.fields)} error={fieldErrors[field.field_key]} field={field} language={language} value={answers[field.field_key]} onChange={(value) => update(field.field_key, value)} />
           ))}
         </div>
         {error ? <p aria-live="polite" className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p> : null}
         <Button className="mt-6 w-full" disabled={loading} style={{ backgroundColor: form.primary_color }} type="button" onClick={submit}>
-          {loading ? "Enviando..." : form.submit_label}
+          {loading ? copy.submitting : form.submit_label}
         </Button>
       </section>
     </main>
   );
 }
 
-function FieldControl({ field, value, error, conditionallyRequired = false, onChange }: { field: PublicFormField; value: unknown; error?: string; conditionallyRequired?: boolean; onChange: (value: unknown) => void }) {
+function FieldControl({ field, value, error, conditionallyRequired = false, language, onChange }: { field: PublicFormField; value: unknown; error?: string; conditionallyRequired?: boolean; language: string; onChange: (value: unknown) => void }) {
   const fieldId = `field-${field.field_key}`;
   const required = field.is_required || conditionallyRequired ? <span className="text-rose-600"> *</span> : null;
+  const label = publicFormFieldLabel(field.field_key, field.label, language);
   return (
     <div className="block text-sm font-semibold text-slate-800">
-      <label htmlFor={fieldId}>{field.label}{required}</label>
+      <label htmlFor={fieldId}>{label}{required}</label>
       {field.help_text ? <span className="mt-1 block text-xs font-normal text-slate-500">{field.help_text}</span> : null}
-      <Control error={error} field={field} fieldId={fieldId} value={value} onChange={onChange} />
+      <Control error={error} field={field} fieldId={fieldId} language={language} value={value} onChange={onChange} />
       {error ? <span id={`${fieldId}-error`} aria-live="polite" className="mt-1 block text-xs font-semibold text-rose-700">{error}</span> : null}
     </div>
   );
@@ -146,7 +149,8 @@ function isFieldConditionallyRequired(field: PublicFormField, answers: Record<st
     || (field.field_key === "residence_commune" && answers.residence_region === "Metropolitana de Santiago");
 }
 
-function Control({ field, fieldId, value, error, onChange }: { field: PublicFormField; fieldId: string; value: unknown; error?: string; onChange: (value: unknown) => void }) {
+function Control({ field, fieldId, value, error, language, onChange }: { field: PublicFormField; fieldId: string; value: unknown; error?: string; language: string; onChange: (value: unknown) => void }) {
+  const copy = publicFormCopy(language);
   const common = `mt-2 ${error ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200" : ""}`;
   const readonlyClass = field.is_readonly ? "cursor-not-allowed bg-slate-50 text-slate-600" : "";
   if (field.field_type === "TEXTAREA") {
@@ -155,21 +159,21 @@ function Control({ field, fieldId, value, error, onChange }: { field: PublicForm
   if (field.field_type === "SELECT") {
     return (
       <select aria-describedby={error ? `${fieldId}-error` : undefined} aria-invalid={Boolean(error)} className={`${common} h-11 w-full rounded-md border bg-white px-3 text-sm`} disabled={field.is_readonly} id={fieldId} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Selecciona</option>
-        {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        <option value="">{copy.selectPlaceholder}</option>
+        {field.options.map((option) => <option key={option.value} value={option.value}>{publicFormOptionLabel(option.value, option.label, language)}</option>)}
       </select>
     );
   }
   if (field.field_type === "RADIO" || field.field_type === "YES_NO") {
     const options = field.field_type === "YES_NO" && !field.options.length
-      ? [{ label: "Sí", value: "true" }, { label: "No", value: "false" }]
+      ? [{ label: copy.yes, value: "true" }, { label: copy.no, value: "false" }]
       : field.options;
     return (
       <div aria-describedby={error ? `${fieldId}-error` : undefined} aria-invalid={Boolean(error)} className="mt-2 grid gap-2" role="radiogroup">
         {options.map((option, index) => (
           <label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium" key={option.value}>
             <input checked={value === option.value || (field.field_type === "YES_NO" && value === (option.value === "true"))} disabled={field.is_readonly} id={index === 0 ? fieldId : undefined} name={fieldId} type="radio" onChange={() => onChange(field.field_type === "YES_NO" ? option.value === "true" : option.value)} />
-            {option.label}
+            {field.field_type === "YES_NO" ? option.label : publicFormOptionLabel(option.value, option.label, language)}
           </label>
         ))}
       </div>
@@ -182,7 +186,7 @@ function Control({ field, fieldId, value, error, onChange }: { field: PublicForm
         {field.options.map((option, index) => (
           <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium" key={option.value}>
             <input checked={selected.includes(option.value)} id={index === 0 ? fieldId : undefined} type="checkbox" onChange={(event) => onChange(event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value))} />
-            {option.label}
+            {publicFormOptionLabel(option.value, option.label, language)}
           </label>
         ))}
       </div>
@@ -192,7 +196,7 @@ function Control({ field, fieldId, value, error, onChange }: { field: PublicForm
     return (
       <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-3 text-sm font-medium">
         <input checked={value === true} disabled={field.is_readonly} id={fieldId} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
-        {field.placeholder || "Sí"}
+        {field.placeholder || copy.yes}
       </label>
     );
   }
@@ -200,12 +204,12 @@ function Control({ field, fieldId, value, error, onChange }: { field: PublicForm
   return <Input aria-describedby={error ? `${fieldId}-error` : undefined} aria-invalid={Boolean(error)} className={`${common} ${readonlyClass}`} id={fieldId} max={field.max_value ? Number(field.max_value) : undefined} maxLength={field.max_length ?? undefined} min={field.min_value ? Number(field.min_value) : field.field_type === "RATING_1_5" || field.field_type === "RATING_1_7" ? 1 : undefined} placeholder={field.placeholder ?? ""} readOnly={field.is_readonly} type={type} value={String(value ?? "")} onChange={(event) => onChange(type === "number" ? event.target.value : event.target.value)} />;
 }
 
-function validateAnswers(fields: PublicFormField[], answers: Record<string, unknown>) {
+function validateAnswers(fields: PublicFormField[], answers: Record<string, unknown>, language: string) {
   const errors: Record<string, string> = {};
   fields.filter((field) => isFieldVisible(field, answers, fields)).forEach((field) => {
     const required = field.is_required || isFieldConditionallyRequired(field, answers, fields);
     if (!required || !isEmptyAnswer(field, answers[field.field_key])) return;
-    errors[field.field_key] = "Este campo es obligatorio";
+    errors[field.field_key] = translatePublicFormError("Este campo es obligatorio", language);
   });
   return errors;
 }
@@ -216,13 +220,13 @@ function isEmptyAnswer(field: PublicFormField, value: unknown) {
   return value === undefined || value === null || String(value).trim() === "";
 }
 
-function fieldErrorsFromDetail(detail: unknown[]) {
+function fieldErrorsFromDetail(detail: unknown[], language: string) {
   const errors: Record<string, string> = {};
   detail.forEach((item) => {
     if (!item || typeof item !== "object") return;
     const candidate = item as Partial<FieldError>;
     if (typeof candidate.field_key === "string" && typeof candidate.message === "string") {
-      errors[candidate.field_key] = candidate.message;
+      errors[candidate.field_key] = translatePublicFormError(candidate.message, language);
     }
   });
   return errors;
