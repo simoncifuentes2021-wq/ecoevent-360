@@ -11,7 +11,7 @@ import type { FormSubmitResult, PublicEventForm, PublicFormField } from "@/types
 type FieldError = { field_key: string; message: string };
 
 export function PublicFormRenderer({ form, language }: { form: PublicEventForm; language: string }) {
-  const [answers, setAnswers] = useState<Record<string, unknown>>(initialAnswers(form.fields));
+  const [answers, setAnswers] = useState<Record<string, unknown>>(initialAnswers(form));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -38,6 +38,16 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
   }
 
   async function submit() {
+    const nextErrors = validateAnswers(form.fields, answers);
+    if (Object.keys(nextErrors).length) {
+      setFieldErrors(nextErrors);
+      setError(null);
+      window.requestAnimationFrame(() => {
+        document.getElementById(`field-${Object.keys(nextErrors)[0]}`)?.focus();
+      });
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setFieldErrors({});
@@ -88,7 +98,7 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
             <FieldControl key={field.field_key} conditionallyRequired={isFieldConditionallyRequired(field, answers, form.fields)} error={fieldErrors[field.field_key]} field={field} value={answers[field.field_key]} onChange={(value) => update(field.field_key, value)} />
           ))}
         </div>
-        {error ? <p className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p> : null}
+        {error ? <p aria-live="polite" className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p> : null}
         <Button className="mt-6 w-full" disabled={loading} style={{ backgroundColor: form.primary_color }} type="button" onClick={submit}>
           {loading ? "Enviando..." : form.submit_label}
         </Button>
@@ -98,14 +108,15 @@ export function PublicFormRenderer({ form, language }: { form: PublicEventForm; 
 }
 
 function FieldControl({ field, value, error, conditionallyRequired = false, onChange }: { field: PublicFormField; value: unknown; error?: string; conditionallyRequired?: boolean; onChange: (value: unknown) => void }) {
+  const fieldId = `field-${field.field_key}`;
   const required = field.is_required || conditionallyRequired ? <span className="text-rose-600"> *</span> : null;
   return (
-    <label className="block text-sm font-semibold text-slate-800">
-      {field.label}{required}
+    <div className="block text-sm font-semibold text-slate-800">
+      <label htmlFor={fieldId}>{field.label}{required}</label>
       {field.help_text ? <span className="mt-1 block text-xs font-normal text-slate-500">{field.help_text}</span> : null}
-      <Control error={error} field={field} value={value} onChange={onChange} />
-      {error ? <span className="mt-1 block text-xs font-semibold text-rose-700">{error}</span> : null}
-    </label>
+      <Control error={error} field={field} fieldId={fieldId} value={value} onChange={onChange} />
+      {error ? <span id={`${fieldId}-error`} aria-live="polite" className="mt-1 block text-xs font-semibold text-rose-700">{error}</span> : null}
+    </div>
   );
 }
 
@@ -135,44 +146,74 @@ function isFieldConditionallyRequired(field: PublicFormField, answers: Record<st
     || (field.field_key === "residence_commune" && answers.residence_region === "Metropolitana de Santiago");
 }
 
-function Control({ field, value, error, onChange }: { field: PublicFormField; value: unknown; error?: string; onChange: (value: unknown) => void }) {
+function Control({ field, fieldId, value, error, onChange }: { field: PublicFormField; fieldId: string; value: unknown; error?: string; onChange: (value: unknown) => void }) {
   const common = `mt-2 ${error ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200" : ""}`;
   const readonlyClass = field.is_readonly ? "cursor-not-allowed bg-slate-50 text-slate-600" : "";
   if (field.field_type === "TEXTAREA") {
-    return <textarea className={`${common} ${readonlyClass} min-h-28 w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20`} maxLength={field.max_length ?? undefined} placeholder={field.placeholder ?? ""} readOnly={field.is_readonly} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} />;
+    return <textarea aria-describedby={error ? `${fieldId}-error` : undefined} aria-invalid={Boolean(error)} className={`${common} ${readonlyClass} min-h-28 w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20`} id={fieldId} maxLength={field.max_length ?? undefined} placeholder={field.placeholder ?? ""} readOnly={field.is_readonly} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} />;
   }
-  if (field.field_type === "SELECT" || field.field_type === "RADIO") {
+  if (field.field_type === "SELECT") {
     return (
-      <select className={`${common} h-11 w-full rounded-md border bg-white px-3 text-sm`} disabled={field.is_readonly} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
+      <select aria-describedby={error ? `${fieldId}-error` : undefined} aria-invalid={Boolean(error)} className={`${common} h-11 w-full rounded-md border bg-white px-3 text-sm`} disabled={field.is_readonly} id={fieldId} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
         <option value="">Selecciona</option>
         {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
     );
   }
-  if (field.field_type === "MULTI_SELECT") {
-    const selected = Array.isArray(value) ? value.map(String) : [];
+  if (field.field_type === "RADIO" || field.field_type === "YES_NO") {
+    const options = field.field_type === "YES_NO" && !field.options.length
+      ? [{ label: "Sí", value: "true" }, { label: "No", value: "false" }]
+      : field.options;
     return (
-      <div className={`${common} grid gap-2`}>
-        {field.options.map((option) => (
-          <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium" key={option.value}>
-            <input checked={selected.includes(option.value)} type="checkbox" onChange={(event) => onChange(event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value))} />
+      <div aria-describedby={error ? `${fieldId}-error` : undefined} aria-invalid={Boolean(error)} className="mt-2 grid gap-2" role="radiogroup">
+        {options.map((option, index) => (
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium" key={option.value}>
+            <input checked={value === option.value || (field.field_type === "YES_NO" && value === (option.value === "true"))} disabled={field.is_readonly} id={index === 0 ? fieldId : undefined} name={fieldId} type="radio" onChange={() => onChange(field.field_type === "YES_NO" ? option.value === "true" : option.value)} />
             {option.label}
           </label>
         ))}
       </div>
     );
   }
-  if (field.field_type === "CHECKBOX" || field.field_type === "YES_NO") {
+  if (field.field_type === "MULTI_SELECT") {
+    const selected = Array.isArray(value) ? value.map(String) : [];
     return (
-      <select className={`${common} h-11 w-full rounded-md border bg-white px-3 text-sm`} value={value === true ? "true" : value === false ? "false" : ""} onChange={(event) => onChange(event.target.value === "true")}>
-        <option value="">Selecciona</option>
-        <option value="true">Sí</option>
-        <option value="false">No</option>
-      </select>
+      <div className={`${common} grid gap-2`}>
+        {field.options.map((option, index) => (
+          <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium" key={option.value}>
+            <input checked={selected.includes(option.value)} id={index === 0 ? fieldId : undefined} type="checkbox" onChange={(event) => onChange(event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value))} />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    );
+  }
+  if (field.field_type === "CHECKBOX") {
+    return (
+      <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-3 text-sm font-medium">
+        <input checked={value === true} disabled={field.is_readonly} id={fieldId} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
+        {field.placeholder || "Sí"}
+      </label>
     );
   }
   const type = field.field_type === "EMAIL" ? "email" : field.field_type === "PHONE" ? "tel" : field.field_type === "NUMBER" || field.field_type.startsWith("RATING") ? "number" : field.field_type === "DATE" ? "date" : "text";
-  return <Input className={`${common} ${readonlyClass}`} max={field.max_value ? Number(field.max_value) : undefined} maxLength={field.max_length ?? undefined} min={field.min_value ? Number(field.min_value) : field.field_type === "RATING_1_5" || field.field_type === "RATING_1_7" ? 1 : undefined} placeholder={field.placeholder ?? ""} readOnly={field.is_readonly} type={type} value={String(value ?? "")} onChange={(event) => onChange(type === "number" ? event.target.value : event.target.value)} />;
+  return <Input aria-describedby={error ? `${fieldId}-error` : undefined} aria-invalid={Boolean(error)} className={`${common} ${readonlyClass}`} id={fieldId} max={field.max_value ? Number(field.max_value) : undefined} maxLength={field.max_length ?? undefined} min={field.min_value ? Number(field.min_value) : field.field_type === "RATING_1_5" || field.field_type === "RATING_1_7" ? 1 : undefined} placeholder={field.placeholder ?? ""} readOnly={field.is_readonly} type={type} value={String(value ?? "")} onChange={(event) => onChange(type === "number" ? event.target.value : event.target.value)} />;
+}
+
+function validateAnswers(fields: PublicFormField[], answers: Record<string, unknown>) {
+  const errors: Record<string, string> = {};
+  fields.filter((field) => isFieldVisible(field, answers, fields)).forEach((field) => {
+    const required = field.is_required || isFieldConditionallyRequired(field, answers, fields);
+    if (!required || !isEmptyAnswer(field, answers[field.field_key])) return;
+    errors[field.field_key] = "Este campo es obligatorio";
+  });
+  return errors;
+}
+
+function isEmptyAnswer(field: PublicFormField, value: unknown) {
+  if (field.field_type === "CHECKBOX") return value !== true;
+  if (Array.isArray(value)) return value.length === 0;
+  return value === undefined || value === null || String(value).trim() === "";
 }
 
 function fieldErrorsFromDetail(detail: unknown[]) {
@@ -187,10 +228,12 @@ function fieldErrorsFromDetail(detail: unknown[]) {
   return errors;
 }
 
-function initialAnswers(fields: PublicFormField[]) {
+function initialAnswers(form: PublicEventForm) {
   const data: Record<string, unknown> = {};
-  fields.forEach((field) => {
-    if (field.placeholder && ["event_name", "venue_name"].includes(field.field_key)) data[field.field_key] = field.placeholder;
+  form.fields.forEach((field) => {
+    if (field.field_key === "event_name" && form.event_name) data[field.field_key] = form.event_name;
+    else if (field.field_key === "venue_name" && form.venue_name) data[field.field_key] = form.venue_name;
+    else if (field.placeholder && ["event_name", "venue_name"].includes(field.field_key)) data[field.field_key] = field.placeholder;
   });
   return data;
 }

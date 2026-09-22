@@ -169,6 +169,27 @@ def test_public_active_form_opens(db, ctx):
     assert len(payload["fields"]) == 3
 
 
+def test_public_form_uses_current_event_name_without_changing_slug(db, ctx):
+    form = event_form_service.create_form(
+        db,
+        ctx["event"].id,
+        EventFormCreate(title="Transporte público", form_type=EventFormType.TRANSPORT_SURVEY, generate_template=True),
+        ctx["admin"],
+    )
+    form.status = EventFormStatus.ACTIVE
+    db.commit()
+    public_slug = form.public_slug
+
+    ctx["event"].name = "WWE"
+    db.commit()
+
+    payload = event_form_service.public_form_payload(event_form_service.get_public_form_or_404(db, public_slug), "es")
+    fields = {field["field_key"]: field for field in payload["fields"]}
+    assert payload["public_slug"] == public_slug
+    assert payload["event_name"] == "WWE"
+    assert fields["event_name"]["placeholder"] == "WWE"
+
+
 def test_transport_public_and_staff_templates_are_different(db, ctx):
     public_form = event_form_service.create_form(
         db,

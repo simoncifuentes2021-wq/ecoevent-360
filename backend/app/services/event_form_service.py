@@ -317,7 +317,23 @@ def public_form_payload(form: EventForm, lang: str | None) -> dict:
     language = lang or form.default_language
     if language not in (form.available_languages or []):
         language = form.default_language
-    fields = [] if needs_language else [_public_field(field, language, form.default_language, form.form_type) for field in form.fields if field.is_active]
+    fields = [] if needs_language else [
+        _public_field(
+            field,
+            language,
+            form.default_language,
+            form.form_type,
+            dynamic_placeholder=(
+                form.event.name
+                if field.field_key == "event_name" and form.event
+                else _venue_name(form)
+                if field.field_key == "venue_name"
+                else None
+            ),
+        )
+        for field in form.fields
+        if field.is_active
+    ]
     return {
         "title": form.title,
         "description": form.description,
@@ -677,17 +693,26 @@ def _validate_options(field_type: FormFieldType, options: list) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This field type requires options")
 
 
-def _public_field(field: FormField, language: str, default_language: str, form_type: EventFormType) -> dict:
+def _public_field(
+    field: FormField,
+    language: str,
+    default_language: str,
+    form_type: EventFormType,
+    dynamic_placeholder: str | None = None,
+) -> dict:
     translation = next((item for item in field.translations if item.language == language), None)
     default_translation = next((item for item in field.translations if item.language == default_language), None)
     fallback_label = _default_field_label(form_type, field.field_key, language)
     fallback_default_label = _default_field_label(form_type, field.field_key, default_language)
+    placeholder = translation.placeholder if translation else (default_translation.placeholder if default_translation else None) or field.placeholder
+    if dynamic_placeholder is not None:
+        placeholder = dynamic_placeholder
     return {
         "label": translation.label if translation else fallback_label or (default_translation.label if default_translation else None) or fallback_default_label or field.label,
         "field_key": field.field_key,
         "field_type": field.field_type,
         "help_text": translation.help_text if translation else (default_translation.help_text if default_translation else None) or field.help_text,
-        "placeholder": translation.placeholder if translation else (default_translation.placeholder if default_translation else None) or field.placeholder,
+        "placeholder": placeholder,
         "is_required": field.is_required,
         "is_readonly": field.field_key in {"event_name", "venue_name"},
         "sort_order": field.sort_order,
