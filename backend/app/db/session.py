@@ -68,7 +68,7 @@ def set_public_form_rls_context(
     response_id: UUID | None = None,
     idempotency_key: str | None = None,
 ) -> None:
-    """Authorize only the current public form submission inside this transaction."""
+    """Authorize the current public form and, optionally, its submission."""
     connection = db.connection()
     connection.execute(
         text("select set_config('app.public_form_id', :value, true)"),

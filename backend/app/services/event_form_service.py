@@ -144,7 +144,21 @@ def get_form_or_404(db: Session, form_id: UUID) -> EventForm:
 
 
 def get_public_form_or_404(db: Session, slug: str) -> EventForm:
-    form = db.scalar(_load_form_query().where(EventForm.public_slug == slug, EventForm.status != EventFormStatus.ARCHIVED))
+    form_id = db.scalar(
+        select(EventForm.id).where(
+            EventForm.public_slug == slug,
+            EventForm.status != EventFormStatus.ARCHIVED,
+        )
+    )
+    if not form_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    set_public_form_rls_context(db, form_id=form_id)
+    form = db.scalar(
+        _load_form_query().where(
+            EventForm.id == form_id,
+            EventForm.status != EventFormStatus.ARCHIVED,
+        )
+    )
     if not form:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
     return form
