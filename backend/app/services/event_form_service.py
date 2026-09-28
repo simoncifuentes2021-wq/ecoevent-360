@@ -190,10 +190,13 @@ def list_event_forms(
     session_id: UUID | None = None,
     page: int = 1,
     limit: int = 50,
+    include_archived: bool = False,
 ) -> tuple[list[EventForm], int]:
     _ensure_can_view_event(db, event_id, user)
     ensure_session_belongs_to_event(db, session_id, event_id)
-    filters = [EventForm.event_id == event_id, EventForm.status != EventFormStatus.ARCHIVED]
+    filters = [EventForm.event_id == event_id]
+    if not include_archived:
+        filters.append(EventForm.status != EventFormStatus.ARCHIVED)
     if session_id:
         filters.append(EventForm.session_id == session_id)
     total = db.scalar(select(func.count()).select_from(EventForm).where(*filters)) or 0
@@ -255,6 +258,16 @@ def archive_form(db: Session, form_id: UUID, user: User) -> None:
     form.status = EventFormStatus.ARCHIVED
     form.updated_at = datetime.utcnow()
     db.commit()
+
+
+def restore_form(db: Session, form_id: UUID, user: User) -> EventForm:
+    form = get_form_or_404(db, form_id)
+    _ensure_can_manage_event(db, form.event_id, user)
+    if form.status == EventFormStatus.ARCHIVED:
+        form.status = EventFormStatus.CLOSED
+        form.updated_at = datetime.utcnow()
+        db.commit()
+    return get_form_or_404(db, form.id)
 
 
 def add_field(db: Session, form_id: UUID, payload: FormFieldCreate, user: User) -> FormField:

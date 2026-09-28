@@ -33,6 +33,7 @@ export type EventForm = {
   id: string;
   event_id: string;
   session_id?: string | null;
+  event_name?: string | null;
   session_name?: string | null;
   title: string;
   description?: string | null;

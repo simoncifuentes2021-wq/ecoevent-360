@@ -1657,6 +1657,10 @@ class EventForm(Base):
     def session_name(self) -> str | None:
         return self.session.name if self.session else None
 
+    @property
+    def event_name(self) -> str | None:
+        return self.event.name if self.event else None
+
 
 class FormField(Base):
     __tablename__ = "form_fields"

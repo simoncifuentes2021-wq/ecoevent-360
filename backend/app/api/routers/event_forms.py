@@ -125,12 +125,13 @@ def create_form(event_id: UUID, payload: EventFormCreate, db: Session = Depends(
 def list_forms(
     event_id: UUID,
     session_id: UUID | None = None,
+    include_archived: bool = False,
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    items, total = event_form_service.list_event_forms(db, event_id, current_user, session_id, page, limit)
+    items, total = event_form_service.list_event_forms(db, event_id, current_user, session_id, page, limit, include_archived)
     return EventFormListResponse(items=items, total=total, page=page, limit=limit)
 
 
@@ -168,6 +169,11 @@ def close_form(form_id: UUID, db: Session = Depends(get_db), current_user: User 
 def archive_form(form_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
     event_form_service.archive_form(db, form_id, current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/forms/{form_id}/restore", response_model=EventFormRead)
+def restore_form(form_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    return event_form_service.restore_form(db, form_id, current_user)
 
 
 @router.post("/forms/{form_id}/fields", response_model=FormFieldRead, status_code=status.HTTP_201_CREATED)

@@ -26,6 +26,14 @@ export function closeEventForm(formId: string) {
   return api.patch<EventForm>(`/forms/${formId}/close`, {});
 }
 
+export function archiveEventForm(formId: string) {
+  return api.delete<void>(`/forms/${formId}`);
+}
+
+export function restoreEventForm(formId: string) {
+  return api.post<EventForm>(`/forms/${formId}/restore`, {});
+}
+
 export function getEventFormSummary(formId: string) {
   return api.get<EventFormSummary>(`/forms/${formId}/summary`);
 }

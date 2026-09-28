@@ -9,7 +9,9 @@ export function slugifyPublicPathSegment(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-export function publicFormPath(form: Pick<EventForm, "public_slug" | "session_name">): string {
+export function publicFormPath(form: Pick<EventForm, "public_slug" | "event_name" | "session_name">): string {
   const showSlug = form.session_name ? slugifyPublicPathSegment(form.session_name) : "";
-  return showSlug ? `/f/${showSlug}/${form.public_slug}` : `/f/${form.public_slug}`;
+  if (showSlug) return `/f/${showSlug}/${form.public_slug}`;
+  const eventSlug = form.event_name ? slugifyPublicPathSegment(form.event_name) : "";
+  return eventSlug ? `/f/${eventSlug}/${form.public_slug}` : `/f/${form.public_slug}`;
 }

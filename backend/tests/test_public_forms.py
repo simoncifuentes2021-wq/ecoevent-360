@@ -15,6 +15,7 @@ from app.models.core import Client, Event, EventForm, EventSession, EventStaff, 
 from app.models.enums import EventFormStatus, EventFormType, EventStatus, FormFieldType, UserRole
 from app.schemas.event_form_schema import EventFormCreate, EventFormRead, FormQRCodeCreate, FormResponseCreate
 from app.services import event_form_service, form_qr_service
+from app.utils.slug import slugify_url_segment
 
 
 @pytest.fixture()
@@ -503,7 +504,7 @@ def test_admin_generates_form_qr(db, ctx):
         FormQRCodeCreate(label="QR General", qr_type="FORM"),
         ctx["admin"],
     )
-    assert qr.target_url.endswith(f"/f/{form.public_slug}")
+    assert qr.target_url.endswith(f"/f/{slugify_url_segment(ctx['event'].name)}/{form.public_slug}")
     assert qr.file_path
 
 

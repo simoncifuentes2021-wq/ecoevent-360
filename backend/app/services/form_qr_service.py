@@ -224,6 +224,9 @@ def _public_form_path(form: EventForm) -> str:
         show_slug = slugify_url_segment(form.session.name)
         if show_slug:
             return f"/f/{show_slug}/{form.public_slug}"
+    event_slug = slugify_url_segment(form.event.name) if form.event else ""
+    if event_slug:
+        return f"/f/{event_slug}/{form.public_slug}"
     return f"/f/{form.public_slug}"
 
 

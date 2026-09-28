@@ -3,16 +3,18 @@
 /* eslint-disable @next/next/no-img-element -- Form branding accepts authenticated and customer-managed image URLs outside the Next optimizer. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, ExternalLink, Eye, Plus, QrCode } from "lucide-react";
+import { Archive, Copy, ExternalLink, Eye, Plus, QrCode, RotateCcw } from "lucide-react";
 
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
+import { useToast } from "@/components/common/ToastProvider";
 import { BikeZoneVerifier } from "@/components/bike-zone/BikeZoneVerifier";
 import { FormsSessionComparison } from "@/components/event-forms/FormsSessionComparison";
 import { FormQrDialog } from "@/components/event-forms/FormQrDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { closeEventForm, createEventForm, getEventFormResponses, getEventForms, getEventFormSummary, publishEventForm } from "@/lib/api/eventForms";
+import { archiveEventForm, closeEventForm, createEventForm, getEventFormResponses, getEventForms, getEventFormSummary, publishEventForm, restoreEventForm } from "@/lib/api/eventForms";
 import { getEvent } from "@/lib/api/events";
 import { getEventSessions } from "@/lib/api/eventSessions";
 import { publicFormPath } from "@/lib/publicFormPath";
@@ -30,6 +32,7 @@ const typeLabels: Record<EventFormType, string> = {
 };
 
 export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserRole | null }) {
+  const { toast } = useToast();
   const [forms, setForms] = useState<EventForm[]>([]);
   const [event, setEvent] = useState<Event | null>(null);
   const [sessions, setSessions] = useState<EventSession[]>([]);
@@ -44,6 +47,10 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<EventForm | null>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const creatingRef = useRef(false);
   const [form, setForm] = useState({
     title: "",
@@ -63,7 +70,7 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
     setLoading(true);
     setError(null);
     try {
-      const [eventData, formData, sessionData] = await Promise.all([getEvent(eventId), getEventForms(eventId), getEventSessions(eventId).catch(() => [])]);
+      const [eventData, formData, sessionData] = await Promise.all([getEvent(eventId), getEventForms(eventId, { include_archived: showArchived }), getEventSessions(eventId).catch(() => [])]);
       setEvent(eventData);
       setForms(formData.items);
       setSessions(sessionData);
@@ -72,7 +79,7 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, showArchived]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -129,14 +136,50 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
     }
   }
 
+  async function archiveSelectedForm() {
+    if (!archiveTarget) return;
+    setArchiving(true);
+    try {
+      await archiveEventForm(archiveTarget.id);
+      if (selected?.id === archiveTarget.id) {
+        setSelected(null);
+        setSummary(null);
+        setResponses([]);
+      }
+      setArchiveTarget(null);
+      toast({ tone: "success", title: "Formulario archivado", description: "Se conservaron sus respuestas y configuración." });
+      await load();
+    } catch (cause) {
+      toast({ tone: "error", title: "No se pudo archivar el formulario", description: cause instanceof Error ? cause.message : undefined });
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  async function restoreArchivedForm(item: EventForm) {
+    setRestoring(true);
+    try {
+      await restoreEventForm(item.id);
+      toast({ tone: "success", title: "Formulario desarchivado", description: "Quedó cerrado. Puedes publicarlo nuevamente cuando quieras." });
+      await load();
+    } catch (cause) {
+      toast({ tone: "error", title: "No se pudo desarchivar el formulario", description: cause instanceof Error ? cause.message : undefined });
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-950">Formularios propios</h2>
           <p className="text-sm text-slate-600">Crea formularios públicos sin Google Forms ni importación CSV.</p>
         </div>
-        {canManage ? <Button disabled={creating} onClick={() => { setCreateError(null); setOpen(true); }} type="button"><Plus className="h-4 w-4" />Crear formulario</Button> : null}
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={() => setShowArchived((value) => !value)}>{showArchived ? "Ocultar archivados" : "Ver archivados"}</Button>
+          {canManage ? <Button disabled={creating} onClick={() => { setCreateError(null); setOpen(true); }} type="button"><Plus className="h-4 w-4" />Crear formulario</Button> : null}
+        </div>
       </div>
       {canManage ? <BikeZoneVerifier /> : null}
       <FormsSessionComparison eventId={eventId} />
@@ -145,20 +188,22 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
       {!loading && !error ? (
         <div className="grid gap-3 xl:grid-cols-2">
           {forms.map((item) => (
-            <article className={`rounded-lg border bg-white p-4 shadow-sm ${selected?.id === item.id ? "border-emerald-500 ring-2 ring-emerald-100" : ""}`} key={item.id}>
+            <article className={`rounded-lg border bg-white p-4 shadow-sm ${item.status === "ARCHIVED" ? "opacity-65" : ""} ${selected?.id === item.id ? "border-emerald-500 ring-2 ring-emerald-100" : ""}`} key={item.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="font-bold text-slate-950">{item.title}</h3>
-                  <p className="text-sm text-slate-600">{typeLabels[item.form_type]} · {item.status} · {item.fields?.length ?? 0} campos</p>
-                  <p className="mt-1 break-all text-xs font-semibold text-emerald-700">{publicFormPath(item)}</p>
+                  <p className="text-sm text-slate-600">{typeLabels[item.form_type]} · {item.status === "ARCHIVED" ? "Archivado" : item.status} · {item.fields?.length ?? 0} campos</p>
+                  {item.status !== "ARCHIVED" ? <p className="mt-1 break-all text-xs font-semibold text-emerald-700">{publicFormPath(item)}</p> : <p className="mt-1 text-xs font-semibold text-slate-500">Conservado fuera de la lista activa</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" type="button" variant="secondary" onClick={() => copyLink(item)}><Copy className="h-4 w-4" />Copiar</Button>
+                  {item.status !== "ARCHIVED" ? <><Button size="sm" type="button" variant="secondary" onClick={() => copyLink(item)}><Copy className="h-4 w-4" />Copiar</Button>
                   <Button size="sm" type="button" variant="secondary" onClick={() => window.open(publicFormPath(item), "_blank")}><ExternalLink className="h-4 w-4" />Abrir</Button>
-                  <Button size="sm" type="button" variant="secondary" onClick={() => setQrForm(item)}><QrCode className="h-4 w-4" />QR</Button>
+                  <Button size="sm" type="button" variant="secondary" onClick={() => setQrForm(item)}><QrCode className="h-4 w-4" />QR</Button></> : null}
                   <Button size="sm" type="button" variant="secondary" onClick={() => loadDetails(item)}><Eye className="h-4 w-4" />Respuestas</Button>
-                  {canManage && item.status !== "ACTIVE" ? <Button size="sm" type="button" onClick={async () => { await publishEventForm(item.id); await load(); }}>Publicar</Button> : null}
+                  {canManage && item.status !== "ARCHIVED" && item.status !== "ACTIVE" ? <Button size="sm" type="button" onClick={async () => { await publishEventForm(item.id); await load(); }}>Publicar</Button> : null}
                   {canManage && item.status === "ACTIVE" ? <Button size="sm" type="button" variant="secondary" onClick={async () => { await closeEventForm(item.id); await load(); }}>Cerrar</Button> : null}
+                  {canManage && item.status !== "ARCHIVED" ? <Button size="sm" type="button" variant="secondary" onClick={() => setArchiveTarget(item)}><Archive className="h-4 w-4" />Archivar</Button> : null}
+                  {canManage && item.status === "ARCHIVED" ? <Button disabled={restoring} size="sm" type="button" variant="secondary" onClick={() => void restoreArchivedForm(item)}><RotateCcw className="h-4 w-4" />Desarchivar</Button> : null}
                 </div>
               </div>
               <button
@@ -174,6 +219,15 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
           {!forms.length ? <p className="text-sm text-slate-500">Aún no hay formularios propios.</p> : null}
         </div>
       ) : null}
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        loading={archiving}
+        title="Archivar formulario"
+        description={archiveTarget ? `El formulario “${archiveTarget.title}” dejará de aparecer en la lista y ya no aceptará respuestas. Sus respuestas, configuración y enlace se conservarán.` : ""}
+        confirmLabel="Archivar"
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={() => void archiveSelectedForm()}
+      />
       {selected ? (
         <section className="rounded-lg border bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
