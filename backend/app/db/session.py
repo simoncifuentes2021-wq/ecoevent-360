@@ -84,6 +84,11 @@ def set_public_form_rls_context(
     )
 
 
+def set_public_waste_context(db: Session, token: str) -> None:
+    db.connection().execute(
+        text("select set_config('app.public_waste_token', :value, true)"),
+        {"value": token},
+    )
 def clear_rls_context(db: Session) -> None:
     if db.is_active:
         db.rollback()

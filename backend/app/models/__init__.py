@@ -20,6 +20,7 @@ from app.models.core import (
     EnergyRecord,
     Event,
     EventForm,
+    EventWastePublicForm,
     EventSession,
     EventSessionStaff,
     EventService,
@@ -51,7 +52,10 @@ from app.models.core import (
     Task,
     User,
     WasteRecord,
+    WasteCollectionPoint,
+    WasteCollectionRecord,
     WasteType,
+    waste_collection_point_types,
     WaterRecord,
 )
 
@@ -68,6 +72,7 @@ __all__ = [
     "EnergyRecord",
     "Event",
     "EventForm",
+    "EventWastePublicForm",
     "EventSession",
     "EventSessionStaff",
     "EventService",
@@ -99,6 +104,9 @@ __all__ = [
     "Task",
     "User",
     "WasteRecord",
+    "WasteCollectionPoint",
+    "WasteCollectionRecord",
     "WasteType",
+    "waste_collection_point_types",
     "WaterRecord",
 ]

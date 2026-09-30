@@ -4,13 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { ErrorState } from "@/components/common/ErrorState";
+import { EmptyState } from "@/components/common/EmptyState";
 import { WasteCharts } from "@/components/waste/WasteCharts";
 import { WasteDeleteDialog } from "@/components/waste/WasteDeleteDialog";
+import { CollectionPointsManager } from "@/components/waste/CollectionPointsManager";
 import { WasteFilters } from "@/components/waste/WasteFilters";
 import { WasteRecordDetailDrawer } from "@/components/waste/WasteRecordDetailDrawer";
 import { WasteRecordFormModal } from "@/components/waste/WasteRecordFormModal";
 import { WasteRecordTable } from "@/components/waste/WasteRecordTable";
 import { WasteSummaryCards } from "@/components/waste/WasteSummaryCards";
+import { WasteSummaryInsights } from "@/components/waste/WasteSummaryInsights";
 import { Button } from "@/components/ui/button";
 import { getEventEvidences } from "@/lib/api/evidences";
 import { getUsers } from "@/lib/api/users";
@@ -47,8 +50,10 @@ export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole |
   const [evidences, setEvidences] = useState<Evidence[]>([]);
   const [wasteTypes, setWasteTypes] = useState<WasteType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [formRecord, setFormRecord] = useState<WasteRecord | null | undefined>();
   const [detail, setDetail] = useState<WasteRecord | null>(null);
   const [deleting, setDeleting] = useState<WasteRecord | null>(null);
@@ -56,20 +61,32 @@ export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole |
   const [zoneId, setZoneId] = useState("");
   const [typeId, setTypeId] = useState("");
   const [destination, setDestination] = useState("");
+  const [activeTab, setActiveTab] = useState<"summary" | "environmental" | "collection">("summary");
+
+  const loadSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      setSummary(normalizeWasteSummary(await getWasteSummary(eventId)));
+    } catch {
+      setSummaryError("No fue posible cargar el resumen ambiental.");
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [eventId]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [rawSummary, recordData, zoneData, evidenceData, typeData, userData] = await Promise.all([
-        getWasteSummary(eventId),
+      const [, recordData, zoneData, evidenceData, typeData, userData] = await Promise.all([
+        loadSummary(),
         getWasteRecords(eventId),
         getEventZones(eventId),
         getEventEvidences(eventId),
         getWasteTypes().catch(() => []),
         getUsers({ page: 1, limit: 100 }).then((response) => response.items).catch(() => [])
       ]);
-      setSummary(normalizeWasteSummary(rawSummary));
       setRecords(attachRecorders(recordData.items, userData));
       setZones(zoneData);
       setEvidences(evidenceData.items);
@@ -79,7 +96,7 @@ export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole |
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, loadSummary]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -111,20 +128,50 @@ export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole |
     await load();
   }
 
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div><h2 className="text-xl font-bold text-slate-950">Residuos y gestion ambiental</h2><p className="text-sm text-slate-600">Registra kg, tipo, destino, zona y evidencia para medir recuperacion.</p></div>
-        {canCreateWasteRecord(role) ? <Button onClick={() => setFormRecord(null)}><Plus className="h-4 w-4" />Registrar residuo</Button> : null}
-      </div>
-      {error ? <ErrorState message={error} onRetry={load} /> : null}
+  const tabs = [
+    { id: "summary" as const, label: "Resumen" },
+    { id: "environmental" as const, label: "Registros ambientales" },
+    ...(canEditWasteRecord(role) ? [{ id: "collection" as const, label: "Acopios" }] : []),
+  ];
+  const summaryContent = summaryError ? (
+    <ErrorState title="Resumen ambiental no disponible" message={summaryError} onRetry={() => void loadSummary()} />
+  ) : summaryLoading ? (
+    <div className="space-y-4">
+      <WasteSummaryCards loading summary={summary} />
+      <WasteSummaryInsights loading summary={summary} />
+      <WasteCharts byType={[]} bySource={[]} byCollectionPoint={[]} loading totalKg={0} />
+    </div>
+  ) : summary.records_count === 0 ? (
+    <div className="space-y-4">
       <WasteSummaryCards summary={summary} />
-      <WasteCharts byDestination={summary.by_destination} byType={summary.by_type} byZone={summary.by_zone} />
-      <WasteFilters destination={destination} q={q} typeId={typeId} wasteTypes={wasteTypes} zoneId={zoneId} zones={zones} onDestinationChange={setDestination} onQChange={setQ} onTypeChange={setTypeId} onZoneChange={setZoneId} />
-      <WasteRecordTable canDelete={canDeleteWasteRecord(role)} canEdit={canEditWasteRecord(role)} error={null} loading={loading} records={filtered} wasteTypes={wasteTypes} onDelete={setDeleting} onEdit={setFormRecord} onView={setDetail} />
-      {formRecord !== undefined ? <WasteRecordFormModal eventId={eventId} evidences={evidences} loading={saving} record={formRecord} wasteTypes={wasteTypes} zones={zones} onClose={() => setFormRecord(undefined)} onSubmit={save} /> : null}
-      {detail ? <WasteRecordDetailDrawer canDelete={canDeleteWasteRecord(role)} canEdit={canEditWasteRecord(role)} record={detail} typeLabel={typeLabel(detail, wasteTypes)} onClose={() => setDetail(null)} onDelete={() => setDeleting(detail)} onEdit={() => setFormRecord(detail)} /> : null}
-      <WasteDeleteDialog record={deleting} onClose={() => setDeleting(null)} onConfirm={confirmDelete} />
+      <WasteSummaryInsights summary={summary} />
+      <EmptyState
+        title="Aún no hay residuos registrados"
+        description="Los registros de Acopios o ingresados directamente en EcoEvent aparecerán aquí."
+        action={canCreateWasteRecord(role) ? <Button onClick={() => setFormRecord(null)}><Plus className="h-4 w-4" />Registrar residuo</Button> : undefined}
+      />
+    </div>
+  ) : (
+    <div className="space-y-4">
+      <WasteSummaryCards summary={summary} />
+      <WasteSummaryInsights summary={summary} />
+      <WasteCharts byType={summary.by_type} bySource={summary.by_source} byCollectionPoint={summary.by_collection_point} totalKg={summary.total_event_kg} />
     </div>
   );
+
+  return <div className="space-y-5">
+    <div><h2 className="text-xl font-bold text-slate-950">Residuos y gestión ambiental</h2><p className="text-sm text-slate-600">Consulta la gestión ambiental y la recepción en acopios en secciones separadas.</p></div>
+    <nav aria-label="Secciones de residuos" className="flex flex-wrap gap-2 border-b pb-3">{tabs.map(({ id, label }) => <button key={id} type="button" aria-selected={activeTab === id} onClick={() => setActiveTab(id)} className={`rounded-lg px-4 py-2 text-sm font-semibold ${activeTab === id ? "bg-emerald-700 text-white" : "border bg-white text-slate-700 hover:bg-slate-50"}`}>{label}</button>)}</nav>
+    {error ? <ErrorState message={error} onRetry={load} /> : null}
+    {activeTab === "summary" ? summaryContent : null}
+    {activeTab === "environmental" ? <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold">Registros ambientales</h3><p className="text-sm text-slate-600">Destino, zona y evidencia del manejo final; estos datos alimentan el resumen ambiental.</p></div>{canCreateWasteRecord(role) ? <Button onClick={() => setFormRecord(null)}><Plus className="h-4 w-4" />Registrar residuo</Button> : null}</div>
+      <WasteFilters destination={destination} q={q} typeId={typeId} wasteTypes={wasteTypes} zoneId={zoneId} zones={zones} onDestinationChange={setDestination} onQChange={setQ} onTypeChange={setTypeId} onZoneChange={setZoneId} />
+      <WasteRecordTable canDelete={canDeleteWasteRecord(role)} canEdit={canEditWasteRecord(role)} error={null} loading={loading} records={filtered} wasteTypes={wasteTypes} onDelete={setDeleting} onEdit={setFormRecord} onView={setDetail} />
+    </section> : null}
+    {activeTab === "collection" ? <CollectionPointsManager eventId={eventId} canManage={canEditWasteRecord(role)} /> : null}
+    {formRecord !== undefined ? <WasteRecordFormModal eventId={eventId} evidences={evidences} loading={saving} record={formRecord} wasteTypes={wasteTypes} zones={zones} onClose={() => setFormRecord(undefined)} onSubmit={save} /> : null}
+    {detail ? <WasteRecordDetailDrawer canDelete={canDeleteWasteRecord(role)} canEdit={canEditWasteRecord(role)} record={detail} typeLabel={typeLabel(detail, wasteTypes)} onClose={() => setDetail(null)} onDelete={() => setDeleting(detail)} onEdit={() => setFormRecord(detail)} /> : null}
+    <WasteDeleteDialog record={deleting} onClose={() => setDeleting(null)} onConfirm={confirmDelete} />
+  </div>;
 }

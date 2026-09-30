@@ -6,7 +6,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.permissions import can_access_event, can_manage_event, can_operate_event
-from app.models.core import Event, EventZone, Evidence, User, WasteRecord, WasteType
+from app.models.core import (
+    Event,
+    EventZone,
+    Evidence,
+    User,
+    WasteCollectionPoint,
+    WasteCollectionRecord,
+    WasteRecord,
+    WasteType,
+)
 from app.models.enums import EventStatus, UserRole, WasteDestination
 from app.schemas.waste_schema import WasteRecordCreate, WasteRecordUpdate, WasteTypeCreate, WasteTypeUpdate
 
@@ -236,8 +245,79 @@ def get_waste_summary(db: Session, event_id: UUID, current_user: User) -> dict:
     if not can_access_event(current_user, event_id, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
 
+    # Keep the two sources aggregated separately. Joining raw records together
+    # would multiply rows when an event has multiple records in both tables.
     records = list(db.scalars(select(WasteRecord).where(WasteRecord.event_id == event_id)).all())
-    total_kg = sum((record.weight_kg for record in records), Decimal("0"))
+    direct_kg = sum((record.weight_kg for record in records), Decimal("0"))
+    total_collection_kg, collection_count = db.execute(
+        select(
+            func.coalesce(func.sum(WasteCollectionRecord.weight_kg), Decimal("0")),
+            func.count(WasteCollectionRecord.id),
+        ).where(WasteCollectionRecord.event_id == event_id)
+    ).one()
+    direct_count = len(records)
+    total_kg = direct_kg + total_collection_kg
+
+    def percentage(weight: Decimal) -> Decimal:
+        return (weight / total_kg * Decimal("100")).quantize(Decimal("0.01")) if total_kg else Decimal("0")
+
+    by_type: dict[UUID | None, dict] = {}
+    for item in _group_by_type(db, records):
+        by_type[item["id"]] = {
+            "id": item["id"],
+            "waste_type_id": item["id"],
+            "name": item["name"],
+            "total_kg": item["total_kg"],
+            "collection_points_kg": Decimal("0"),
+            "direct_kg": item["total_kg"],
+            "percentage": Decimal("0"),
+        }
+    collection_by_type = db.execute(
+        select(WasteType.id, WasteType.name, func.sum(WasteCollectionRecord.weight_kg))
+        .join(WasteCollectionRecord, WasteCollectionRecord.waste_type_id == WasteType.id)
+        .where(WasteCollectionRecord.event_id == event_id)
+        .group_by(WasteType.id, WasteType.name)
+    ).all()
+    for waste_type_id, name, weight in collection_by_type:
+        item = by_type.setdefault(waste_type_id, {
+            "id": waste_type_id,
+            "waste_type_id": waste_type_id,
+            "name": name,
+            "total_kg": Decimal("0"),
+            "collection_points_kg": Decimal("0"),
+            "direct_kg": Decimal("0"),
+            "percentage": Decimal("0"),
+        })
+        item["total_kg"] += weight
+        item["collection_points_kg"] += weight
+    for item in by_type.values():
+        item["percentage"] = percentage(item["total_kg"])
+    by_type_sorted = sorted(by_type.values(), key=lambda item: item["total_kg"], reverse=True)
+    waste_types_count = len({waste_type_id for waste_type_id in by_type if waste_type_id is not None})
+
+    by_collection_point = [
+        {
+            "collection_point_id": collection_point_id,
+            "code": code,
+            "name": name,
+            "weight_kg": weight,
+        }
+        for collection_point_id, code, name, weight in db.execute(
+            select(
+                WasteCollectionPoint.id,
+                WasteCollectionPoint.code,
+                WasteCollectionPoint.name,
+                func.sum(WasteCollectionRecord.weight_kg),
+            )
+            .join(WasteCollectionRecord, WasteCollectionRecord.collection_point_id == WasteCollectionPoint.id)
+            .where(WasteCollectionRecord.event_id == event_id)
+            .group_by(WasteCollectionPoint.id, WasteCollectionPoint.code, WasteCollectionPoint.name)
+            .order_by(func.sum(WasteCollectionRecord.weight_kg).desc())
+        ).all()
+    ]
+    top_waste_type = by_type_sorted[0] if by_type_sorted else None
+    top_collection_point = by_collection_point[0] if by_collection_point else None
+
     recovered_kg = sum(
         (record.weight_kg for record in records if record.destination in RECOVERED_DESTINATIONS),
         Decimal("0"),
@@ -254,22 +334,59 @@ def get_waste_summary(db: Session, event_id: UUID, current_user: User) -> dict:
         ),
         Decimal("0"),
     )
-    recovery_percentage = (
-        (recovered_kg / total_kg * Decimal("100")).quantize(Decimal("0.01"))
-        if total_kg
-        else Decimal("0")
-    )
+    recovery_percentage = percentage(recovered_kg)
+    by_destination = _group_by_destination(records)
+    if collection_count:
+        by_destination.append({"id": None, "name": "Acopios Greenway (origen de registro)", "total_kg": total_collection_kg})
+    by_destination.sort(key=lambda item: item["total_kg"], reverse=True)
+    by_zone = {item["id"]: item for item in _group_by_zone(db, records)}
+    collection_by_zone = db.execute(
+        select(WasteCollectionPoint.zone_id, EventZone.name, func.sum(WasteCollectionRecord.weight_kg))
+        .select_from(WasteCollectionRecord)
+        .join(WasteCollectionPoint, WasteCollectionPoint.id == WasteCollectionRecord.collection_point_id)
+        .outerjoin(EventZone, EventZone.id == WasteCollectionPoint.zone_id)
+        .where(WasteCollectionRecord.event_id == event_id)
+        .group_by(WasteCollectionPoint.zone_id, EventZone.name)
+    ).all()
+    for zone_id, zone_name, weight in collection_by_zone:
+        if zone_id in by_zone:
+            by_zone[zone_id]["total_kg"] += weight
+        else:
+            by_zone[zone_id] = {"id": zone_id, "name": zone_name or "Sin zona", "total_kg": weight}
+    by_zone_sorted = list(by_zone.values())
+    by_zone_sorted.sort(key=lambda item: (item["name"] == "Sin zona", -item["total_kg"]))
 
     return {
         "event_id": event_id,
         "total_kg": total_kg,
+        "records_count": direct_count + collection_count,
+        "total_event_kg": total_kg,
+        "collection_points": {
+            "weight_kg": total_collection_kg,
+            "percentage": percentage(total_collection_kg),
+            "records_count": collection_count,
+        },
+        "direct_records": {
+            "weight_kg": direct_kg,
+            "percentage": percentage(direct_kg),
+            "records_count": direct_count,
+        },
+        "total_records": direct_count + collection_count,
+        "waste_types_count": waste_types_count,
+        "top_waste_type": top_waste_type,
+        "top_collection_point": top_collection_point,
+        "by_source": [
+            {"source": "COLLECTION_POINT", "weight_kg": total_collection_kg, "percentage": percentage(total_collection_kg)},
+            {"source": "DIRECT", "weight_kg": direct_kg, "percentage": percentage(direct_kg)},
+        ],
+        "by_collection_point": by_collection_point,
         "recovered_kg": recovered_kg,
         "landfill_kg": landfill_kg,
         "special_disposal_kg": special_disposal_kg,
         "recovery_percentage": recovery_percentage,
-        "by_type": _group_by_type(db, records),
-        "by_destination": _group_by_destination(records),
-        "by_zone": _group_by_zone(db, records),
+        "by_type": by_type_sorted,
+        "by_destination": by_destination,
+        "by_zone": by_zone_sorted,
     }
 
 

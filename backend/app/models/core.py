@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    Column,
     CheckConstraint,
     Date,
     DateTime,
@@ -17,6 +18,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    Table,
     UniqueConstraint,
     text,
 )
@@ -55,6 +57,14 @@ from app.models.enums import (
     TaskStatus,
     UserRole,
     WasteDestination,
+)
+
+waste_collection_point_types = Table(
+    "waste_collection_point_types",
+    Base.metadata,
+    Column("collection_point_id", PGUUID(as_uuid=True), ForeignKey("waste_collection_points.id", ondelete="CASCADE"), primary_key=True),
+    Column("waste_type_id", PGUUID(as_uuid=True), ForeignKey("waste_types.id", ondelete="RESTRICT"), primary_key=True),
+    Column("created_at", DateTime(), nullable=False, server_default=text("NOW()")),
 )
 
 
@@ -213,6 +223,9 @@ class Event(Base):
     incidents: Mapped[list["Incident"]] = relationship(back_populates="event")
     evidences: Mapped[list["Evidence"]] = relationship(back_populates="event")
     waste_records: Mapped[list["WasteRecord"]] = relationship(back_populates="event")
+    collection_points: Mapped[list["WasteCollectionPoint"]] = relationship(back_populates="event")
+    waste_public_form: Mapped["EventWastePublicForm | None"] = relationship(back_populates="event", cascade="all, delete-orphan", uselist=False)
+    waste_collection_records: Mapped[list["WasteCollectionRecord"]] = relationship(back_populates="event")
     carbon_records: Mapped[list["CarbonRecord"]] = relationship(back_populates="event")
     surveys: Mapped[list["Survey"]] = relationship(back_populates="event")
     survey_responses: Mapped[list["SurveyResponse"]] = relationship(back_populates="event")
@@ -1377,6 +1390,91 @@ class WasteType(Base):
     created_at: Mapped[datetime] = created_at_column()
 
     waste_records: Mapped[list["WasteRecord"]] = relationship(back_populates="waste_type")
+    waste_collection_records: Mapped[list["WasteCollectionRecord"]] = relationship(back_populates="waste_type")
+    collection_points: Mapped[list["WasteCollectionPoint"]] = relationship(secondary=waste_collection_point_types, back_populates="allowed_waste_types")
+
+
+class EventWastePublicForm(Base):
+    __tablename__ = "event_waste_public_forms"
+    __table_args__ = (UniqueConstraint("event_id", name="uq_event_waste_public_forms_event_id"), UniqueConstraint("token", name="uq_event_waste_public_forms_token"))
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    token: Mapped[str] = mapped_column(String(96), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'DRAFT'"))
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    event: Mapped[Event] = relationship(back_populates="waste_public_form")
+
+
+class WasteCollectionPoint(Base):
+    __tablename__ = "waste_collection_points"
+    __table_args__ = (
+        UniqueConstraint("event_id", "code", name="uq_waste_collection_points_event_code"),
+        UniqueConstraint("qr_token", name="uq_waste_collection_points_qr_token"),
+        Index("idx_waste_collection_points_event_id", "event_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    zone_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("event_zones.id", ondelete="SET NULL")
+    )
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    location_description: Mapped[str | None] = mapped_column(Text)
+    capacity_kg: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
+    qr_token: Mapped[str] = mapped_column(String(96), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    event: Mapped[Event] = relationship(back_populates="collection_points")
+    zone: Mapped[EventZone | None] = relationship()
+    collection_records: Mapped[list["WasteCollectionRecord"]] = relationship(back_populates="collection_point")
+    allowed_waste_types: Mapped[list[WasteType]] = relationship(secondary=waste_collection_point_types, back_populates="collection_points")
+
+
+class WasteCollectionRecord(Base):
+    __tablename__ = "waste_collection_records"
+    __table_args__ = (
+        CheckConstraint("weight_kg > 0", name="ck_waste_collection_records_weight_positive"),
+        Index("idx_waste_collection_records_event_id", "event_id"),
+        Index("idx_waste_collection_records_point_id", "collection_point_id"),
+        Index("idx_waste_collection_records_type_id", "waste_type_id"),
+        Index("idx_waste_collection_records_recorded_at", "recorded_at"),
+        UniqueConstraint("client_generated_id", name="uq_waste_collection_records_client_generated_id"),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    collection_point_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("waste_collection_points.id", ondelete="CASCADE"), nullable=False
+    )
+    waste_type_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("waste_types.id", ondelete="RESTRICT"), nullable=False
+    )
+    weight_kg: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    submitter_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    submitter_rut: Mapped[str] = mapped_column(String(20), nullable=False)
+    client_generated_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    device_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    event: Mapped[Event] = relationship(back_populates="waste_collection_records")
+    collection_point: Mapped[WasteCollectionPoint] = relationship(back_populates="collection_records")
+    waste_type: Mapped[WasteType] = relationship(back_populates="waste_collection_records")
 
 
 class WasteRecord(Base):
