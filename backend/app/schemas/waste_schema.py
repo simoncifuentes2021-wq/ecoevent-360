@@ -92,15 +92,57 @@ class WasteSummaryGroup(BaseModel):
     id: UUID | None = None
     name: str
     total_kg: Decimal
+    collection_points_kg: Decimal = Decimal("0")
+    direct_kg: Decimal = Decimal("0")
+    percentage: Decimal = Decimal("0")
+
+
+class WasteSummarySourceTotals(BaseModel):
+    weight_kg: Decimal
+    percentage: Decimal
+    records_count: int
+
+
+class WasteSummarySourceGroup(BaseModel):
+    source: str
+    weight_kg: Decimal
+    percentage: Decimal
+
+
+class WasteSummaryCollectionPoint(BaseModel):
+    collection_point_id: UUID
+    code: str
+    name: str
+    weight_kg: Decimal
+
+
+class WasteSummaryTypeGroup(BaseModel):
+    id: UUID | None = None
+    waste_type_id: UUID | None = None
+    name: str
+    total_kg: Decimal
+    collection_points_kg: Decimal
+    direct_kg: Decimal
+    percentage: Decimal
 
 
 class WasteSummaryRead(BaseModel):
     event_id: UUID
     total_kg: Decimal
+    records_count: int
+    total_event_kg: Decimal
+    collection_points: WasteSummarySourceTotals
+    direct_records: WasteSummarySourceTotals
+    total_records: int
+    waste_types_count: int
+    top_waste_type: WasteSummaryTypeGroup | None
+    top_collection_point: WasteSummaryCollectionPoint | None
+    by_source: list[WasteSummarySourceGroup]
+    by_collection_point: list[WasteSummaryCollectionPoint]
     recovered_kg: Decimal
     landfill_kg: Decimal
     special_disposal_kg: Decimal
     recovery_percentage: Decimal
-    by_type: list[WasteSummaryGroup]
+    by_type: list[WasteSummaryTypeGroup]
     by_destination: list[WasteSummaryGroup]
     by_zone: list[WasteSummaryGroup]

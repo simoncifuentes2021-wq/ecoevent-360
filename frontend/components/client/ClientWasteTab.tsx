@@ -35,5 +35,5 @@ export function ClientWasteTab({ eventId }: { eventId: string }) {
     void load();
   }, [eventId]);
 
-  return <div className="space-y-4"><WasteSummaryCards summary={summary} /><WasteCharts byDestination={summary.by_destination} byType={summary.by_type} byZone={summary.by_zone} /><WasteRecordTable canDelete={false} canEdit={false} error={error} loading={loading} records={records} wasteTypes={types} onDelete={() => {}} onEdit={() => {}} onView={() => {}} /></div>;
+  return <div className="space-y-4"><WasteSummaryCards summary={summary} loading={loading} /><WasteCharts byType={summary.by_type} bySource={summary.by_source} byCollectionPoint={summary.by_collection_point} totalKg={summary.total_event_kg} loading={loading} /><WasteRecordTable canDelete={false} canEdit={false} error={error} loading={loading} records={records} wasteTypes={types} onDelete={() => {}} onEdit={() => {}} onView={() => {}} /></div>;
 }

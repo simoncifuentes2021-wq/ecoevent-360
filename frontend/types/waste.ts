@@ -32,6 +32,66 @@ export type WasteRecord = {
   notes?: string | null;
 };
 
+export type WasteCollectionPoint = {
+  id: string;
+  event_id: string;
+  zone_id: string | null;
+  code: string;
+  name: string;
+  description: string | null;
+  location_description: string | null;
+  capacity_kg: number | string | null;
+  qr_token?: string;
+  is_active: boolean;
+  record_count: number;
+  total_kg: number | string;
+  public_url: string | null;
+  qr_data_url: string | null;
+  allowed_waste_types: PublicWasteType[];
+};
+
+export type WasteCollectionRecord = {
+  id: string;
+  event_id: string;
+  collection_point_id: string;
+  collection_point_code: string;
+  collection_point_name: string;
+  waste_type_id: string;
+  waste_type_name: string;
+  weight_kg: number | string;
+  submitter_name: string;
+  submitter_rut_masked: string;
+  client_generated_id: string;
+  device_id: string | null;
+  recorded_at: string;
+  synced_at: string | null;
+};
+
+export type WasteCollectionSummary = {
+  event_id: string;
+  total_kg: number | string;
+  records_count: number;
+  active_points: number;
+  unique_submitters: number;
+  by_type: { id: string; name: string; total_kg: number | string; records_count: number }[];
+  by_point: { id: string; code: string; name: string; total_kg: number | string; records_count: number }[];
+};
+
+export type PublicWasteType = { id: string; name: string; is_recyclable?: boolean | null };
+export type PublicCollectionPoint = { event_id: string; form_status: "ACTIVE" | "CLOSED" | "DRAFT"; event_name: string; collection_points: { id: string; code: string; name: string; allowed_waste_types: PublicWasteType[] }[] };
+export type PublicWasteSubmission = {
+  client_generated_id: string;
+  device_id: string;
+  waste_type_id: string;
+  collection_point_id: string;
+  weight_kg: number;
+  submitter_name: string;
+  submitter_rut: string;
+  recorded_at: string;
+};
+
+export type EventWastePublicForm = { event_id: string; token: string; status: "DRAFT" | "ACTIVE" | "CLOSED"; public_url: string | null; qr_data_url: string | null; opened_at: string | null; closed_at: string | null };
+
 export type WasteRecordCreate = {
   zone_id?: string | null;
   waste_type_id?: string | null;
@@ -47,21 +107,41 @@ export type WasteRecordCreate = {
 export type WasteRecordUpdate = Partial<WasteRecordCreate>;
 
 export type WasteChartItem = {
+  id?: string | null;
+  waste_type_id?: string | null;
+  collection_point_id?: string | null;
+  code?: string;
+  source?: string;
   name: string;
   value: number;
   kg: number;
+  collection_points_kg?: number;
+  direct_kg?: number;
   percentage?: number;
+  records_count?: number;
 };
+
+export type WasteSummarySourceTotals = { weight_kg: number; percentage: number; records_count: number };
 
 export type WasteSummary = {
   total_kg: number;
   recovered_kg: number;
+  special_disposal_kg: number;
   recycled_kg?: number;
   organic_kg?: number;
   landfill_kg: number;
   recycling_rate?: number;
   recovery_rate: number;
   records_count?: number;
+  total_event_kg: number;
+  total_records: number;
+  waste_types_count: number;
+  collection_points: WasteSummarySourceTotals;
+  direct_records: WasteSummarySourceTotals;
+  top_waste_type: WasteChartItem | null;
+  top_collection_point: WasteChartItem | null;
+  by_source: WasteChartItem[];
+  by_collection_point: WasteChartItem[];
   by_type: WasteChartItem[];
   by_destination: WasteChartItem[];
   by_zone: WasteChartItem[];
