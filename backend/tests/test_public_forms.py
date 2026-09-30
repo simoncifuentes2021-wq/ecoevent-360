@@ -567,7 +567,9 @@ def test_admin_generates_language_qr(db, ctx):
         FormQRCodeCreate(label="QR English", qr_type="FORM_LANGUAGE", language="en"),
         ctx["admin"],
     )
-    assert qr.target_url.endswith(f"/f/{form.public_slug}?lang=en")
+    assert qr.target_url.endswith(
+        f"/f/{slugify_url_segment(ctx['event'].name)}/{form.public_slug}?lang=en"
+    )
     assert qr.language == "en"
 
 
@@ -656,7 +658,9 @@ def test_qr_list_refreshes_stale_public_url(db, ctx, monkeypatch):
     monkeypatch.setattr(form_qr_service.settings, "public_app_url", "https://ecoevent-360.vercel.app")
 
     refreshed = form_qr_service.list_form_qr_codes(db, form.id, ctx["admin"])[0]
-    assert refreshed.target_url == f"https://ecoevent-360.vercel.app/f/{form.public_slug}"
+    assert refreshed.target_url == (
+        f"https://ecoevent-360.vercel.app/f/{slugify_url_segment(ctx['event'].name)}/{form.public_slug}"
+    )
     assert refreshed.file_path
 
 
@@ -672,7 +676,9 @@ def test_qr_uses_request_public_base_url_when_env_is_missing(db, ctx, monkeypatc
         public_base_url="https://ecoevent-360.vercel.app",
     )
 
-    assert qr.target_url == f"https://ecoevent-360.vercel.app/f/{form.public_slug}"
+    assert qr.target_url == (
+        f"https://ecoevent-360.vercel.app/f/{slugify_url_segment(ctx['event'].name)}/{form.public_slug}"
+    )
 
 
 def test_qr_prefers_official_request_domain_over_stale_env(db, ctx, monkeypatch):
@@ -687,4 +693,6 @@ def test_qr_prefers_official_request_domain_over_stale_env(db, ctx, monkeypatch)
         public_base_url="https://app.greenway.cl",
     )
 
-    assert qr.target_url == f"https://app.greenway.cl/f/{form.public_slug}"
+    assert qr.target_url == (
+        f"https://app.greenway.cl/f/{slugify_url_segment(ctx['event'].name)}/{form.public_slug}"
+    )
