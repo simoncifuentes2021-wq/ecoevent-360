@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import os
+import warnings
 from uuid import uuid4
 
 import pytest
@@ -77,6 +78,31 @@ def test_collection_point_creation_and_foreign_zone_rejected(collection_context)
     with pytest.raises(HTTPException) as error:
         service.create_point(db, event.id, CollectionPointCreate(code="AC-02", name="Food trucks", zone_id=foreign_zone.id), admin, "http://localhost:3000")
     assert error.value.status_code == 400
+
+
+def test_collection_point_serialization_uses_nested_schema_models(collection_context):
+    db, event, _, _, _, waste_type, admin, _, _ = collection_context
+    point = service.create_point(
+        db,
+        event.id,
+        CollectionPointCreate(
+            code="AC-WARN",
+            name="Sin advertencias",
+            allowed_waste_type_ids=[waste_type.id],
+        ),
+        admin,
+        None,
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        payload = point.model_dump(mode="json")
+
+    assert payload["allowed_waste_types"] == [{
+        "id": str(waste_type.id),
+        "name": waste_type.name,
+        "is_recyclable": waste_type.is_recyclable,
+    }]
 
 
 def test_event_form_public_private_and_token_regeneration(collection_context):
