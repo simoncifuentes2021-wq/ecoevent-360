@@ -272,9 +272,23 @@ def test_public_rls_token_allows_only_scoped_point_and_record_insert(collection_
     quoted_role = owner_engine.dialect.identifier_preparer.quote(rls_role)
     with owner_engine.begin() as connection:
         connection.execute(text(f"GRANT SELECT, INSERT ON waste_collection_records TO {quoted_role}"))
+        connection.execute(text(f"GRANT SELECT, INSERT, DELETE ON waste_collection_point_types TO {quoted_role}"))
     owner_engine.dispose()
     client_id = uuid4()
     try:
+        with engine.begin() as connection:
+            connection.execute(text("select set_config('app.current_user_id', :value, true)"), {"value": str(admin.id)})
+            connection.execute(text("select set_config('app.current_role', 'ADMIN', true)"))
+            connection.execute(text("select set_config('app.current_client_id', '', true)"))
+            deleted = connection.execute(text("""
+                delete from waste_collection_point_types
+                where collection_point_id=:point and waste_type_id=:type
+            """), {"point": point.id, "type": waste_type.id})
+            assert deleted.rowcount == 1
+            connection.execute(text("""
+                insert into waste_collection_point_types (collection_point_id, waste_type_id)
+                values (:point, :type)
+            """), {"point": point.id, "type": waste_type.id})
         with engine.begin() as connection:
             connection.execute(text("select set_config('app.public_waste_token', :token, true)"), {"token": form["token"]})
             visible = connection.scalar(text("select id from waste_collection_points where id=:id"), {"id": point.id})
