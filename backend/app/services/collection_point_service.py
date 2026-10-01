@@ -44,7 +44,6 @@ def _read_point(point: WasteCollectionPoint, record_count: int, total_kg: Decima
     return CollectionPointRead.model_validate(point).model_copy(update={
         "record_count": record_count, "total_kg": total_kg,
         "public_url": None, "qr_data_url": None,
-        "allowed_waste_types": [{"id": item.id, "name": item.name, "is_recyclable": item.is_recyclable} for item in point.allowed_waste_types],
     })
 
 
