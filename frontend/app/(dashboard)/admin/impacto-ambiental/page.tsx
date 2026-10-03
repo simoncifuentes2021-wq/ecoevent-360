@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, Pencil, Plus } from "lucide-react";
@@ -11,6 +11,7 @@ import { useToast } from "@/components/common/ToastProvider";
 import { RoleGuard } from "@/components/layout/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CollectionEquivalenceCatalogTab } from "@/components/environmental-impact/CollectionEquivalenceCatalogTab";
 import {
   createEnvironmentalEquivalence,
   createEnvironmentalFactor,
@@ -39,7 +40,7 @@ const actionTypes: Array<[EnvironmentalActionType, string]> = [
 const metricKeys: EnvironmentalMetricKey[] = ["CO2E_AVOIDED_KG", "FUEL_AVOIDED_L", "ENERGY_KWH", "PM25_AVOIDED_KG", "PM10_AVOIDED_KG", "NOX_AVOIDED_KG"];
 const fieldClass = "h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100";
 const areaClass = `${fieldClass} min-h-24 py-3`;
-type Section = "factors" | "methodologies" | "equivalences";
+type Section = "factors" | "methodologies" | "equivalences" | "collection_equivalences";
 
 export default function EnvironmentalCatalogPage() {
   const [section, setSection] = useState<Section>("factors");
@@ -54,12 +55,13 @@ export default function EnvironmentalCatalogPage() {
   async function saved(task: () => Promise<unknown>) { setSaving(true); try { await task(); setEditing(undefined); toast({ tone: "success", title: "Configuración guardada", description: "El catálogo ambiental quedó actualizado y auditado." }); await load(); } catch (reason) { toast({ tone: "error", title: "No se pudo guardar", description: reason instanceof Error ? reason.message : undefined }); } finally { setSaving(false); } }
   const counts = { factors: factors.length, methodologies: methods.length, equivalences: equivalences.length };
   return <RoleGuard roles={["SUPER_ADMIN", "ADMIN"]}><div className="space-y-6">
-    <PageHeader eyebrow="Administración" title="Configuración de impacto ambiental" description="Gobierna factores, comparaciones y equivalencias sin modificar la huella de carbono." actions={<Button onClick={() => setEditing(null)}><Plus className="h-4 w-4" />Crear {section === "factors" ? "factor" : section === "methodologies" ? "metodología" : "equivalencia"}</Button>} />
-    <div className="flex gap-2 overflow-x-auto">{([ ["factors", "Factores"], ["methodologies", "Metodologías"], ["equivalences", "Equivalencias"] ] as const).map(([key, label]) => <Button key={key} variant={section === key ? "primary" : "secondary"} onClick={() => { setSection(key); setEditing(undefined); }}>{label} ({counts[key]})</Button>)}</div>
+    <PageHeader eyebrow="Administracion" title="Configuracion de impacto ambiental" description="Gobierna factores, comparaciones y equivalencias sin modificar la huella de carbono." actions={section === "collection_equivalences" ? undefined : <Button onClick={() => setEditing(null)}><Plus className="h-4 w-4" />Crear {section === "factors" ? "factor" : section === "methodologies" ? "metodologia" : "equivalencia"}</Button>} />
+    <div className="flex gap-2 overflow-x-auto">{([ ["factors", "Factores"], ["methodologies", "Metodologias"], ["equivalences", "Equivalencias CO2e"], ["collection_equivalences", "Equivalencias de Acopios"] ] as const).map(([key, label]) => <Button key={key} variant={section === key ? "primary" : "secondary"} onClick={() => { setSection(key); setEditing(undefined); }}>{label}{key !== "collection_equivalences" ? ` (${counts[key]})` : ""}</Button>)}</div>
     {loading ? <LoadingState label="Cargando configuración ambiental..." /> : null}{error ? <ErrorState message={error} onRetry={load} /> : null}
     {!loading && !error && section === "factors" ? <FactorTable items={factors} onEdit={setEditing} /> : null}
     {!loading && !error && section === "methodologies" ? <MethodologyTable items={methods} onEdit={setEditing} /> : null}
     {!loading && !error && section === "equivalences" ? <EquivalenceTable items={equivalences} onEdit={setEditing} /> : null}
+    {section === "collection_equivalences" ? <CollectionEquivalenceCatalogTab /> : null}
     {editing !== undefined && section === "factors" ? <FactorForm item={editing as EnvironmentalFactor | null} saving={saving} onClose={() => setEditing(undefined)} onSave={(data) => saved(() => editing ? updateEnvironmentalFactor(editing.id, data) : createEnvironmentalFactor(data as never))} /> : null}
     {editing !== undefined && section === "methodologies" ? <MethodologyForm item={editing as EnvironmentalMethodology | null} saving={saving} onClose={() => setEditing(undefined)} onSave={(data) => saved(() => editing ? updateEnvironmentalMethodology(editing.id, data) : createEnvironmentalMethodology(data as never))} /> : null}
     {editing !== undefined && section === "equivalences" ? <EquivalenceForm item={editing as EcoEquivalence | null} saving={saving} onClose={() => setEditing(undefined)} onSave={(data) => saved(() => editing ? updateEnvironmentalEquivalence(editing.id, data) : createEnvironmentalEquivalence(data as never))} /> : null}

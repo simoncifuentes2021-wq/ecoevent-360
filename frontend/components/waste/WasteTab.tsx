@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { BarChart3, Leaf, Plus, Settings2 } from "lucide-react";
 
 import { ErrorState } from "@/components/common/ErrorState";
 import { EmptyState } from "@/components/common/EmptyState";
 import { WasteCharts } from "@/components/waste/WasteCharts";
 import { WasteDeleteDialog } from "@/components/waste/WasteDeleteDialog";
 import { CollectionPointsManager } from "@/components/waste/CollectionPointsManager";
+import { CollectionDashboardPanel } from "@/components/waste/CollectionDashboard";
 import { WasteFilters } from "@/components/waste/WasteFilters";
 import { WasteRecordDetailDrawer } from "@/components/waste/WasteRecordDetailDrawer";
 import { WasteRecordFormModal } from "@/components/waste/WasteRecordFormModal";
@@ -62,6 +63,7 @@ export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole |
   const [typeId, setTypeId] = useState("");
   const [destination, setDestination] = useState("");
   const [activeTab, setActiveTab] = useState<"summary" | "environmental" | "collection">("summary");
+  const [activeCollectionTab, setActiveCollectionTab] = useState<"dashboard" | "equivalences" | "management">("dashboard");
 
   const loadSummary = useCallback(async () => {
     setSummaryLoading(true);
@@ -169,7 +171,16 @@ export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole |
       <WasteFilters destination={destination} q={q} typeId={typeId} wasteTypes={wasteTypes} zoneId={zoneId} zones={zones} onDestinationChange={setDestination} onQChange={setQ} onTypeChange={setTypeId} onZoneChange={setZoneId} />
       <WasteRecordTable canDelete={canDeleteWasteRecord(role)} canEdit={canEditWasteRecord(role)} error={null} loading={loading} records={filtered} wasteTypes={wasteTypes} onDelete={setDeleting} onEdit={setFormRecord} onView={setDetail} />
     </section> : null}
-    {activeTab === "collection" ? <CollectionPointsManager eventId={eventId} canManage={canEditWasteRecord(role)} /> : null}
+    {activeTab === "collection" ? <section className="space-y-4">
+      <nav aria-label="Secciones de acopios" className="flex flex-wrap gap-2 border-b pb-3">
+        <button type="button" aria-selected={activeCollectionTab === "dashboard"} onClick={() => setActiveCollectionTab("dashboard")} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${activeCollectionTab === "dashboard" ? "bg-emerald-700 text-white" : "border bg-white text-slate-700 hover:bg-slate-50"}`}><BarChart3 className="h-4 w-4"/>Indicadores</button>
+        <button type="button" aria-selected={activeCollectionTab === "equivalences"} onClick={() => setActiveCollectionTab("equivalences")} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${activeCollectionTab === "equivalences" ? "bg-emerald-700 text-white" : "border bg-white text-slate-700 hover:bg-slate-50"}`}><Leaf className="h-4 w-4"/>Ecoequivalencias</button>
+        <button type="button" aria-selected={activeCollectionTab === "management"} onClick={() => setActiveCollectionTab("management")} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${activeCollectionTab === "management" ? "bg-emerald-700 text-white" : "border bg-white text-slate-700 hover:bg-slate-50"}`}><Settings2 className="h-4 w-4"/>Gestión de acopios</button>
+      </nav>
+      {activeCollectionTab === "dashboard" ? <CollectionDashboardPanel eventId={eventId} view="indicators" /> : null}
+      {activeCollectionTab === "equivalences" ? <CollectionDashboardPanel eventId={eventId} view="equivalences" /> : null}
+      {activeCollectionTab === "management" ? <CollectionPointsManager eventId={eventId} canManage={canEditWasteRecord(role)} /> : null}
+    </section> : null}
     {formRecord !== undefined ? <WasteRecordFormModal eventId={eventId} evidences={evidences} loading={saving} record={formRecord} wasteTypes={wasteTypes} zones={zones} onClose={() => setFormRecord(undefined)} onSubmit={save} /> : null}
     {detail ? <WasteRecordDetailDrawer canDelete={canDeleteWasteRecord(role)} canEdit={canEditWasteRecord(role)} record={detail} typeLabel={typeLabel(detail, wasteTypes)} onClose={() => setDetail(null)} onDelete={() => setDeleting(detail)} onEdit={() => setFormRecord(detail)} /> : null}
     <WasteDeleteDialog record={deleting} onClose={() => setDeleting(null)} onConfirm={confirmDelete} />

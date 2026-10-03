@@ -37,6 +37,13 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("PUBLIC_APP_URL", "FRONTEND_PUBLIC_URL")
     )
     official_frontend_url: str = OFFICIAL_FRONTEND_URL
+    resend_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("RESEND_API_KEY")
+    )
+    email_from: str = Field(
+        default="Greenway App <noreply@app.greenway.cl>",
+        validation_alias=AliasChoices("EMAIL_FROM", "RESEND_FROM_EMAIL"),
+    )
     cloudflare_r2_bucket: str | None = None
     cloudflare_r2_account_id: str | None = None
     cloudflare_r2_access_key_id: str | None = None

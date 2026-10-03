@@ -2,12 +2,15 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, selectinload
 
+from app.models.core import WasteType
 from app.models.environmental import (
     EcoEquivalenceFactor,
     EnvironmentalFactor,
     EnvironmentalMethodology,
+    WasteCollectionEquivalenceFactor,
 )
 
 
@@ -33,6 +36,56 @@ def list_methodologies(db: Session):
 
 def list_equivalences(db: Session):
     return list(db.scalars(select(EcoEquivalenceFactor).order_by(EcoEquivalenceFactor.name)).all())
+
+
+def list_waste_collection_equivalences(db: Session):
+    items = db.scalars(
+        select(WasteCollectionEquivalenceFactor)
+        .options(selectinload(WasteCollectionEquivalenceFactor.waste_type))
+        .order_by(WasteCollectionEquivalenceFactor.kind, WasteCollectionEquivalenceFactor.name)
+    ).all()
+    return [
+        {
+            **{column.name: getattr(item, column.name) for column in item.__table__.columns},
+            "waste_type_name": item.waste_type.name if item.waste_type else None,
+        }
+        for item in items
+    ]
+
+
+def create_waste_collection_equivalence(db: Session, payload):
+    if db.scalar(
+        select(WasteCollectionEquivalenceFactor.id).where(
+            WasteCollectionEquivalenceFactor.key == payload.key
+        )
+    ):
+        raise HTTPException(status_code=409, detail="Ya existe una equivalencia con esa clave")
+    if payload.waste_type_id and db.get(WasteType, payload.waste_type_id) is None:
+        raise HTTPException(status_code=404, detail="El material indicado no existe")
+    data = payload.model_dump()
+    data["source_url"] = str(payload.source_url) if payload.source_url else None
+    item = WasteCollectionEquivalenceFactor(**data)
+    db.add(item)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe una equivalencia con esa clave") from exc
+    db.refresh(item)
+    return next(row for row in list_waste_collection_equivalences(db) if row["id"] == item.id)
+
+
+def update_waste_collection_equivalence(db: Session, item_id: UUID, payload):
+    item = db.get(WasteCollectionEquivalenceFactor, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Equivalencia de Acopios no encontrada")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if key == "source_url":
+            value = str(value) if value else None
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return next(row for row in list_waste_collection_equivalences(db) if row["id"] == item_id)
 
 
 def create_factor(db: Session, payload):

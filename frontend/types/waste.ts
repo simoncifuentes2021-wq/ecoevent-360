@@ -70,11 +70,13 @@ export type WasteCollectionRecord = {
 export type WasteCollectionSummary = {
   event_id: string;
   total_kg: number | string;
+  recyclable_kg?: number | string;
   records_count: number;
   active_points: number;
   unique_submitters: number;
-  by_type: { id: string; name: string; total_kg: number | string; records_count: number }[];
+  by_type: { id: string; name: string; is_recyclable?: boolean; total_kg: number | string; records_count: number }[];
   by_point: { id: string; code: string; name: string; total_kg: number | string; records_count: number }[];
+  eco_equivalences?: { kind: "FAMILY_DAYS" | "MATERIAL_UNITS"; waste_type_name: string | null; name: string; value: number | string; unit: string; reference_kg?: number | string }[];
 };
 
 export type PublicWasteType = { id: string; name: string; is_recyclable?: boolean | null };

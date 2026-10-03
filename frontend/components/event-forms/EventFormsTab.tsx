@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element -- Form branding accepts authenticated and customer-managed image URLs outside the Next optimizer. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Copy, ExternalLink, Eye, Plus, QrCode, RotateCcw } from "lucide-react";
+import { Archive, Copy, ExternalLink, Eye, Mail, Plus, QrCode, RotateCcw } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -14,7 +14,7 @@ import { FormsSessionComparison } from "@/components/event-forms/FormsSessionCom
 import { FormQrDialog } from "@/components/event-forms/FormQrDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { archiveEventForm, closeEventForm, createEventForm, getEventFormResponses, getEventForms, getEventFormSummary, publishEventForm, restoreEventForm } from "@/lib/api/eventForms";
+import { archiveEventForm, closeEventForm, createEventForm, getEventFormResponses, getEventForms, getEventFormSummary, publishEventForm, restoreEventForm, sendBikeZoneEmail } from "@/lib/api/eventForms";
 import { getEvent } from "@/lib/api/events";
 import { getEventSessions } from "@/lib/api/eventSessions";
 import { publicFormPath } from "@/lib/publicFormPath";
@@ -50,6 +50,7 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
   const [archiveTarget, setArchiveTarget] = useState<EventForm | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [emailingResponseId, setEmailingResponseId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const creatingRef = useRef(false);
   const [form, setForm] = useState({
@@ -169,6 +170,19 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
     }
   }
 
+  async function resendBikeZoneEmail(response: FormResponse) {
+    if (!selected || selected.form_type !== "BIKE_ZONE_REGISTRATION" || !response.respondent_email) return;
+    setEmailingResponseId(response.id);
+    try {
+      await sendBikeZoneEmail(selected.id, response.id);
+      toast({ tone: "success", title: "Correo enviado", description: "El código Bike Zone se está enviando al correo registrado." });
+    } catch (cause) {
+      toast({ tone: "error", title: "No se pudo enviar el correo", description: cause instanceof Error ? cause.message : undefined });
+    } finally {
+      setEmailingResponseId(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -269,7 +283,15 @@ export function EventFormsTab({ eventId, role }: { eventId: string; role?: UserR
                         <td className="px-3 py-2">{response.submitted_at ? new Date(response.submitted_at).toLocaleString("es-CL", { timeZone: "America/Santiago" }) : "-"}</td>
                         <td className="px-3 py-2 font-semibold">{response.language}</td>
                         <td className="px-3 py-2">{response.respondent_name || "-"}</td>
-                        <td className="px-3 py-2">{response.respondent_email || "-"}</td>
+                        <td className="px-3 py-2">
+                          <div>{response.respondent_email || "-"}</div>
+                          {canManage && selected.form_type === "BIKE_ZONE_REGISTRATION" && response.respondent_email ? (
+                            <Button className="mt-2" disabled={emailingResponseId === response.id} size="sm" type="button" variant="secondary" onClick={() => void resendBikeZoneEmail(response)}>
+                              <Mail className="h-4 w-4" />
+                              {emailingResponseId === response.id ? "Enviando..." : "Enviar código"}
+                            </Button>
+                          ) : null}
+                        </td>
                         <td className="px-3 py-2">{response.response_code || "-"}</td>
                         <td className="max-w-md px-3 py-2">
                           <pre className="max-h-32 overflow-auto rounded-md bg-slate-50 p-2 text-xs">{JSON.stringify(response.raw_data, null, 2)}</pre>

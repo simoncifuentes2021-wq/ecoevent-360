@@ -26,6 +26,9 @@ from app.schemas.environmental_schema import (
     EnvironmentalReviewRequest,
     EnvironmentalSummary,
     MetricOverride,
+    WasteCollectionEquivalenceCreate,
+    WasteCollectionEquivalenceRead,
+    WasteCollectionEquivalenceUpdate,
 )
 from app.services import environmental_calculation_service as calculations
 from app.services import environmental_catalog_service as catalog
@@ -507,6 +510,67 @@ def update_equivalence(
         entity_type="EcoEquivalenceFactor",
         entity_id=item.id,
         new_data=serialize_model_for_audit(item),
+        request=request,
+    )
+    return item
+
+
+@router.get(
+    "/environmental-impact/waste-collection-equivalences",
+    response_model=list[WasteCollectionEquivalenceRead],
+    dependencies=[Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN))],
+)
+def waste_collection_equivalences(db: Session = Depends(get_db)):
+    return catalog.list_waste_collection_equivalences(db)
+
+
+@router.post(
+    "/environmental-impact/waste-collection-equivalences",
+    response_model=WasteCollectionEquivalenceRead,
+    status_code=201,
+    dependencies=[Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN))],
+)
+def create_waste_collection_equivalence(
+    payload: WasteCollectionEquivalenceCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    item = catalog.create_waste_collection_equivalence(db, payload)
+    create_audit_log(
+        db,
+        user=user,
+        action="WASTE_COLLECTION_EQUIVALENCE_CREATED",
+        module="environmental_impact",
+        entity_type="WasteCollectionEquivalenceFactor",
+        entity_id=item["id"],
+        new_data={key: value for key, value in item.items() if key not in {"created_at", "updated_at"}},
+        request=request,
+    )
+    return item
+
+
+@router.patch(
+    "/environmental-impact/waste-collection-equivalences/{item_id}",
+    response_model=WasteCollectionEquivalenceRead,
+    dependencies=[Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN))],
+)
+def update_waste_collection_equivalence(
+    item_id: UUID,
+    payload: WasteCollectionEquivalenceUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    item = catalog.update_waste_collection_equivalence(db, item_id, payload)
+    create_audit_log(
+        db,
+        user=user,
+        action="WASTE_COLLECTION_EQUIVALENCE_UPDATED",
+        module="environmental_impact",
+        entity_type="WasteCollectionEquivalenceFactor",
+        entity_id=item_id,
+        new_data={key: value for key, value in item.items() if key not in {"created_at", "updated_at"}},
         request=request,
     )
     return item

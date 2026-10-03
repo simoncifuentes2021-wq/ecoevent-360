@@ -128,11 +128,13 @@ class WasteCollectionRecordRead(BaseModel):
 class WasteCollectionSummaryRead(BaseModel):
     event_id: UUID
     total_kg: Decimal
+    recyclable_kg: Decimal = Decimal("0")
     records_count: int
     active_points: int
     unique_submitters: int
-    by_type: list[dict[str, str | UUID | Decimal | int]]
+    by_type: list[dict[str, str | UUID | Decimal | int | bool]]
     by_point: list[dict[str, str | UUID | Decimal | int]]
+    eco_equivalences: list[dict[str, str | Decimal | None]] = Field(default_factory=list)
 
 
 class PublicWasteBatchRequest(BaseModel):

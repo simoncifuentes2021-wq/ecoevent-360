@@ -13,7 +13,7 @@ import type { ClientPortal, ClientPortalConfig, ClientPortalSection, ClientPorta
 
 const templates = [
   { key: "completa_sin_datos_personales", label: "Completa sin datos personales" },
-  { key: "ambiental", label: "Ambiental" },
+  { key: "ambiental", label: "Ambiental + Acopios" },
   { key: "operativa", label: "Operativa" },
   { key: "experiencia", label: "Experiencia" },
   { key: "bike_zone", label: "Bike Zone" }

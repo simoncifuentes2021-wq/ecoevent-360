@@ -240,6 +240,68 @@ class EcoEquivalenceRead(EcoEquivalenceCreate):
     updated_at: datetime
 
 
+class WasteCollectionEquivalenceCreate(BaseModel):
+    key: str = Field(pattern=r"^[A-Z0-9_]+$", min_length=2, max_length=100)
+    kind: str = Field(pattern=r"^(FAMILY_DAYS|MATERIAL_UNITS)$")
+    waste_type_id: UUID | None = None
+    name: str = Field(min_length=1, max_length=180)
+    reference_kg: Decimal = Field(gt=0)
+    display_unit: str = Field(min_length=1, max_length=120)
+    source: str = Field(min_length=1, max_length=2000)
+    source_url: HttpUrl | None = None
+    year: int = Field(ge=1900, le=2200)
+    is_active: bool = False
+
+    @field_validator("reference_kg")
+    @classmethod
+    def finite_reference(cls, value: Decimal) -> Decimal:
+        if not value.is_finite():
+            raise ValueError("Reference weight must be finite")
+        return value
+
+    @model_validator(mode="after")
+    def kind_matches_scope(self):
+        if self.kind == "FAMILY_DAYS" and self.waste_type_id is not None:
+            raise ValueError("Family-day equivalence cannot belong to a waste type")
+        if self.kind == "MATERIAL_UNITS" and self.waste_type_id is None:
+            raise ValueError("Material-unit equivalence requires a waste type")
+        return self
+
+
+class WasteCollectionEquivalenceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=180)
+    reference_kg: Decimal | None = Field(default=None, gt=0)
+    display_unit: str | None = Field(default=None, min_length=1, max_length=120)
+    source: str | None = Field(default=None, min_length=1, max_length=2000)
+    source_url: HttpUrl | None = None
+    year: int | None = Field(default=None, ge=1900, le=2200)
+    is_active: bool | None = None
+
+    @field_validator("reference_kg")
+    @classmethod
+    def finite_reference(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and not value.is_finite():
+            raise ValueError("Reference weight must be finite")
+        return value
+
+
+class WasteCollectionEquivalenceRead(WasteCollectionEquivalenceCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    waste_type_name: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WasteCollectionEcoEquivalence(BaseModel):
+    kind: str
+    waste_type_name: str | None = None
+    name: str
+    value: Decimal
+    unit: str
+
+
 class MetricOverride(BaseModel):
     reported_value: Decimal
     override_reason: str = Field(min_length=3, max_length=2000)
