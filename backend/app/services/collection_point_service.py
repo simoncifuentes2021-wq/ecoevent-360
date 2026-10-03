@@ -1,7 +1,7 @@
 import base64
 import secrets
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -13,6 +13,7 @@ from app.core.permissions import can_access_event, can_manage_event
 from app.db.session import set_public_waste_context
 from app.models.core import Event, EventWastePublicForm, EventZone, User, WasteCollectionPoint, WasteCollectionRecord, WasteType
 from app.models.enums import EventStatus, UserRole
+from app.models.environmental import WasteCollectionEquivalenceFactor
 from app.schemas.collection_point_schema import CollectionPointCreate, CollectionPointUpdate, PublicWasteRecordCreate
 from app.utils.simple_qr import make_qr_png
 
@@ -326,14 +327,18 @@ def collection_summary(db: Session, event_id: UUID, user: User):
         func.count(WasteCollectionRecord.id),
         func.count(func.distinct(WasteCollectionRecord.submitter_rut)),
     ).where(WasteCollectionRecord.event_id == event_id)).one()
+    recyclable_kg = db.scalar(select(
+        func.coalesce(func.sum(WasteCollectionRecord.weight_kg), 0)
+    ).join(WasteType, WasteType.id == WasteCollectionRecord.waste_type_id)
+        .where(WasteCollectionRecord.event_id == event_id, WasteType.is_recyclable.is_(True))) or Decimal("0")
     active_points = db.scalar(select(func.count(WasteCollectionPoint.id)).where(
         WasteCollectionPoint.event_id == event_id, WasteCollectionPoint.is_active.is_(True)
     )) or 0
     by_type = db.execute(select(
-        WasteType.id, WasteType.name, func.coalesce(func.sum(WasteCollectionRecord.weight_kg), 0),
+        WasteType.id, WasteType.name, WasteType.is_recyclable, func.coalesce(func.sum(WasteCollectionRecord.weight_kg), 0),
         func.count(WasteCollectionRecord.id),
     ).join(WasteCollectionRecord, WasteCollectionRecord.waste_type_id == WasteType.id)
-        .where(WasteCollectionRecord.event_id == event_id).group_by(WasteType.id, WasteType.name)
+        .where(WasteCollectionRecord.event_id == event_id).group_by(WasteType.id, WasteType.name, WasteType.is_recyclable)
         .order_by(func.sum(WasteCollectionRecord.weight_kg).desc())).all()
     by_point = db.execute(select(
         WasteCollectionPoint.id, WasteCollectionPoint.code, WasteCollectionPoint.name,
@@ -342,9 +347,37 @@ def collection_summary(db: Session, event_id: UUID, user: User):
         .where(WasteCollectionPoint.event_id == event_id)
         .group_by(WasteCollectionPoint.id, WasteCollectionPoint.code, WasteCollectionPoint.name)
         .order_by(WasteCollectionPoint.code)).all()
+    weights_by_type = {row[0]: row[3] for row in by_type}
+    eco_equivalences = []
+    if total_kg > 0:
+        factors = db.scalars(
+            select(WasteCollectionEquivalenceFactor).where(
+                WasteCollectionEquivalenceFactor.is_active.is_(True)
+            ).order_by(WasteCollectionEquivalenceFactor.kind, WasteCollectionEquivalenceFactor.name)
+        ).all()
+        for factor in factors:
+            source_kg = (
+                total_kg if factor.kind == "FAMILY_DAYS"
+                else weights_by_type.get(factor.waste_type_id, Decimal("0"))
+            )
+            if source_kg <= 0:
+                continue
+            value = (Decimal(source_kg) / factor.reference_kg).quantize(
+                Decimal("0.1"), rounding=ROUND_HALF_UP
+            )
+            eco_equivalences.append({
+                "kind": factor.kind,
+                "waste_type_name": factor.waste_type.name if factor.waste_type else None,
+                "name": factor.name,
+                "value": value,
+                "unit": factor.display_unit,
+                "reference_kg": factor.reference_kg,
+            })
     return {
-        "event_id": event_id, "total_kg": total_kg, "records_count": records_count,
+        "event_id": event_id, "total_kg": total_kg, "recyclable_kg": recyclable_kg,
+        "records_count": records_count,
         "active_points": active_points, "unique_submitters": unique_submitters,
-        "by_type": [{"id": row[0], "name": row[1], "total_kg": row[2], "records_count": row[3]} for row in by_type],
+        "by_type": [{"id": row[0], "name": row[1], "is_recyclable": bool(row[2]), "total_kg": row[3], "records_count": row[4]} for row in by_type],
         "by_point": [{"id": row[0], "code": row[1], "name": row[2], "total_kg": row[3], "records_count": row[4]} for row in by_point],
+        "eco_equivalences": eco_equivalences,
     }

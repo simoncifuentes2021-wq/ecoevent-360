@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, BriefcaseBusiness, Camera, ClipboardCheck, ClipboardList, Cloud, FileText, Leaf, MessageSquare, PackageCheck, Recycle, ShieldAlert } from "lucide-react";
+import { BarChart3, BriefcaseBusiness, Camera, ClipboardCheck, ClipboardList, Cloud, FileText, Leaf, MessageSquare, PackageCheck, Recycle, ShieldAlert, MapPin } from "lucide-react";
 import { ClientLogbooksTab } from "@/components/logbooks/ClientLogbooksTab";
 
 import { ClientCarbonTab } from "@/components/client/ClientCarbonTab";
@@ -15,11 +15,13 @@ import { ClientReportsTab } from "@/components/client/ClientReportsTab";
 import { ClientServicesTab } from "@/components/client/ClientServicesTab";
 import { ClientFormsTab } from "@/components/client/ClientFormsTab";
 import { ClientWasteTab } from "@/components/client/ClientWasteTab";
+import { CollectionDashboard } from "@/components/waste/CollectionDashboard";
 import { ErrorState } from "@/components/common/ErrorState";
 import { FormsSessionComparison } from "@/components/event-forms/FormsSessionComparison";
 import { LoadingState } from "@/components/common/LoadingState";
 import { getClientEventPortal } from "@/lib/api/clientPortal";
 import type { ClientPortal, ClientPortalSectionKey } from "@/types/clientPortal";
+import type { WasteCollectionSummary } from "@/types/waste";
 
 type ClientTab = {
   key: string;
@@ -37,6 +39,7 @@ const allTabs: ClientTab[] = [
   { key: "incidencias", sectionKey: "incidents", label: "Incidencias", icon: ShieldAlert },
   { key: "evidencias", sectionKey: "evidences", label: "Evidencias", icon: Camera },
   { key: "residuos", sectionKey: "waste", label: "Residuos", icon: Recycle },
+  { key: "acopios", sectionKey: "collection", label: "Acopios", icon: MapPin },
   { key: "huella", sectionKey: "carbon", label: "Huella", icon: Cloud },
   { key: "impacto", sectionKey: "environmental_impact", label: "Impacto ambiental", icon: Leaf },
   { key: "formularios", sectionKey: "forms", label: "Formularios", icon: MessageSquare },
@@ -102,6 +105,7 @@ export function ClientEventTabs({ eventId }: { eventId: string }) {
       {active === "incidencias" ? <ClientIncidentsTab eventId={eventId} /> : null}
       {active === "evidencias" ? <ClientEvidencesTab eventId={eventId} /> : null}
       {active === "residuos" ? <ClientWasteTab eventId={eventId} /> : null}
+      {active === "acopios" ? <CollectionDashboard summary={portal?.data.collection_points as WasteCollectionSummary | undefined} /> : null}
       {active === "huella" ? <ClientCarbonTab eventId={eventId} /> : null}
       {active === "impacto" ? <ClientEnvironmentalImpactTab data={portal?.data.environmental_impact} /> : null}
       {active === "formularios" ? (

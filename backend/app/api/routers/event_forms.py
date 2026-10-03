@@ -1,15 +1,16 @@
 from uuid import UUID
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
 from app.core.config import settings
 from app.core.rate_limit import enforce
 from app.db.session import get_db
-from app.models.core import User
+from app.models.core import BikeZoneRecord, FormResponse, User
 from app.schemas.event_form_schema import (
     BikeZoneRecordRead,
     EventFormCreate,
@@ -34,6 +35,7 @@ from app.schemas.event_form_schema import (
     FormResponseRead,
 )
 from app.services import bike_zone_service, event_form_service, event_session_service, form_qr_service
+from app.services.bike_zone_email_service import BikeZoneEmail, send_bike_zone_email
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 from app.models.enums import EventFormType
 
@@ -212,6 +214,37 @@ def get_response(form_id: UUID, response_id: UUID, db: Session = Depends(get_db)
     return event_form_service.get_response(db, form_id, response_id, current_user)
 
 
+@router.post("/forms/{form_id}/responses/{response_id}/bike-zone-email", status_code=status.HTTP_202_ACCEPTED)
+def send_existing_bike_zone_email(
+    form_id: UUID,
+    response_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    form = event_form_service.get_form_or_404(db, form_id)
+    if form.form_type != EventFormType.BIKE_ZONE_REGISTRATION:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Form is not Bike Zone")
+    response = event_form_service.get_response(db, form_id, response_id, current_user)
+    record = db.scalar(select(BikeZoneRecord).where(BikeZoneRecord.response_id == response.id))
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bike Zone code not found")
+    bike_zone_service._ensure_can_operate(db, record, current_user)
+    if not response.respondent_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Response has no email")
+    background_tasks.add_task(
+        send_bike_zone_email,
+        BikeZoneEmail(
+            recipient=response.respondent_email,
+            participant_name=response.respondent_name,
+            event_name=form.event.name if form.event else "Eco Event",
+            session_name=form.session.name if form.session else None,
+            code=record.code,
+        ),
+    )
+    return {"message": "Correo Bike Zone en proceso de envío"}
+
+
 @router.get("/forms/{form_id}/summary", response_model=EventFormSummaryRead)
 def get_summary(form_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
     return event_form_service.summary(db, form_id, current_user)
@@ -268,10 +301,36 @@ def get_public_form(slug: str, request: Request, lang: str | None = None, db: Se
 
 
 @public_router.post("/{slug}/submit", response_model=FormResponsePublicResult, status_code=status.HTTP_201_CREATED)
-def submit_public_form(slug: str, payload: FormResponseCreate, request: Request, db: Session = Depends(get_db)):
+def submit_public_form(
+    slug: str,
+    payload: FormResponseCreate,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     enforce(request, "public-form-submit", slug, settings.rate_limit_public_submit)
     enforce(request, "public-form-session", payload.idempotency_key or "missing", settings.rate_limit_public_submit)
+    form = event_form_service.get_public_form_or_404(db, slug)
+    existing_response = None
+    if payload.idempotency_key:
+        existing_response = db.scalar(
+            select(FormResponse).where(
+                FormResponse.form_id == form.id,
+                FormResponse.metadata_["idempotency_key"].astext == payload.idempotency_key,
+            )
+        )
     response, bike_code = event_form_service.submit_public_form(db, slug, payload)
+    if bike_code and response.respondent_email and existing_response is None:
+        background_tasks.add_task(
+            send_bike_zone_email,
+            BikeZoneEmail(
+                recipient=response.respondent_email,
+                participant_name=response.respondent_name,
+                event_name=form.event.name if form.event else "Eco Event",
+                session_name=form.session.name if form.session else None,
+                code=bike_code,
+            ),
+        )
     return FormResponsePublicResult(response_code=response.response_code, bike_zone_code=bike_code, message="Respuesta recibida correctamente.")
 
 

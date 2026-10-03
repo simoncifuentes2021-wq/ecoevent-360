@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
 import { toQuery } from "@/lib/api/query";
-import type { AIEnvironmentalInterpretation, EcoEquivalence, EcoEquivalenceInput, EnvironmentalAction, EnvironmentalActionInput, EnvironmentalFactor, EnvironmentalFactorInput, EnvironmentalMethodology, EnvironmentalReview, EnvironmentalReviewDecision, EnvironmentalSummary } from "@/types/environmental";
+import type { AIEnvironmentalInterpretation, EcoEquivalence, EcoEquivalenceInput, EnvironmentalAction, EnvironmentalActionInput, EnvironmentalFactor, EnvironmentalFactorInput, EnvironmentalMethodology, EnvironmentalReview, EnvironmentalReviewDecision, EnvironmentalSummary, WasteCollectionEquivalence, WasteCollectionEquivalenceInput } from "@/types/environmental";
 
 export const getEnvironmentalSummary = (eventId: string, sessionId?: string) => api.get<EnvironmentalSummary>(`/events/${eventId}/environmental-impact/summary${toQuery({ session_id: sessionId })}`);
 export const getEnvironmentalActions = (eventId: string, sessionId?: string) => api.get<{items: EnvironmentalAction[]; total: number}>(`/events/${eventId}/environmental-actions${toQuery({ session_id: sessionId })}`);
@@ -21,3 +21,6 @@ export const updateEnvironmentalMethodology = (id: string, data: Partial<Pick<En
 export const getEnvironmentalEquivalences = () => api.get<EcoEquivalence[]>("/environmental-impact/equivalences");
 export const createEnvironmentalEquivalence = (data: EcoEquivalenceInput) => api.post<EcoEquivalence>("/environmental-impact/equivalences", data);
 export const updateEnvironmentalEquivalence = (id: string, data: Partial<Pick<EcoEquivalence, "name" | "factor" | "unit" | "source" | "year" | "is_active">>) => api.patch<EcoEquivalence>(`/environmental-impact/equivalences/${id}`, data);
+export const getWasteCollectionEquivalences = () => api.get<WasteCollectionEquivalence[]>("/environmental-impact/waste-collection-equivalences");
+export const createWasteCollectionEquivalence = (data: WasteCollectionEquivalenceInput) => api.post<WasteCollectionEquivalence>("/environmental-impact/waste-collection-equivalences", data);
+export const updateWasteCollectionEquivalence = (id: string, data: Partial<WasteCollectionEquivalenceInput>) => api.patch<WasteCollectionEquivalence>(`/environmental-impact/waste-collection-equivalences/${id}`, data);

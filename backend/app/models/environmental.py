@@ -21,7 +21,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.core import created_at_column, updated_at_column, uuid_pk
+from app.models.core import WasteType, created_at_column, updated_at_column, uuid_pk
 from app.models.enums import (
     EnvironmentalActionStatus,
     EnvironmentalActionType,
@@ -102,6 +102,39 @@ class EcoEquivalenceFactor(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
+
+
+class WasteCollectionEquivalenceFactor(Base):
+    """Admin-maintained, source-backed display conversions for collection records."""
+
+    __tablename__ = "waste_collection_equivalence_factors"
+    __table_args__ = (
+        UniqueConstraint("key", name="uq_waste_collection_equivalence_factors_key"),
+        CheckConstraint("reference_kg > 0", name="ck_waste_collection_equivalence_reference_positive"),
+        CheckConstraint(
+            "(kind = 'FAMILY_DAYS' and waste_type_id is null) or "
+            "(kind = 'MATERIAL_UNITS' and waste_type_id is not null)",
+            name="ck_waste_collection_equivalence_scope",
+        ),
+    )
+
+    id: Mapped[UUID] = uuid_pk()
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    waste_type_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("waste_types.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    reference_kg: Mapped[Decimal] = mapped_column(Numeric(14, 6), nullable=False)
+    display_unit: Mapped[str] = mapped_column(String(120), nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("FALSE"))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    waste_type: Mapped["WasteType | None"] = relationship()
 
 
 class EnvironmentalAction(Base):

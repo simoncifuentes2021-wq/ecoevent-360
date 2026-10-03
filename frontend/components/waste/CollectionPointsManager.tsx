@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Copy, MapPin, Plus, QrCode, Save, Search, X } from "lucide-react";
-import { createCollectionPoint, getCollectionPoints, getEventWastePublicForm, getWasteCollectionRecords, getWasteCollectionSummary, updateCollectionPoint, updateEventWastePublicForm } from "@/lib/api/waste";
+import { createCollectionPoint, getCollectionPoints, getEventWastePublicForm, getWasteCollectionRecords, updateCollectionPoint, updateEventWastePublicForm } from "@/lib/api/waste";
 import { getEventZones } from "@/lib/api/zones";
 import { getWasteTypes } from "@/lib/api/wasteTypes";
-import type { EventWastePublicForm, WasteCollectionPoint, WasteCollectionRecord, WasteCollectionSummary, WasteType } from "@/types/waste";
+import type { EventWastePublicForm, WasteCollectionPoint, WasteCollectionRecord, WasteType } from "@/types/waste";
 import type { Zone } from "@/types/zone";
 import { Button } from "@/components/ui/button";
 
@@ -17,7 +17,6 @@ export function CollectionPointsManager({ eventId, canManage }: { eventId: strin
   const [points, setPoints] = useState<WasteCollectionPoint[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [types, setTypes] = useState<WasteType[]>([]);
-  const [summary, setSummary] = useState<WasteCollectionSummary | null>(null);
   const [records, setRecords] = useState<WasteCollectionRecord[]>([]);
   const [publicForm, setPublicForm] = useState<EventWastePublicForm | null>(null);
   const [formQrOpen, setFormQrOpen] = useState(false);
@@ -33,11 +32,11 @@ export function CollectionPointsManager({ eventId, canManage }: { eventId: strin
 
   const load = useCallback(async () => {
     try {
-      const [items, zoneItems, wasteTypes, collectionSummary, form] = await Promise.all([
+      const [items, zoneItems, wasteTypes, form] = await Promise.all([
         getCollectionPoints(eventId), getEventZones(eventId), getWasteTypes().catch(() => []),
-        getWasteCollectionSummary(eventId), getEventWastePublicForm(eventId),
+        getEventWastePublicForm(eventId),
       ]);
-      setPoints(items); setZones(zoneItems); setTypes(wasteTypes); setSummary(collectionSummary); setPublicForm(form);
+      setPoints(items); setZones(zoneItems); setTypes(wasteTypes); setPublicForm(form);
     } catch (err) { setError(err instanceof Error ? err.message : "No se pudieron cargar los acopios."); }
   }, [eventId]);
   const loadRecords = useCallback(async () => {
@@ -80,12 +79,6 @@ export function CollectionPointsManager({ eventId, canManage }: { eventId: strin
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-bold text-slate-900">Acopios Greenway</h3><p className="text-sm text-slate-600">Recepción de materiales separada de la gestión ambiental.</p></div>{canManage && !editing ? <Button onClick={() => edit()}><Plus className="h-4 w-4"/>Nuevo acopio</Button> : null}</div>
     {error ? <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
     {publicForm ? <section className="space-y-3 rounded-xl border border-emerald-200 bg-white p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="font-bold">Formulario público Greenway</h4><p className="mt-1 text-sm"><b>Estado:</b> <span className={publicForm.status === "ACTIVE" ? "text-emerald-700" : "text-slate-600"}>{publicForm.status === "ACTIVE" ? "🟢 Público" : "⚫ Privado"}</span></p>{publicForm.public_url ? <a className="mt-1 block break-all text-sm text-emerald-800 underline" href={publicForm.public_url} target="_blank" rel="noreferrer">{publicForm.public_url}</a> : null}</div><div className="flex flex-wrap gap-2">{canManage ? publicForm.status === "ACTIVE" ? <Button variant="secondary" onClick={() => void changePublicForm("close")}>Cerrar formulario</Button> : <Button onClick={() => void changePublicForm("activate")}>Hacer público</Button> : null}<Button variant="secondary" onClick={() => setFormQrOpen(true)}><QrCode className="h-4 w-4"/>Ver QR</Button>{publicForm.public_url ? <Button variant="secondary" onClick={() => void navigator.clipboard.writeText(publicForm.public_url!)}><Copy className="h-4 w-4"/>Copiar enlace</Button> : null}{canManage ? <Button variant="secondary" onClick={() => void changePublicForm("regenerate-token")}>Regenerar enlace</Button> : null}</div></div></section> : null}
-    {summary ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {[["Total recibido", `${Number(summary.total_kg).toLocaleString("es-CL")} kg`], ["Registros", summary.records_count], ["Acopios activos", summary.active_points], ["Personas", summary.unique_submitters]].map(([label, value]) => <article className="rounded-xl border bg-white p-4" key={label}><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-2xl font-bold text-slate-950">{value}</p></article>)}
-    </div> : null}
-    {summary?.by_type.length ? <div className="grid gap-4 lg:grid-cols-2">
-      {[{ title: "Kg por material", rows: summary.by_type.map(item => ({ key: item.id, label: item.name, kg: Number(item.total_kg) })) }, { title: "Kg por acopio", rows: summary.by_point.map(item => ({ key: item.id, label: `${item.code} · ${item.name}`, kg: Number(item.total_kg) })) }].map(chart => { const max = Math.max(...chart.rows.map(row => row.kg), 1); return <section className="rounded-xl border bg-white p-4" key={chart.title}><h4 className="font-bold">{chart.title}</h4><div className="mt-3 space-y-3">{chart.rows.map(row => <div key={row.key}><div className="mb-1 flex justify-between gap-3 text-sm"><span className="truncate">{row.label}</span><span className="shrink-0 font-semibold">{row.kg.toLocaleString("es-CL")} kg</span></div><div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-emerald-600" style={{ width: `${Math.max(row.kg > 0 ? 2 : 0, row.kg / max * 100)}%` }}/></div></div>)}</div></section>; })}
-    </div> : null}
     {editing ? <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-2">
       <label className="text-sm font-semibold">Código<input className="mt-1 w-full rounded-lg border p-3" value={draft.code} maxLength={40} onChange={e => setDraft({ ...draft, code: e.target.value })}/></label>
       <label className="text-sm font-semibold">Nombre<input className="mt-1 w-full rounded-lg border p-3" value={draft.name} maxLength={160} onChange={e => setDraft({ ...draft, name: e.target.value })}/></label>

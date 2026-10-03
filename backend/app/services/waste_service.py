@@ -18,6 +18,7 @@ from app.models.core import (
 )
 from app.models.enums import EventStatus, UserRole, WasteDestination
 from app.schemas.waste_schema import WasteRecordCreate, WasteRecordUpdate, WasteTypeCreate, WasteTypeUpdate
+from app.services.collection_waste_metrics import collection_waste_by_destination
 
 RECOVERED_DESTINATIONS = {
     WasteDestination.RECYCLING,
@@ -318,14 +319,20 @@ def get_waste_summary(db: Session, event_id: UUID, current_user: User) -> dict:
     top_waste_type = by_type_sorted[0] if by_type_sorted else None
     top_collection_point = by_collection_point[0] if by_collection_point else None
 
+    collection_destinations = collection_waste_by_destination(
+        db, WasteCollectionRecord.event_id == event_id
+    )
     recovered_kg = sum(
         (record.weight_kg for record in records if record.destination in RECOVERED_DESTINATIONS),
+        Decimal("0"),
+    ) + sum(
+        (weight for destination, weight in collection_destinations.items() if destination in RECOVERED_DESTINATIONS),
         Decimal("0"),
     )
     landfill_kg = sum(
         (record.weight_kg for record in records if record.destination == WasteDestination.LANDFILL),
         Decimal("0"),
-    )
+    ) + collection_destinations.get(WasteDestination.LANDFILL, Decimal("0"))
     special_disposal_kg = sum(
         (
             record.weight_kg
@@ -333,11 +340,17 @@ def get_waste_summary(db: Session, event_id: UUID, current_user: User) -> dict:
             if record.destination == WasteDestination.SPECIAL_DISPOSAL
         ),
         Decimal("0"),
-    )
+    ) + collection_destinations.get(WasteDestination.SPECIAL_DISPOSAL, Decimal("0"))
     recovery_percentage = percentage(recovered_kg)
-    by_destination = _group_by_destination(records)
-    if collection_count:
-        by_destination.append({"id": None, "name": "Acopios Greenway (origen de registro)", "total_kg": total_collection_kg})
+    destination_totals = {
+        item["name"]: item["total_kg"] for item in _group_by_destination(records)
+    }
+    for destination, weight in collection_destinations.items():
+        destination_totals[destination.value] = destination_totals.get(destination.value, Decimal("0")) + weight
+    by_destination = [
+        {"id": None, "name": name, "total_kg": weight}
+        for name, weight in destination_totals.items()
+    ]
     by_destination.sort(key=lambda item: item["total_kg"], reverse=True)
     by_zone = {item["id"]: item for item in _group_by_zone(db, records)}
     collection_by_zone = db.execute(

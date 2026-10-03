@@ -23,6 +23,8 @@ from app.models.core import (
     SurveyResponse,
     Task,
     User,
+    WasteCollectionPoint,
+    WasteCollectionRecord,
     WasteRecord,
     WasteType,
 )
@@ -36,6 +38,7 @@ from app.models.enums import (
     UserRole,
     WasteDestination,
 )
+from app.services.collection_waste_metrics import collection_waste_by_destination
 
 ACTIVE_EVENT_STATUSES = {EventStatus.PLANNING, EventStatus.IN_PROGRESS}
 FINISHED_EVENT_STATUSES = {EventStatus.FINISHED, EventStatus.REPORT_DELIVERED}
@@ -108,7 +111,18 @@ def _event_waste_by_type(db: Session, event_id: UUID) -> list[dict[str, float]]:
         .group_by(WasteType.name)
         .order_by(WasteType.name)
     ).all()
-    return [{"name": str(name), "value": _float(value)} for name, value in rows]
+    totals = {str(name): _float(value) for name, value in rows}
+    collection_rows = db.execute(
+        select(WasteType.name, func.coalesce(func.sum(WasteCollectionRecord.weight_kg), 0))
+        .select_from(WasteCollectionRecord)
+        .join(WasteType, WasteType.id == WasteCollectionRecord.waste_type_id)
+        .where(WasteCollectionRecord.event_id == event_id)
+        .group_by(WasteType.name)
+    ).all()
+    for name, value in collection_rows:
+        label = str(name or "Sin tipo")
+        totals[label] = totals.get(label, 0) + _float(value)
+    return [{"name": name, "value": value} for name, value in sorted(totals.items())]
 
 
 def _event_waste_by_zone(db: Session, event_id: UUID) -> list[dict[str, float]]:
@@ -120,7 +134,19 @@ def _event_waste_by_zone(db: Session, event_id: UUID) -> list[dict[str, float]]:
         .group_by(EventZone.name)
         .order_by(EventZone.name)
     ).all()
-    return [{"name": str(name), "value": _float(value)} for name, value in rows]
+    totals = {str(name): _float(value) for name, value in rows}
+    collection_rows = db.execute(
+        select(func.coalesce(EventZone.name, "Sin zona"), func.coalesce(func.sum(WasteCollectionRecord.weight_kg), 0))
+        .select_from(WasteCollectionRecord)
+        .join(WasteCollectionPoint, WasteCollectionPoint.id == WasteCollectionRecord.collection_point_id)
+        .outerjoin(EventZone, EventZone.id == WasteCollectionPoint.zone_id)
+        .where(WasteCollectionRecord.event_id == event_id)
+        .group_by(EventZone.name)
+    ).all()
+    for name, value in collection_rows:
+        label = str(name)
+        totals[label] = totals.get(label, 0) + _float(value)
+    return [{"name": name, "value": value} for name, value in sorted(totals.items())]
 
 
 def _event_carbon_by_scope(db: Session, event_id: UUID) -> list[dict[str, float]]:
@@ -232,13 +258,21 @@ def _task_completion_rate(db: Session, event_id: UUID) -> float:
 
 
 def _event_waste(db: Session, event_id: UUID) -> tuple[float, float, float]:
-    total = _sum(db, WasteRecord.weight_kg, WasteRecord.event_id == event_id)
+    event_filter = WasteRecord.event_id == event_id
+    collection_filter = WasteCollectionRecord.event_id == event_id
+    collection_destinations = collection_waste_by_destination(db, collection_filter)
+    collection_total = sum(collection_destinations.values(), Decimal("0"))
+    collection_recovered = sum(
+        (weight for destination, weight in collection_destinations.items() if destination in RECOVERED_WASTE_DESTINATIONS),
+        Decimal("0"),
+    )
+    total = _sum(db, WasteRecord.weight_kg, event_filter) + _float(collection_total)
     recovered = _sum(
         db,
         WasteRecord.weight_kg,
-        WasteRecord.event_id == event_id,
+        event_filter,
         WasteRecord.destination.in_(RECOVERED_WASTE_DESTINATIONS),
-    )
+    ) + _float(collection_recovered)
     return total, recovered, _rate(recovered, total)
 
 
@@ -249,8 +283,20 @@ def _event_carbon(db: Session, event_id: UUID) -> float:
 def get_admin_dashboard(db: Session) -> dict:
     total_tasks = _count(db, Task)
     completed_tasks = _count(db, Task, Task.status == TaskStatus.COMPLETED)
-    total_waste = _sum(db, WasteRecord.weight_kg)
-    recovered_waste = _sum(db, WasteRecord.weight_kg, WasteRecord.destination.in_(RECOVERED_WASTE_DESTINATIONS))
+    collection_destinations = collection_waste_by_destination(db)
+    collection_total = sum(collection_destinations.values(), Decimal("0"))
+    collection_recovered = sum(
+        (weight for destination, weight in collection_destinations.items() if destination in RECOVERED_WASTE_DESTINATIONS),
+        Decimal("0"),
+    )
+    total_waste = _sum(db, WasteRecord.weight_kg) + _float(collection_total)
+    recovered_waste = _sum(db, WasteRecord.weight_kg, WasteRecord.destination.in_(RECOVERED_WASTE_DESTINATIONS)) + _float(collection_recovered)
+    waste_destinations = {
+        item["name"]: item["value"]
+        for item in _bucket_rows(db, WasteRecord.destination, WasteRecord.weight_kg)
+    }
+    for destination, weight in collection_destinations.items():
+        waste_destinations[destination.value] = waste_destinations.get(destination.value, 0) + _float(weight)
     total_carbon = _sum(db, CarbonRecord.emissions_kgco2e)
     latest_events = list(
         db.scalars(select(Event).order_by(Event.start_date.desc()).limit(5)).all()
@@ -281,7 +327,7 @@ def get_admin_dashboard(db: Session) -> dict:
         "events_by_status": _count_buckets(db, Event.status),
         "tasks_by_status": _count_buckets(db, Task.status),
         "incidents_by_status": _count_buckets(db, Incident.status),
-        "waste_by_destination": _bucket_rows(db, WasteRecord.destination, WasteRecord.weight_kg),
+        "waste_by_destination": [{"name": name, "value": value} for name, value in sorted(waste_destinations.items())],
         "carbon_by_category": _bucket_rows(db, CarbonRecord.category, CarbonRecord.emissions_kgco2e),
         "recent_activity": [
             {
@@ -322,13 +368,21 @@ def get_client_dashboard(db: Session, user: User) -> dict:
             "indicators_by_event": [],
         }
 
-    total_waste = _sum(db, WasteRecord.weight_kg, WasteRecord.event_id.in_(event_ids))
+    event_filter = WasteRecord.event_id.in_(event_ids)
+    collection_filter = WasteCollectionRecord.event_id.in_(event_ids)
+    collection_destinations = collection_waste_by_destination(db, collection_filter)
+    collection_total = sum(collection_destinations.values(), Decimal("0"))
+    collection_recovered = sum(
+        (weight for destination, weight in collection_destinations.items() if destination in RECOVERED_WASTE_DESTINATIONS),
+        Decimal("0"),
+    )
+    total_waste = _sum(db, WasteRecord.weight_kg, event_filter) + _float(collection_total)
     recovered_waste = _sum(
         db,
         WasteRecord.weight_kg,
-        WasteRecord.event_id.in_(event_ids),
+        event_filter,
         WasteRecord.destination.in_(RECOVERED_WASTE_DESTINATIONS),
-    )
+    ) + _float(collection_recovered)
     total_carbon = _sum(db, CarbonRecord.emissions_kgco2e, CarbonRecord.event_id.in_(event_ids))
     latest_reports = list(
         db.scalars(
@@ -510,6 +564,15 @@ def get_event_dashboard(db: Session, event_id: UUID, user: User, session_id: UUI
     total_tasks = _count(db, Task, Task.event_id == event_id)
     completed_tasks = _count(db, Task, Task.event_id == event_id, Task.status == TaskStatus.COMPLETED)
     total_waste, recovered_waste, waste_rate = _event_waste(db, event_id)
+    collection_destinations = collection_waste_by_destination(
+        db, WasteCollectionRecord.event_id == event_id
+    )
+    event_waste_destinations = {
+        item["name"]: item["value"]
+        for item in _bucket_rows(db, WasteRecord.destination, WasteRecord.weight_kg, WasteRecord.event_id == event_id)
+    }
+    for destination, weight in collection_destinations.items():
+        event_waste_destinations[destination.value] = event_waste_destinations.get(destination.value, 0) + _float(weight)
     total_carbon = _event_carbon(db, event_id)
     attendees = event.real_attendees or event.estimated_attendees or 0
     total_responses = _count(db, SurveyResponse, SurveyResponse.event_id == event_id)
@@ -585,10 +648,13 @@ def get_event_dashboard(db: Session, event_id: UUID, user: User, session_id: UUI
         "waste": {
             "total_kg": _round(total_waste),
             "recovered_kg": _round(recovered_waste),
-            "landfill_kg": _round(_sum(db, WasteRecord.weight_kg, WasteRecord.event_id == event_id, WasteRecord.destination == WasteDestination.LANDFILL)),
+            "landfill_kg": _round(
+                _sum(db, WasteRecord.weight_kg, WasteRecord.event_id == event_id, WasteRecord.destination == WasteDestination.LANDFILL)
+                + _float(collection_destinations.get(WasteDestination.LANDFILL, Decimal("0")))
+            ),
             "recovery_rate": waste_rate,
             "by_type": _event_waste_by_type(db, event_id),
-            "by_destination": _bucket_rows(db, WasteRecord.destination, WasteRecord.weight_kg, WasteRecord.event_id == event_id),
+            "by_destination": [{"name": name, "value": value} for name, value in sorted(event_waste_destinations.items())],
             "by_zone": _event_waste_by_zone(db, event_id),
         },
         "carbon": {

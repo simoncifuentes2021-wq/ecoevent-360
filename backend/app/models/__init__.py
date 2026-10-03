@@ -7,6 +7,7 @@ from app.models.environmental import (  # noqa: F401
     EnvironmentalActionReview,
     EnvironmentalFactor,
     EnvironmentalMethodology,
+    WasteCollectionEquivalenceFactor,
 )
 from app.models.logbook import *  # noqa: F403
 from app.models.core import (
@@ -104,6 +105,7 @@ __all__ = [
     "Task",
     "User",
     "WasteRecord",
+    "WasteCollectionEquivalenceFactor",
     "WasteCollectionPoint",
     "WasteCollectionRecord",
     "WasteType",

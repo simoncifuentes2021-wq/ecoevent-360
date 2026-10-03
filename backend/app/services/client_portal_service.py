@@ -9,6 +9,7 @@ from app.models.enums import UserRole
 from app.schemas.client_portal_schema import ClientPortalConfigUpdate, ClientPortalSectionUpdate, ClientPortalTemplateApply, ClientPortalWidgetUpdate
 from app.services import dashboard_service
 from app.services.environmental_calculation_service import official_data
+from app.services.collection_point_service import collection_summary
 
 
 SECTION_DEFINITIONS = [
@@ -18,6 +19,7 @@ SECTION_DEFINITIONS = [
     ("incidents", "Incidencias", 40),
     ("evidences", "Evidencias", 50),
     ("waste", "Residuos", 60),
+    ("collection", "Acopios", 65),
     ("carbon", "Huella", 70),
     ("environmental_impact", "Impacto ambiental", 75),
     ("forms", "Formularios", 80),
@@ -34,6 +36,9 @@ WIDGET_DEFINITIONS = [
     ("evidence_gallery", "evidences", "Galeria de evidencias", 50),
     ("total_waste_kg", "waste", "Residuos totales", 60),
     ("recycling_rate", "waste", "Tasa de recuperacion", 70),
+    ("collection_total_kg", "collection", "Material recibido en acopios", 72),
+    ("collection_records", "collection", "Registros de acopio", 73),
+    ("collection_recyclable_kg", "collection", "Material potencialmente reciclable", 74),
     ("carbon_total_tco2e", "carbon", "Huella total tCO2e", 80),
     ("carbon_per_attendee", "carbon", "Huella por asistente", 90),
     ("environmental_co2e_avoided_kg", "environmental_impact", "CO₂e evitado aprobado", 92),
@@ -48,7 +53,7 @@ WIDGET_DEFINITIONS = [
 ]
 
 TEMPLATES = {
-    "ambiental": {"summary", "evidences", "waste", "carbon", "environmental_impact", "reports", "recommendations"},
+    "ambiental": {"summary", "evidences", "waste", "collection", "carbon", "environmental_impact", "reports", "recommendations"},
     "operativa": {"summary", "services", "operation", "incidents", "evidences", "reports"},
     "experiencia": {"summary", "forms", "recommendations", "reports"},
     "bike_zone": {"summary", "forms", "bike_zone", "reports"},
@@ -134,7 +139,8 @@ def _portal_payload(db: Session, event: Event, config: ClientPortalConfig, user:
     )
     dashboard = dashboard_service.get_event_dashboard(db, event.id, user)
     environmental = official_data(db, event.id)
-    values = _widget_values(db, event, dashboard, environmental)
+    collection = collection_summary(db, event.id, user) if "collection" in section_keys else None
+    values = _widget_values(db, event, dashboard, environmental, collection)
     visible_widgets = [
         {
             "widget_key": widget.widget_key,
@@ -153,11 +159,11 @@ def _portal_payload(db: Session, event: Event, config: ClientPortalConfig, user:
         "config_id": config.id,
         "sections": [{"section_key": section.section_key, "label": section.label, "sort_order": section.sort_order} for section in enabled_sections],
         "widgets": visible_widgets,
-        "data": {"event": dashboard["event"], "environmental_impact": environmental},
+        "data": {"event": dashboard["event"], "environmental_impact": environmental, **({"collection_points": collection} if collection is not None else {})},
     }
 
 
-def _widget_values(db: Session, event: Event, dashboard: dict, environmental: dict) -> dict:
+def _widget_values(db: Session, event: Event, dashboard: dict, environmental: dict, collection: dict | None = None) -> dict:
     bike_total = db.scalar(select(func.count(BikeZoneRecord.id)).where(BikeZoneRecord.event_id == event.id)) or 0
     return {
         "event_status": str(event.status.value if hasattr(event.status, "value") else event.status),
@@ -167,6 +173,9 @@ def _widget_values(db: Session, event: Event, dashboard: dict, environmental: di
         "evidence_gallery": dashboard["evidences"]["total"],
         "total_waste_kg": dashboard["waste"]["total_kg"],
         "recycling_rate": dashboard["waste"]["recovery_rate"],
+        "collection_total_kg": collection["total_kg"] if collection else None,
+        "collection_records": collection["records_count"] if collection else None,
+        "collection_recyclable_kg": collection["recyclable_kg"] if collection else None,
         "carbon_total_tco2e": dashboard["carbon"]["total_tco2e"],
         "carbon_per_attendee": dashboard["carbon"]["kgco2e_per_attendee"],
         "environmental_co2e_avoided_kg": environmental["metrics"]["CO2E_AVOIDED_KG"],

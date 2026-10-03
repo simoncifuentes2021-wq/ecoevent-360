@@ -42,6 +42,10 @@ export function getEventFormResponses(formId: string) {
   return api.get<FormResponse[]>(`/forms/${formId}/responses`);
 }
 
+export function sendBikeZoneEmail(formId: string, responseId: string) {
+  return api.post<{ message: string }>(`/forms/${formId}/responses/${responseId}/bike-zone-email`, {});
+}
+
 export function getFormsSessionComparison(eventId: string, formType?: EventFormType | "") {
   const query = formType ? toQuery({ form_type: formType }) : "";
   return api.get<FormsSessionComparison>(`/events/${eventId}/forms/session-comparison${query}`);
