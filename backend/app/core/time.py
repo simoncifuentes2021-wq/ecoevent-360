@@ -1,4 +1,4 @@
-"""Canonical clock and timezone helpers for EcoEvent 360."""
+"""Canonical clock and timezone helpers for Greenway App."""
 from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 

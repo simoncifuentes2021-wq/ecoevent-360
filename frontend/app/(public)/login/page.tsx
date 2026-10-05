@@ -14,7 +14,7 @@ export default function LoginPage() {
               <Leaf className="h-5 w-5" />
             </span>
             <div>
-              <h1 className="text-xl font-bold">EcoEvent 360</h1>
+              <h1 className="text-xl font-bold">Greenway App</h1>
               <p className="text-sm text-muted-foreground">Acceso seguro a la plataforma</p>
             </div>
           </Link>

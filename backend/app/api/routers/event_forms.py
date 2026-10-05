@@ -35,7 +35,12 @@ from app.schemas.event_form_schema import (
     FormResponseRead,
 )
 from app.services import bike_zone_service, event_form_service, event_session_service, form_qr_service
-from app.services.bike_zone_email_service import BikeZoneEmail, send_bike_zone_email
+from app.services.bike_zone_email_service import (
+    BikeZoneEmail,
+    FormConfirmationEmail,
+    send_bike_zone_email,
+    send_form_confirmation_email,
+)
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
 from app.models.enums import EventFormType
 
@@ -237,7 +242,7 @@ def send_existing_bike_zone_email(
         BikeZoneEmail(
             recipient=response.respondent_email,
             participant_name=response.respondent_name,
-            event_name=form.event.name if form.event else "Eco Event",
+            event_name=form.event.name if form.event else "Greenway App",
             session_name=form.session.name if form.session else None,
             code=record.code,
         ),
@@ -320,17 +325,32 @@ def submit_public_form(
             )
         )
     response, bike_code = event_form_service.submit_public_form(db, slug, payload)
-    if bike_code and response.respondent_email and existing_response is None:
-        background_tasks.add_task(
-            send_bike_zone_email,
-            BikeZoneEmail(
-                recipient=response.respondent_email,
-                participant_name=response.respondent_name,
-                event_name=form.event.name if form.event else "Eco Event",
-                session_name=form.session.name if form.session else None,
-                code=bike_code,
-            ),
-        )
+    if response.respondent_email and existing_response is None:
+        event_name = form.event.name if form.event else "Greenway App"
+        session_name = form.session.name if form.session else None
+        if bike_code:
+            background_tasks.add_task(
+                send_bike_zone_email,
+                BikeZoneEmail(
+                    recipient=response.respondent_email,
+                    participant_name=response.respondent_name,
+                    event_name=event_name,
+                    session_name=session_name,
+                    code=bike_code,
+                ),
+            )
+        else:
+            background_tasks.add_task(
+                send_form_confirmation_email,
+                FormConfirmationEmail(
+                    recipient=response.respondent_email,
+                    participant_name=response.respondent_name,
+                    event_name=event_name,
+                    session_name=session_name,
+                    form_title=form.title,
+                    response_code=response.response_code,
+                ),
+            )
     return FormResponsePublicResult(response_code=response.response_code, bike_zone_code=bike_code, message="Respuesta recibida correctamente.")
 
 

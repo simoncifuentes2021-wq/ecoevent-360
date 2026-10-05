@@ -7,7 +7,7 @@ from html import escape
 from typing import Any
 
 PRESETS = {
-    "ECOEVENT_EDITORIAL": {"label": "EcoEvent editorial", "tone": "editorial"},
+    "ECOEVENT_EDITORIAL": {"label": "Greenway editorial", "tone": "editorial"},
     "EXECUTIVE": {"label": "Ejecutivo", "tone": "executive"},
     "ENVIRONMENTAL": {"label": "Ambiental", "tone": "environmental"},
     "BIKE_ZONE": {"label": "Bike Zone", "tone": "bike"},

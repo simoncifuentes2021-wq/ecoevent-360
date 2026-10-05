@@ -13,11 +13,11 @@ export async function publicFormMetadata(formSlug: string, publicPath: string, s
   const canonicalUrl = absoluteUrl(publicPath);
   const formTitle = form?.title?.trim() || humanizeSlug(formSlug);
   const context = form?.session_name?.trim() || form?.event_name?.trim() || (showSlug ? humanizeSlug(showSlug) : "");
-  const title = context ? `${formTitle} | ${context}` : `${formTitle} | EcoEvent 360`;
+  const title = context ? `${formTitle} | ${context}` : `${formTitle} | Greenway App`;
   const description = form?.description?.trim()
     || (context
       ? `Completa el formulario ${formTitle} para ${context}.`
-      : `Completa el formulario ${formTitle} en EcoEvent 360.`);
+      : `Completa el formulario ${formTitle} en Greenway App.`);
   const imageUrl = absoluteUrl(form?.banner_url || DEFAULT_SHARE_IMAGE);
   const images = [{ url: imageUrl, width: 1200, height: 630, alt: title }];
 
@@ -28,7 +28,7 @@ export async function publicFormMetadata(formSlug: string, publicPath: string, s
     openGraph: {
       type: "website",
       locale: "es_CL",
-      siteName: "EcoEvent 360",
+      siteName: "Greenway App",
       url: canonicalUrl,
       title,
       description,

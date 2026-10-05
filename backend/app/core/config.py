@@ -7,7 +7,7 @@ OFFICIAL_FRONTEND_URL = "https://app.greenway.cl"
 
 
 class Settings(BaseSettings):
-    app_name: str = "EcoEvent 360 API"
+    app_name: str = "Greenway App API"
     app_env: str = Field(default="local", validation_alias=AliasChoices("ENVIRONMENT", "APP_ENV"))
     api_v1_prefix: str = "/api/v1"
     database_url: str

@@ -34,7 +34,7 @@ export default function LandingPage() {
             <span className="grid h-10 w-10 place-items-center rounded-lg bg-primary text-primary-foreground">
               <Leaf className="h-5 w-5" />
             </span>
-            <span className="font-bold">EcoEvent 360</span>
+            <span className="font-bold">Greenway App</span>
           </Link>
           <Link href="/login">
             <Button>Ingresar</Button>
@@ -56,7 +56,7 @@ export default function LandingPage() {
               <Sparkles className="h-4 w-4" />
               Plataforma ambiental para eventos masivos
             </p>
-            <h1 className="mt-6 text-5xl font-black tracking-tight md:text-7xl">EcoEvent 360</h1>
+            <h1 className="mt-6 text-5xl font-black tracking-tight md:text-7xl">Greenway App</h1>
             <p className="mt-5 max-w-2xl text-xl text-white/88">
               Gestión ambiental, sanitaria y operativa para eventos sostenibles.
             </p>

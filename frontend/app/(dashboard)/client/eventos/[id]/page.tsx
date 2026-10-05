@@ -5,6 +5,7 @@ import { MapPin } from "lucide-react";
 
 import { ClientAccessNotice } from "@/components/client/ClientAccessNotice";
 import { ClientEventHeader } from "@/components/client/ClientEventHeader";
+import { ClientEventLogisticsCard } from "@/components/client/ClientEventLogisticsCard";
 import { ClientEventTabs } from "@/components/client/ClientEventTabs";
 import { ErrorState } from "@/components/common/ErrorState";
 import { LoadingState } from "@/components/common/LoadingState";
@@ -37,7 +38,7 @@ export default function ClientEventDetailPage({ params }: { params: { id: string
       <div className="space-y-6">
         {loading ? <LoadingState label="Cargando evento..." /> : null}
         {!loading && error ? <ErrorState message={error} title="No se pudo cargar el evento" onRetry={load} /> : null}
-        {!loading && event ? <><ClientEventHeader event={event} /><LogisticsCard event={event} /><ClientAccessNotice /><ClientEventTabs eventId={event.id} /></> : null}
+        {!loading && event ? <><ClientEventHeader event={event} /><ClientEventLogisticsCard event={event} /><ClientAccessNotice /><ClientEventTabs eventId={event.id} /></> : null}
       </div>
     </RoleGuard>
   );

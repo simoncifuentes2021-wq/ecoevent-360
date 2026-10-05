@@ -53,7 +53,7 @@ export function LoginForm() {
         Email
         <div className="relative">
           <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9" placeholder="admin@ecoevent.cl" type="email" {...register("email")} />
+          <Input className="pl-9" placeholder="admin@app.greenway.cl" type="email" {...register("email")} />
         </div>
         {errors.email ? <span className="text-xs text-rose-600">{errors.email.message}</span> : null}
       </label>

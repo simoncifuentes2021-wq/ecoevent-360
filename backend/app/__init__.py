@@ -1,2 +1,2 @@
-"""EcoEvent 360 backend package."""
+"""Greenway App backend package."""
 

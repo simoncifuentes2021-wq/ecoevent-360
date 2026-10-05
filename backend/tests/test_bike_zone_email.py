@@ -1,7 +1,11 @@
 import base64
 
 from app.services import bike_zone_email_service
-from app.services.bike_zone_email_service import BikeZoneEmail
+from app.services.bike_zone_email_service import (
+    BikeZoneEmail,
+    FormConfirmationEmail,
+    send_form_confirmation_email,
+)
 
 
 class FakeResponse:
@@ -80,3 +84,31 @@ def test_bike_zone_email_skips_without_resend_key(monkeypatch):
             code="BZ-ABC123",
         )
     )
+
+
+def test_form_confirmation_email_has_no_bike_qr(monkeypatch):
+    monkeypatch.setattr(bike_zone_email_service.httpx, "Client", FakeClient)
+    monkeypatch.setattr(bike_zone_email_service.settings, "resend_api_key", "re_test")
+    monkeypatch.setattr(
+        bike_zone_email_service.settings,
+        "email_from",
+        "Greenway App <noreply@app.greenway.cl>",
+    )
+
+    send_form_confirmation_email(
+        FormConfirmationEmail(
+            recipient="person@example.com",
+            participant_name="Juan Pérez",
+            event_name="WWE",
+            session_name=None,
+            form_title="Encuesta de transporte",
+            response_code="RESP-ABC123",
+        )
+    )
+
+    payload = FakeClient.payload
+    assert payload["to"] == ["person@example.com"]
+    assert payload["subject"] == "Confirmación de respuesta | Encuesta de transporte"
+    assert "Hemos recibido correctamente tu respuesta" in payload["html"]
+    assert "RESP-ABC123" in payload["html"]
+    assert "attachments" not in payload

@@ -115,7 +115,7 @@ def build_report_pdf(report: Report) -> BytesIO:
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     pdf.setTitle(report.title)
-    pdf.drawString(72, 740, "EcoEvent 360")
+    pdf.drawString(72, 740, "Greenway App")
     pdf.drawString(72, 710, report.title)
     pdf.drawString(72, 680, f"Evento: {event.name if event else report.event_id}")
     if event:

@@ -468,7 +468,7 @@ def _cover_html(document: ReportRenderDocument, photos: list[dict]) -> str:
         if document.show
         else "<strong>Reporte integral</strong>Alcance evento"
     )
-    return f'''<section class="cover {class_name}"{style}><div class="brand"{_editable_attr("cover.subtitle", "COVER_SUBTITLE", "box")}>EcoEvent 360 · {escape(str(subtitle))}</div><div class="cover-copy"><div class="cover-line"></div><h1{_editable_attr("cover.title", "COVER_TITLE", "box")}>{escape(title)}</h1><div class="cover-meta"{_editable_attr("cover.metadata", "METADATA", "box")}><div><strong>{escape(client)}</strong>{escape(event)}</div><div>{show}<br>{escape(date)}<br>{escape(venue)}</div></div></div></section>'''
+    return f'''<section class="cover {class_name}"{style}><div class="brand"{_editable_attr("cover.subtitle", "COVER_SUBTITLE", "box")}>Greenway App · {escape(str(subtitle))}</div><div class="cover-copy"><div class="cover-line"></div><h1{_editable_attr("cover.title", "COVER_TITLE", "box")}>{escape(title)}</h1><div class="cover-meta"{_editable_attr("cover.metadata", "METADATA", "box")}><div><strong>{escape(client)}</strong>{escape(event)}</div><div>{show}<br>{escape(date)}<br>{escape(venue)}</div></div></div></section>'''
 
 
 def _page_html(
@@ -526,7 +526,7 @@ def _page_html(
     if premium:
         content = premium
     section_keys = ",".join(str(section.get("section_key") or "") for section in sections)
-    return f"""<section class="page recipe-{recipe.lower()}" data-report-sections="{escape(section_keys)}"><header class="page-head"><span class="chapter">{escape(title)}</span><span>EcoEvent 360</span></header>{content}<footer class="folio"><span>Impacto · operación · evidencia</span><b>{number:02d}</b></footer></section>"""
+    return f"""<section class="page recipe-{recipe.lower()}" data-report-sections="{escape(section_keys)}"><header class="page-head"><span class="chapter">{escape(title)}</span><span>Greenway App</span></header>{content}<footer class="folio"><span>Impacto · operación · evidencia</span><b>{number:02d}</b></footer></section>"""
 
 
 def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, visual: dict, section_visuals: dict | None = None) -> str:

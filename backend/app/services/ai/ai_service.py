@@ -153,7 +153,7 @@ def _fallback_editorial_plan(context: dict, reason: str) -> ReportAIEditorialPla
     return ReportAIEditorialPlan(
         report_title_suggestion=context["report"]["title"], cover_style=cover_style,
         section_order=[item["section_key"] for item in visible], sections=sections,
-        overall_rationale="EcoEvent preparo una composicion editorial estable segun contenido, densidad y evidencias.",
+        overall_rationale="Greenway App preparo una composicion editorial estable segun contenido, densidad y evidencias.",
         warnings=[f"Se uso el planificador seguro porque el modelo no entrego un plan aplicable: {reason[:180]}"],
         used_data_keys=["sections", "report.editorial_config"],
     )

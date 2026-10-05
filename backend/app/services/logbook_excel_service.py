@@ -243,7 +243,7 @@ def generate_template(db: Session, event_id: UUID, start: date, end: date, curre
         cell.font = Font(color="FFFFFF", bold=True)
         cell.alignment = Alignment(horizontal="center")
     sheet["A1"].font = Font(size=14, bold=True, color="166534")
-    sheet["A3"].comment = Comment("Escribe una actividad por fila.", "EcoEvent 360")
+    sheet["A3"].comment = Comment("Escribe una actividad por fila.", "Greenway App")
     sheet.freeze_panes = "B4"
     sheet.column_dimensions["A"].width = 42
     for column in range(2, day_count + 2):
@@ -268,7 +268,7 @@ def generate_template(db: Session, event_id: UUID, start: date, end: date, curre
     instructions = book.create_sheet("Instrucciones")
     instructions.column_dimensions["A"].width = 105
     lines = [
-        "Plantilla oficial EcoEvent 360",
+        "Plantilla oficial Greenway App",
         "1. Trabaja únicamente en la hoja Planificación.",
         "2. Escribe una actividad por fila en la columna Actividad.",
         "3. Marca X en cada fecha donde corresponda ejecutar la actividad.",

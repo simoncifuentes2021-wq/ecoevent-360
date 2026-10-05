@@ -47,13 +47,19 @@ const allTabs: ClientTab[] = [
   { key: "reportes", sectionKey: "reports", label: "Reportes", icon: FileText }
 ];
 
-export function ClientEventTabs({ eventId }: { eventId: string }) {
+export function ClientEventTabs({ eventId, portalOverride }: { eventId: string; portalOverride?: ClientPortal }) {
   const [active, setActive] = useState("resumen");
   const [portal, setPortal] = useState<ClientPortal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (portalOverride !== undefined) {
+      setPortal(portalOverride);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     let activeRequest = true;
     setLoading(true);
     setError(null);
@@ -69,7 +75,7 @@ export function ClientEventTabs({ eventId }: { eventId: string }) {
         if (activeRequest) setLoading(false);
       });
     return () => { activeRequest = false; };
-  }, [eventId]);
+  }, [eventId, portalOverride]);
 
   const tabs = useMemo(() => {
     const enabled = new Set((portal?.sections ?? []).map((section) => section.section_key));

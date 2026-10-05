@@ -79,7 +79,7 @@ export function Topbar({ user }: { user: AuthUser }) {
         <div className="flex items-center gap-3">
           <MobileSidebar user={user} />
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">EcoEvent 360</p>
+            <p className="text-xs font-medium uppercase text-muted-foreground">Greenway App</p>
             <h1 className="capitalize text-lg font-bold md:text-xl">{title}</h1>
           </div>
         </div>

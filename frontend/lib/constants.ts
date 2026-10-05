@@ -1,4 +1,4 @@
-export const APP_NAME = "EcoEvent 360";
+export const APP_NAME = "Greenway App";
 
 // Port 8000 can be retained by an orphaned Windows reload worker during local
 // development. The actively managed local backend runs on 8001.

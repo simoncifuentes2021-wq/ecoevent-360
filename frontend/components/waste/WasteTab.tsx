@@ -149,7 +149,7 @@ export function WasteTab({ eventId, role }: { eventId: string; role?: UserRole |
       <WasteSummaryInsights summary={summary} />
       <EmptyState
         title="Aún no hay residuos registrados"
-        description="Los registros de Acopios o ingresados directamente en EcoEvent aparecerán aquí."
+        description="Los registros de Acopios o ingresados directamente en Greenway App aparecerán aquí."
         action={canCreateWasteRecord(role) ? <Button onClick={() => setFormRecord(null)}><Plus className="h-4 w-4" />Registrar residuo</Button> : undefined}
       />
     </div>

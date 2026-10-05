@@ -1,2 +1,2 @@
-"""Domain services for EcoEvent 360."""
+"""Domain services for Greenway App."""
 

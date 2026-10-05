@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://app.greenway.cl"),
-  title: "EcoEvent 360",
+  title: "Greenway App",
   description: "Gestión ambiental y sanitaria para eventos masivos"
 };
 

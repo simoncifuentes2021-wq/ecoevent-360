@@ -222,7 +222,7 @@ def _page_chrome(page: ReportPage, title: str, number: int, theme: dict, section
     return [
         _auto_element(page, ReportElementType.SHAPE, x=885, y=0, width=115, height=115, z_index=0, style={"background": background, "borderRadius": 58}),
         _auto_element(page, ReportElementType.TEXT, x=70, y=64, width=620, height=32, z_index=2, metadata=_section_metadata(section, "title") if section else {}, content={"text": title.upper()}, style={"fontSize": 10, "fontWeight": "800", "color": primary, "letterSpacing": 2}),
-        _auto_element(page, ReportElementType.TEXT, x=790, y=64, width=140, height=32, z_index=2, content={"text": "EcoEvent 360"}, style={"fontSize": 10, "textAlign": "right", "color": muted}),
+        _auto_element(page, ReportElementType.TEXT, x=790, y=64, width=140, height=32, z_index=2, content={"text": "Greenway App"}, style={"fontSize": 10, "textAlign": "right", "color": muted}),
         _auto_element(page, ReportElementType.SHAPE, x=70, y=104, width=860, height=2, z_index=2, style={"background": "#DCE5E0"}),
         _auto_element(page, ReportElementType.TEXT, x=70, y=1350, width=500, height=28, z_index=2, content={"text": "IMPACTO · OPERACIÓN · EVIDENCIA"}, style={"fontSize": 9, "color": muted, "letterSpacing": 1}),
         _auto_element(page, ReportElementType.TEXT, x=870, y=1350, width=60, height=28, z_index=2, content={"text": f"{number - 1:02d}"}, style={"fontSize": 10, "fontWeight": "800", "textAlign": "right", "color": primary}),
@@ -423,7 +423,7 @@ def materialize_auto_layout(
                 [
                     _auto_element(page, ReportElementType.SHAPE, x=0, y=0, width=1000, height=1414, z_index=1, style={"background": primary, "opacity": 0.88}),
                     _auto_element(page, ReportElementType.SHAPE, x=82, y=515, width=118, height=9, z_index=2, style={"background": accent}),
-                    _auto_element(page, ReportElementType.TEXT, x=82, y=90, width=720, height=45, z_index=2, content={"text": "ECOEVENT 360 · REPORTE DE IMPACTO"}, style={"fontSize": 12, "fontWeight": "800", "color": "#FFFFFF", "letterSpacing": 3}),
+                    _auto_element(page, ReportElementType.TEXT, x=82, y=90, width=720, height=45, z_index=2, content={"text": "GREENWAY APP · REPORTE DE IMPACTO"}, style={"fontSize": 12, "fontWeight": "800", "color": "#FFFFFF", "letterSpacing": 3}),
                     _auto_element(page, ReportElementType.TITLE, x=82, y=555, width=820, height=260, z_index=2, content={"text": report.title}, style={"fontSize": 52, "fontWeight": "800", "color": "#FFFFFF", "lineHeight": 0.95}),
                     _auto_element(page, ReportElementType.TEXT, x=82, y=875, width=380, height=105, z_index=2, content={"text": report.event.client.business_name}, data_binding={"key": "event.client"}, style={"fontSize": 22, "fontWeight": "700", "color": "#FFFFFF"}),
                     _auto_element(page, ReportElementType.TEXT, x=82, y=975, width=390, height=95, z_index=2, content={"text": report.event.name}, data_binding={"key": "event.name"}, style={"fontSize": 16, "color": "#D1FAE5"}),

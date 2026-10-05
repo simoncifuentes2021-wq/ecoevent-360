@@ -19,7 +19,7 @@ export function Sidebar({ user, onNavigate }: { user: AuthUser; onNavigate?: () 
           <Leaf className="h-5 w-5" />
         </span>
         <span>
-          <span className="block text-lg font-bold">EcoEvent 360</span>
+          <span className="block text-lg font-bold">Greenway App</span>
           <span className="block text-xs text-muted-foreground">Operacion sostenible</span>
         </span>
       </Link>

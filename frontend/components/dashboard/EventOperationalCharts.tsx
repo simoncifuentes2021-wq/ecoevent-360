@@ -10,9 +10,9 @@ const colors = ["#0f766e", "#65a30d", "#0369a1", "#f59e0b", "#be123c", "#475569"
 
 function ChartCard({ title, data, children }: { title: string; data: DashboardBucket[]; children: React.ReactNode }) {
   return (
-    <Card>
-      <CardHeader><h3 className="font-semibold">{title}</h3></CardHeader>
-      <CardContent className="h-72">{data.length ? children : <EmptyState title="Sin datos" description="Aun no hay informacion para este indicador." />}</CardContent>
+    <Card className="overflow-hidden border-slate-200/80 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.45)]">
+      <CardHeader className="bg-slate-50/70"><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Operación</p><h3 className="mt-1 text-base font-bold text-slate-950">{title}</h3></CardHeader>
+      <CardContent className="h-80 p-5">{data.length ? children : <EmptyState title="Sin datos" description="Aún no hay información para este indicador." />}</CardContent>
     </Card>
   );
 }

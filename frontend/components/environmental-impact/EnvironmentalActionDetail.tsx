@@ -50,8 +50,8 @@ export function EnvironmentalActionDetail({ action, showName, onClose }: { actio
 
   return <ModalShell title={action.name} description={`${showName || "Evento completo"} · Detalle trazable del cálculo`} onClose={onClose} size="lg">
     <div className="space-y-6">
-      <section aria-label="Datos calculados por EcoEvent">
-        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-emerald-800">Datos calculados por EcoEvent</p>
+      <section aria-label="Datos calculados por Greenway App">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-emerald-800">Datos calculados por Greenway App</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Info icon={Zap} label="Energía generada" value={`${number(energy?.value ?? action.energy_kwh ?? null)} kWh`} />
           <Info icon={Fuel} label="Diésel evitado" value={fuel?.value == null ? "No calculado" : `${number(fuel.value)} L`} />
@@ -69,7 +69,7 @@ export function EnvironmentalActionDetail({ action, showName, onClose }: { actio
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 id="ai-interpretation-title" className="flex items-center gap-2 font-bold text-violet-950"><Sparkles className="h-5 w-5" />Interpretación con IA</h3><p className="mt-1 text-sm text-violet-800">Separada de los resultados certificados.</p></div><Button type="button" disabled={aiLoading || action.metrics.length === 0} onClick={() => void interpret()}>{aiLoading ? "Analizando..." : "Analizar con IA"}</Button></div>
         {action.metrics.length === 0 ? <p className="mt-3 text-sm text-amber-800">Primero calcula la acción ambiental.</p> : null}
         {aiError ? <p role="alert" className="mt-4 rounded-xl bg-white p-3 text-sm text-rose-700">{aiError}</p> : null}
-        {interpretation ? <div className="mt-5 space-y-4 text-sm text-slate-700"><p className="text-base font-semibold text-slate-900">{interpretation.summary}</p>{interpretation.impact_explanation ? <p>{interpretation.impact_explanation}</p> : null}<AIList title="Puntos destacados" items={interpretation.key_points} /><AIList title="Recomendaciones" items={interpretation.recommendations} />{interpretation.warnings.length ? <div className="rounded-xl bg-amber-50 p-3"><AIList title="Advertencias" items={interpretation.warnings} /></div> : null}<p className="border-t border-violet-200 pt-3 text-xs text-slate-500">Interpretación generada por IA a partir de los resultados calculados por EcoEvent. {interpretation.cached ? "Resultado reutilizado sin una nueva llamada al proveedor." : ""}</p></div> : null}
+        {interpretation ? <div className="mt-5 space-y-4 text-sm text-slate-700"><p className="text-base font-semibold text-slate-900">{interpretation.summary}</p>{interpretation.impact_explanation ? <p>{interpretation.impact_explanation}</p> : null}<AIList title="Puntos destacados" items={interpretation.key_points} /><AIList title="Recomendaciones" items={interpretation.recommendations} />{interpretation.warnings.length ? <div className="rounded-xl bg-amber-50 p-3"><AIList title="Advertencias" items={interpretation.warnings} /></div> : null}<p className="border-t border-violet-200 pt-3 text-xs text-slate-500">Interpretación generada por IA a partir de los resultados calculados por Greenway App. {interpretation.cached ? "Resultado reutilizado sin una nueva llamada al proveedor." : ""}</p></div> : null}
       </section>
     </div>
   </ModalShell>;

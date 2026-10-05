@@ -19,7 +19,7 @@ def create_seed_admin() -> User:
             return existing_user
 
         user = User(
-            full_name=settings.first_super_admin_name or "EcoEvent Admin",
+            full_name=settings.first_super_admin_name or "Greenway App Admin",
             email=settings.first_super_admin_email,
             password_hash=hash_password(settings.first_super_admin_password),
             role=UserRole.SUPER_ADMIN,

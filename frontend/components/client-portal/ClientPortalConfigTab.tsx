@@ -6,10 +6,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Eye, LayoutTemplate, Save } from "lucide-react";
 
 import { ErrorState } from "@/components/common/ErrorState";
+import { ClientEventPreview } from "@/components/client/ClientEventPreview";
 import { LoadingState } from "@/components/common/LoadingState";
 import { Button } from "@/components/ui/button";
 import { applyClientPortalTemplate, getClientPortalConfig, getClientPortalPreview, updateClientPortalConfig } from "@/lib/api/clientPortal";
 import type { ClientPortal, ClientPortalConfig, ClientPortalSection, ClientPortalWidget } from "@/types/clientPortal";
+import type { Event } from "@/types/event";
 
 const templates = [
   { key: "completa_sin_datos_personales", label: "Completa sin datos personales" },
@@ -19,7 +21,7 @@ const templates = [
   { key: "bike_zone", label: "Bike Zone" }
 ];
 
-export function ClientPortalConfigTab({ eventId }: { eventId: string }) {
+export function ClientPortalConfigTab({ eventId, event }: { eventId: string; event: Event }) {
   const [config, setConfig] = useState<ClientPortalConfig | null>(null);
   const [preview, setPreview] = useState<ClientPortal | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,6 +79,7 @@ export function ClientPortalConfigTab({ eventId }: { eventId: string }) {
         sections: config.sections.map(({ section_key, label, is_enabled, sort_order }) => ({ section_key, label, is_enabled, sort_order })),
         widgets: config.widgets.map(({ widget_key, section_key, label, is_enabled, sort_order, visibility_config }) => ({ widget_key, section_key, label, is_enabled, sort_order, visibility_config }))
       }));
+      setPreview(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar la configuracion.");
     } finally {
@@ -170,23 +173,7 @@ export function ClientPortalConfigTab({ eventId }: { eventId: string }) {
         </section>
       </div>
 
-      {preview ? (
-        <section className="rounded-lg border bg-white p-4">
-          <h4 className="font-bold text-slate-950">Vista previa como cliente</h4>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {preview.sections.map((section) => <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800" key={section.section_key}>{section.label}</span>)}
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {preview.widgets.map((widget) => (
-              <div className="rounded border bg-slate-50 p-3" key={widget.widget_key}>
-                <p className="text-xs font-semibold uppercase text-slate-500">{widget.section_key}</p>
-                <p className="font-bold text-slate-950">{widget.label}</p>
-                <p className="mt-1 text-2xl font-black text-emerald-700">{widget.value ?? "-"}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {preview ? <ClientEventPreview event={event} portal={preview} onClose={() => setPreview(null)} /> : null}
     </div>
   );
 }

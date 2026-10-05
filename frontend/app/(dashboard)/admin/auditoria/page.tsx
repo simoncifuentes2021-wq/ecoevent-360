@@ -96,7 +96,7 @@ export default function AdminAuditPage() {
         <PageHeader
           eyebrow="Control interno"
           title="Auditoria del sistema"
-          description="Revisa los movimientos importantes realizados por usuarios dentro de EcoEvent 360."
+          description="Revisa los movimientos importantes realizados por usuarios dentro de Greenway App."
           actions={
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => void load()} type="button">

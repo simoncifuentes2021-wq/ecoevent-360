@@ -126,7 +126,7 @@ function TabContent({ active, eventId, event, role, title, description, icon }: 
   if (active === "logistica") return <LogisticsOrdersTab eventId={eventId} eventName={event?.name} role={role} />;
   if (active === "programacion") return <EventSessionsTab eventId={eventId} role={role} />;
   if (active === "formularios") return <EventFormsTab eventId={eventId} role={role} />;
-  if (active === "portal_cliente") return <ClientPortalConfigTab eventId={eventId} />;
+  if (active === "portal_cliente") return event ? <ClientPortalConfigTab eventId={eventId} event={event} /> : null;
   if (active === "zonas") return <ZonesTab eventId={eventId} role={role} />;
   if (active === "personal") return <StaffTab eventId={eventId} role={role} />;
   if (active === "tareas") return <TasksTab eventId={eventId} role={role} />;

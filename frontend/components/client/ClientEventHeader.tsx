@@ -12,7 +12,7 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("es-CL", { timeZone: "America/Santiago", dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
-export function ClientEventHeader({ event }: { event: Event }) {
+export function ClientEventHeader({ event, showBack = true }: { event: Event; showBack?: boolean }) {
   return (
     <Card className="overflow-hidden border-emerald-100 bg-gradient-to-br from-white via-white to-emerald-50">
       <CardContent className="space-y-5 p-6">
@@ -25,9 +25,11 @@ export function ClientEventHeader({ event }: { event: Event }) {
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">{event.name}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{event.description || "Resumen ejecutivo del servicio contratado."}</p>
           </div>
-          <Link href="/client/mis-eventos">
-            <Button type="button" variant="secondary"><ArrowLeft className="h-4 w-4" />Volver</Button>
-          </Link>
+          {showBack ? (
+            <Link href="/client/mis-eventos">
+              <Button type="button" variant="secondary"><ArrowLeft className="h-4 w-4" />Volver</Button>
+            </Link>
+          ) : null}
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <Info icon={<CalendarDays className="h-5 w-5" />} label="Fechas" value={`${formatDate(event.start_date)} - ${formatDate(event.end_date)}`} />
