@@ -89,6 +89,24 @@ def set_public_waste_context(db: Session, token: str) -> None:
         text("select set_config('app.public_waste_token', :value, true)"),
         {"value": token},
     )
+
+
+def set_public_document_context(db: Session, token_hash: str) -> None:
+    """Scope RLS to one unexpired document signing capability."""
+    db.connection().execute(
+        text("select set_config('app.public_document_token_hash', :value, true)"),
+        {"value": token_hash},
+    )
+
+
+def set_document_event_context(db: Session, event_id: UUID) -> None:
+    """Limit supervisor person writes to the client of one authorized event."""
+    db.connection().execute(
+        text("select set_config('app.document_event_id', :value, true)"),
+        {"value": str(event_id)},
+    )
+
+
 def clear_rls_context(db: Session) -> None:
     if db.is_active:
         db.rollback()

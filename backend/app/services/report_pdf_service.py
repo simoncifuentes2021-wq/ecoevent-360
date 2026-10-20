@@ -12,10 +12,17 @@ _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="report-pdf")
 
 
 def render(document: ReportRenderDocument, *, timeout_seconds: int = 45) -> tuple[bytes, int]:
+    return render_html(build_html(document), timeout_seconds=timeout_seconds)
+
+
+def render_html(html: str, *, timeout_seconds: int = 45) -> tuple[bytes, int]:
+    """Render trusted, locally composed HTML with the existing isolated Chromium worker."""
+    if len(html.encode("utf-8")) > 8 * 1024 * 1024:
+        raise RuntimeError("PDF source is too large")
     if not _slots.acquire(blocking=False):
         raise RuntimeError("PDF renderer is busy")
     try:
-        future = _pool.submit(_chromium_pdf, build_html(document))
+        future = _pool.submit(_chromium_pdf, html)
         try:
             pdf = future.result(timeout=timeout_seconds)
         except TimeoutError as exc:

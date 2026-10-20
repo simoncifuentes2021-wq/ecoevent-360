@@ -1,11 +1,13 @@
 export const APP_NAME = "Greenway App";
 
-// Port 8000 can be retained by an orphaned Windows reload worker during local
-// development. The actively managed local backend runs on 8001.
-const localApiUrl = "http://localhost:8001/api/v1";
+// The local backend launched for this workspace listens on port 8002.
+const localApiUrl = "http://127.0.0.1:8002/api/v1";
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+const usesLocalBackend = !configuredApiUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/api\/v\d+$/.test(configuredApiUrl);
 
 export const API_URL =
-  configuredApiUrl ?? (process.env.NODE_ENV === "production" ? "" : localApiUrl);
+  process.env.NODE_ENV !== "production" && usesLocalBackend
+    ? "/api/v1"
+    : configuredApiUrl ?? (process.env.NODE_ENV === "production" ? "" : localApiUrl);
 
 export const API_ORIGIN = API_URL.replace(/\/api\/v\d+$/, "");

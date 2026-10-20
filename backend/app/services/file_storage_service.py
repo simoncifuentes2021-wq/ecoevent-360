@@ -131,6 +131,47 @@ def save_private_object(key: str, content: bytes, *, content_type: str) -> str:
     return normalized
 
 
+def save_private_object_to_r2(key: str, content: bytes, *, content_type: str) -> str:
+    """Store an immutable private object in R2, independent of local-storage overrides."""
+    _ensure_allowed_size(len(content))
+    prefix = settings.r2_private_prefix.strip("/")
+    normalized = validate_storage_key(key, allowed_prefix=prefix)
+    if not settings.cloudflare_r2_configured:
+        raise RuntimeError("Cloudflare R2 is not fully configured")
+    from botocore.exceptions import ClientError
+
+    try:
+        _r2_client().put_object(
+            Bucket=settings.cloudflare_r2_bucket,
+            Key=normalized,
+            Body=content,
+            ContentType=content_type,
+            CacheControl="private, no-store",
+            IfNoneMatch="*",
+        )
+    except ClientError as exc:
+        code = str((exc.response.get("Error") or {}).get("Code") or "")
+        if code in {"PreconditionFailed", "ConditionalRequestConflict", "412", "409"}:
+            raise FileExistsError("Immutable object already exists") from exc
+        raise
+    return normalized
+
+
+def read_private_object_from_r2(reference: str) -> tuple[bytes, str]:
+    """Read a private R2 object without creating a public URL."""
+    prefix = settings.r2_private_prefix.strip("/")
+    key = validate_storage_key(reference, allowed_prefix=prefix)
+    if not settings.cloudflare_r2_configured:
+        raise RuntimeError("Cloudflare R2 is not fully configured")
+    try:
+        response = _r2_client().get_object(Bucket=settings.cloudflare_r2_bucket, Key=key)
+        content = response["Body"].read()
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="El PDF no está disponible") from exc
+    mime = response.get("ContentType") or mimetypes.guess_type(key)[0] or "application/pdf"
+    return content, mime
+
+
 def read_stored_file(reference: str) -> tuple[bytes, str]:
     obj = get_stored_object(reference)
     return obj.content, obj.content_type
@@ -148,8 +189,21 @@ def get_stored_object(reference: str) -> StoredObject:
                 or "application/octet-stream"
             )
             return StoredObject(content, mime, len(content))
-        except Exception as exc:
-            raise HTTPException(status_code=404, detail="Stored file not found") from exc
+        except Exception as r2_exc:
+            # Existing database rows may still refer to files from before R2.
+            # Fall back only for reads; every new write in production goes to R2.
+            try:
+                path = _local_path(key, allow_legacy=True)
+                if not path.is_file():
+                    raise FileNotFoundError(key)
+                content = path.read_bytes()
+                return StoredObject(
+                    content,
+                    mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                    len(content),
+                )
+            except (OSError, ValueError):
+                raise HTTPException(status_code=404, detail="Stored file not found") from r2_exc
     path = _local_path(key, allow_legacy=True)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Stored file not found")

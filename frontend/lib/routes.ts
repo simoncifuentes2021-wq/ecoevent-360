@@ -16,6 +16,7 @@ import {
   ShoppingCart,
   Upload,
   PackageSearch,
+  ScrollText,
   Users,
   UserRound
 } from "lucide-react";
@@ -36,6 +37,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/clientes", label: "Clientes", icon: BriefcaseBusiness },
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
     { href: "/admin/eventos", label: "Eventos", icon: Sparkles },
+    { href: "/admin/documentos", label: "Documentos", icon: ScrollText },
     { href: "/admin/bitacoras", label: "Bitácoras", icon: ClipboardCheck },
     { href: "/admin/logistica/pedidos", label: "Pedidos logisticos", icon: PackageSearch },
     { href: "/admin/stock", label: "Stock", icon: Boxes },
@@ -56,6 +58,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/clientes", label: "Clientes", icon: BriefcaseBusiness },
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
     { href: "/admin/eventos", label: "Eventos", icon: Sparkles },
+    { href: "/admin/documentos", label: "Documentos", icon: ScrollText },
     { href: "/admin/bitacoras", label: "Bitácoras", icon: ClipboardCheck },
     { href: "/admin/logistica/pedidos", label: "Pedidos logisticos", icon: PackageSearch },
     { href: "/admin/stock", label: "Stock", icon: Boxes },
@@ -81,6 +84,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
   SUPERVISOR: [
     { href: "/supervisor/dashboard", label: "Dashboard", icon: Home },
     { href: "/supervisor/eventos", label: "Eventos asignados", icon: Sparkles },
+    { href: "/supervisor/documentos", label: "Documentos", icon: ScrollText },
     { href: "/supervisor/logistica/pedidos", label: "Pedidos logisticos", icon: PackageSearch },
     { href: "/worker/dashboard", label: "Panel terreno", icon: Home },
     { href: "/worker/mis-tareas", label: "Mis tareas", icon: ClipboardList },

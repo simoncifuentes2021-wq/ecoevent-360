@@ -1,3 +1,6 @@
+import threading
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -6,6 +9,7 @@ from starlette.responses import Response
 
 from app.api.routers import routers
 from app.core.config import settings
+from app.services.document_email_queue_service import queue_worker_loop
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
@@ -26,6 +30,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         for header, value in SECURITY_HEADERS.items():
             response.headers.setdefault(header, value)
         return response
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    stop_event = threading.Event()
+    worker = threading.Thread(
+        target=queue_worker_loop,
+        args=(stop_event,),
+        name="document-email-queue",
+        daemon=True,
+    )
+    worker.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        worker.join(timeout=5)
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -61,6 +82,7 @@ app = FastAPI(
         {"name": "stock", "description": "Balances de stock por bodega y producto."},
         {"name": "logbooks", "description": "Plantillas y ejecuciones de bitacoras operativas."},
     ],
+    lifespan=lifespan,
 )
 
 app.add_middleware(SecurityHeadersMiddleware)

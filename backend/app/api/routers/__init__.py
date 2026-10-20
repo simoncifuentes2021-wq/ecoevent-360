@@ -6,6 +6,7 @@ from app.api.routers import (
     clients,
     collection_points,
     dashboard,
+    documents,
     event_forms,
     events,
     evidences,
@@ -68,5 +69,6 @@ routers = [
     event_forms.bike_router,
     surveys.router,
     dashboard.router,
+    documents.router,
     reports.router,
 ]

@@ -30,3 +30,6 @@ a {
   text-decoration: none;
 }
 
+[data-documents-view="people"] > .overflow-hidden.rounded-xl.border.border-slate-200.bg-white.shadow-sm {
+  display: none;
+}

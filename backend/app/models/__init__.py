@@ -1,5 +1,17 @@
 from app.models.audit_log import AuditLog
 from app.models.ai import AIGeneration
+from app.models.documents import (
+    DocumentContractDefaults,
+    DocumentEmailBatch,
+    DocumentEmailBatchItem,
+    DocumentEmployment,
+    DocumentPerson,
+    DocumentSignatureRequest,
+    EventEppTemplate,
+    EppDelivery,
+    EppDeliveryItem,
+    ManagedDocument,
+)
 from app.models.environmental import (  # noqa: F401
     EcoEquivalenceFactor,
     EnvironmentalAction,
@@ -63,6 +75,16 @@ from app.models.core import (
 __all__ = [
     "AuditLog",
     "AIGeneration",
+    "DocumentEmployment",
+    "DocumentContractDefaults",
+    "DocumentEmailBatch",
+    "DocumentEmailBatchItem",
+    "DocumentPerson",
+    "DocumentSignatureRequest",
+    "EventEppTemplate",
+    "EppDelivery",
+    "EppDeliveryItem",
+    "ManagedDocument",
     "Alert",
     "CarbonFactor",
     "CarbonRecord",

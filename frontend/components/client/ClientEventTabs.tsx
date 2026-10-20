@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BarChart3, BriefcaseBusiness, Camera, ClipboardCheck, ClipboardList, Cloud, FileText, Leaf, MessageSquare, PackageCheck, Recycle, ShieldAlert, MapPin } from "lucide-react";
 import { ClientLogbooksTab } from "@/components/logbooks/ClientLogbooksTab";
 
@@ -48,7 +49,9 @@ const allTabs: ClientTab[] = [
 ];
 
 export function ClientEventTabs({ eventId, portalOverride }: { eventId: string; portalOverride?: ClientPortal }) {
-  const [active, setActive] = useState("resumen");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [portal, setPortal] = useState<ClientPortal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,12 +84,18 @@ export function ClientEventTabs({ eventId, portalOverride }: { eventId: string; 
     const enabled = new Set((portal?.sections ?? []).map((section) => section.section_key));
     return allTabs.filter((tab) => enabled.has(tab.sectionKey));
   }, [portal]);
+  const requestedTab = searchParams.get("tab");
+  const active = tabs.some((tab) => tab.key === requestedTab) ? requestedTab! : tabs[0]?.key ?? "resumen";
   const enabledWidgets = useMemo(() => new Set((portal?.widgets ?? []).map((widget) => widget.widget_key)), [portal]);
   const showFormsComparison = enabledWidgets.has("forms_session_comparison");
 
-  useEffect(() => {
-    if (tabs.length && !tabs.some((tab) => tab.key === active)) setActive(tabs[0].key);
-  }, [active, tabs]);
+  function selectTab(key: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (key === tabs[0].key) params.delete("tab");
+    else params.set("tab", key);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
 
   if (loading) return <LoadingState label="Cargando portal cliente..." />;
   if (error) return <ErrorState title="No se pudo cargar el portal" message={error} />;
@@ -99,7 +108,7 @@ export function ClientEventTabs({ eventId, portalOverride }: { eventId: string; 
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = active === tab.key;
-            return <button className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${isActive ? "bg-emerald-700 text-white" : "text-slate-600 hover:bg-slate-100"}`} key={tab.key} onClick={() => setActive(tab.key)} type="button"><Icon className="h-4 w-4" />{tab.label}</button>;
+            return <button className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${isActive ? "bg-emerald-700 text-white" : "text-slate-600 hover:bg-slate-100"}`} key={tab.key} onClick={() => selectTab(tab.key)} type="button"><Icon className="h-4 w-4" />{tab.label}</button>;
           })}
         </div>
       </div>

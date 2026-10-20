@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { BarChart3, CalendarDays, Camera, ClipboardCheck, ClipboardList, FileText, FileInput, Leaf, Map, PackageCheck, Recycle, Settings2, ShieldAlert, ShieldCheck, Sprout, UserCog, Users } from "lucide-react";
 
@@ -81,11 +81,23 @@ function operationalState(event?: Event, variant?: "admin" | "supervisor") {
 
 export function EventTabs({ eventId, event, role, variant = "admin" }: { eventId: string; event?: Event; role?: UserRole | null; variant?: "admin" | "supervisor" }) {
   const tabs = variant === "supervisor" ? supervisorTabs : adminTabs;
-  const [active, setActive] = useState(tabs[0].key);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const active = tabs.some((tab) => tab.key === requestedTab) ? requestedTab! : tabs[0].key;
   const selected = tabs.find((tab) => tab.key === active) || tabs[0];
   const Icon = selected.icon;
   const state = operationalState(event, variant);
   const effectiveRole = state.readOnly && role === "SUPERVISOR" ? "CLIENT" : role;
+
+  function selectTab(key: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (key === tabs[0].key) params.delete("tab");
+    else params.set("tab", key);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
 
   return (
     <div className="space-y-4">
@@ -105,7 +117,7 @@ export function EventTabs({ eventId, event, role, variant = "admin" }: { eventId
                   isActive ? "bg-emerald-700 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
                 }`}
                 key={tab.key}
-                onClick={() => setActive(tab.key)}
+                onClick={() => selectTab(tab.key)}
                 type="button"
               >
                 <TabIcon className="h-4 w-4" />

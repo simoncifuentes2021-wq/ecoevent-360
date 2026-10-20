@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     resend_api_key: str | None = Field(
         default=None, validation_alias=AliasChoices("RESEND_API_KEY")
     )
+    documents_allow_local_emails: bool = False
+    documents_local_email_recipient: str | None = None
     email_from: str = Field(
         default="Greenway App <noreply@app.greenway.cl>",
         validation_alias=AliasChoices("EMAIL_FROM", "RESEND_FROM_EMAIL"),
@@ -55,6 +57,8 @@ class Settings(BaseSettings):
     r2_public_prefix: str = "public"
     r2_signed_url_expires_seconds: int = 300
     local_private_storage_root: str = "uploads/private"
+    documents_use_r2_storage: bool = False
+    documents_public_base_url: str | None = None
     force_local_storage: bool = False
     local_public_storage_root: str = "uploads/public"
     max_upload_size_mb: int = 10
@@ -129,12 +133,24 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "REDIS_URL is required in production for distributed rate limiting"
                 )
+            if not self.cloudflare_r2_configured:
+                raise ValueError(
+                    "Cloudflare R2 credentials are required in production for durable file storage"
+                )
         return self
 
     @property
     def use_r2_storage(self) -> bool:
+        # Production must never silently write operational files to Render's
+        # ephemeral filesystem. Startup validation guarantees R2 is configured.
+        if self.app_env.lower() == "production":
+            return True
         if self.force_local_storage:
             return False
+        return self.cloudflare_r2_configured
+
+    @property
+    def cloudflare_r2_configured(self) -> bool:
         values = (
             self.cloudflare_r2_bucket,
             self.cloudflare_r2_account_id,
@@ -142,6 +158,17 @@ class Settings(BaseSettings):
             self.cloudflare_r2_secret_access_key,
         )
         return all(values)
+
+    @property
+    def resolved_documents_public_base_url(self) -> str:
+        configured = self.documents_public_base_url or self.public_app_url
+        if configured:
+            return configured.rstrip("/")
+        return (
+            self.official_frontend_url.rstrip("/")
+            if self.app_env.lower() == "production"
+            else "http://localhost:3001"
+        )
 
     @property
     def max_upload_size_bytes(self) -> int:

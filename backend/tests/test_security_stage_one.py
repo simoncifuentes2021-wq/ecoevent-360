@@ -63,7 +63,10 @@ def test_evidences_and_report_publications_share_the_same_r2_backend(monkeypatch
             content, content_type = objects[Key]
             return {"Body": io.BytesIO(content), "ContentType": content_type}
 
-    monkeypatch.setattr(settings, "force_local_storage", False)
+    # A production deployment must still use R2 even if FORCE_LOCAL_STORAGE
+    # was accidentally carried over from a local environment.
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "force_local_storage", True)
     monkeypatch.setattr(settings, "cloudflare_r2_bucket", "production-compatible-bucket")
     monkeypatch.setattr(settings, "cloudflare_r2_account_id", "account")
     monkeypatch.setattr(settings, "cloudflare_r2_access_key_id", "access")
@@ -82,6 +85,42 @@ def test_evidences_and_report_publications_share_the_same_r2_backend(monkeypatch
     assert {bucket for _, bucket, _ in calls} == {"production-compatible-bucket"}
     assert evidence_key.startswith("private/evidences/")
     assert report_key.startswith("private/reports/")
+
+
+def test_private_document_r2_helpers_ignore_global_local_override(monkeypatch):
+    objects: dict[str, tuple[bytes, str]] = {}
+    calls: list[dict] = []
+
+    class FakeR2:
+        def put_object(self, **kwargs):
+            calls.append(kwargs)
+            objects[kwargs["Key"]] = (kwargs["Body"], kwargs["ContentType"])
+
+        def get_object(self, *, Bucket, Key):
+            content, content_type = objects[Key]
+            return {"Body": io.BytesIO(content), "ContentType": content_type}
+
+    monkeypatch.setattr(settings, "force_local_storage", True)
+    monkeypatch.setattr(settings, "cloudflare_r2_bucket", "documents-test-bucket")
+    monkeypatch.setattr(settings, "cloudflare_r2_account_id", "account")
+    monkeypatch.setattr(settings, "cloudflare_r2_access_key_id", "access")
+    monkeypatch.setattr(settings, "cloudflare_r2_secret_access_key", "secret")
+    monkeypatch.setattr(file_storage_service, "_r2_client", lambda: FakeR2())
+
+    key = file_storage_service.save_private_object_to_r2(
+        "private/documents/test/v1-original.pdf",
+        b"%PDF-1.7\n%%EOF",
+        content_type="application/pdf",
+    )
+
+    assert key == "private/documents/test/v1-original.pdf"
+    assert calls[0]["Bucket"] == "documents-test-bucket"
+    assert calls[0]["IfNoneMatch"] == "*"
+    assert calls[0]["CacheControl"] == "private, no-store"
+    assert file_storage_service.read_private_object_from_r2(key) == (
+        b"%PDF-1.7\n%%EOF",
+        "application/pdf",
+    )
 
 
 @pytest.mark.parametrize("content,claimed", [(b"not-an-image", "image/png"), (b"%PDF-1.7\n", "application/pdf")])

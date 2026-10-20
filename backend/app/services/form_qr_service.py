@@ -104,6 +104,9 @@ def get_download_target(db: Session, qr_id: UUID, user: User) -> Path | str:
     _ensure_can_access_event(db, qr.event_id, user)
     if qr.file_url and qr.file_url.startswith(("http://", "https://")):
         return qr.file_url
+    source = qr.file_url or qr.file_path or ""
+    if source.startswith(f"{settings.r2_private_prefix.strip('/')}/"):
+        return source
     path = Path(qr.file_path or qr.file_url or "")
     if not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QR file not found")
@@ -294,6 +297,9 @@ def _find_existing(db: Session, form_id: UUID, qr_type: str, language: str | Non
 
 def _delete_qr_file(qr: FormQRCode) -> None:
     if qr.file_url and qr.file_url.startswith(("http://", "https://")):
+        file_storage_service.delete_stored_file(qr.file_url)
+        return
+    if qr.file_url and qr.file_url.startswith(f"{settings.r2_private_prefix.strip('/')}/"):
         file_storage_service.delete_stored_file(qr.file_url)
         return
     path = Path(qr.file_path or qr.file_url or "")
