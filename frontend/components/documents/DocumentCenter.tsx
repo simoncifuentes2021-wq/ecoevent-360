@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { ChevronDown, ChevronLeft, ChevronRight, Clipboard, Download, FileCheck2, FilePlus2, FileText, LoaderCircle, Pencil, Plus, Search, ShieldCheck, Upload, Users } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Clipboard, Download, FileCheck2, FilePlus2, FileText, LoaderCircle, Pencil, Plus, Printer, Search, ShieldCheck, Upload, Users } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api";
 import { AssignExistingPeopleModal } from "@/components/documents/AssignExistingPeopleModal";
 import { RepresentativeSignatureSettings } from "@/components/documents/RepresentativeSignatureSettings";
+import { PaperPrintBatchModal } from "@/components/documents/PaperPrintBatchModal";
+import { PaperDocumentActions } from "@/components/documents/PaperDocumentActions";
 
 type ImportPreview = { valid_rows: Record<string, unknown>[]; errors: Array<{ row: number; field: string; message: string }>; total_rows: number; valid_count: number; error_count: number };
 type ItemDraft = { item_code: string; label: string; received_at: string; returned_at: string; received_conformity: boolean };
@@ -52,6 +54,73 @@ const CATALOG: ItemDraft[] = [
 const fieldClass = "grid gap-1.5 text-sm font-medium text-slate-700";
 const EMPTY_CONTRACT_DEFAULTS: DocumentContractDefaults = { employer_name: "", employer_rut: "", representative_name: "", representative_rut: "", employer_address: "", employer_commune: "Santiago" };
 const statuses: Record<string, string> = { DRAFT: "Borrador", READY: "Listo", SENT: "Enviado", VIEWED: "Revisado", PARTIALLY_SIGNED: "Firma pendiente", COMPLETED: "Completado", CANCELLED: "Cancelado", EXPIRED: "Vencido", SUPERSEDED: "Reemplazado" };
+const paperStatusClasses: Record<string, string> = {
+  PREPARED: "bg-sky-100 text-sky-900",
+  PRINTED: "bg-amber-100 text-amber-900",
+  SIGNED_RECEIVED: "bg-emerald-100 text-emerald-900",
+  ARCHIVED: "bg-violet-100 text-violet-900",
+};
+const historyActionLabels: Record<string, string> = {
+  DOCUMENT_MISSING_DRAFTS_WORKER_PROCESSED: "Se revisaron los documentos pendientes de esta persona",
+  DOCUMENT_BATCH_WORKER_PROCESSED: "Se procesó esta persona durante la importación",
+  DOCUMENT_PERSON_IMPORTED: "Se importaron los datos de esta persona",
+  DOCUMENT_PERSON_CREATED: "Se creó la ficha de esta persona",
+  DOCUMENT_PERSON_UPDATED: "Se actualizaron los datos de esta persona",
+  DOCUMENT_EMPLOYMENT_UPDATED: "Se actualizaron los datos de trabajo para esta faena",
+  DOCUMENT_CREATED: "Se creó un documento borrador",
+  DOCUMENT_UPDATED: "Se modificó un documento",
+  DOCUMENT_PREPARED: "Se preparó el documento para firma",
+  DOCUMENT_SENT_FOR_SIGNATURE: "Se envió el documento para firma",
+  DOCUMENT_SENT_WITH_CONTRACT_BUNDLE: "Se enviaron juntos el contrato y el registro EPP",
+  DOCUMENT_COMPLETED: "Se completó la firma del documento",
+  DOCUMENT_CANCELLED: "Se canceló el documento",
+  DOCUMENT_VERSION_CREATED: "Se creó una nueva versión del documento",
+  DOCUMENT_SIGNED_COPY_SENT: "Se reenviaron los documentos firmados por correo",
+  DOCUMENT_PAPER_PRINT_BATCH_PREPARED: "Se preparó un lote para firma en papel",
+  DOCUMENT_PAPER_PRINT_SINGLE_PREPARED: "Se preparó este documento para firma en papel",
+  DOCUMENT_PAPER_BATCH_PRINTED: "Se registró la impresión de un lote en papel",
+  DOCUMENT_PAPER_SIGNED_RECEIVED: "Se registró la recepción del documento firmado en papel",
+  DOCUMENT_PAPER_SIGNED_COPY_ARCHIVED: "Se archivó la copia firmada en papel",
+  DOCUMENT_REPRESENTATIVE_SIGNATURE_UPDATED: "Se actualizó la firma del representante legal",
+  DOCUMENT_REPRESENTATIVE_SIGNATURE_DELETED: "Se eliminó la firma guardada del representante legal",
+};
+const historyFieldLabels: Record<string, string> = {
+  first_name: "Nombre", last_name: "Apellidos", email: "Correo", phone: "Teléfono",
+  address: "Domicilio", commune: "Comuna", position: "Cargo", duties: "Funciones",
+  area: "Área", workplace: "Lugar de trabajo", start_date: "Fecha de inicio",
+  end_date: "Fecha de término", remuneration: "Remuneración", title: "Documento",
+  status: "Estado", kind: "Tipo de documento", created: "Documentos creados",
+  already_had: "Documentos que ya tenía", documents_created: "Documentos creados",
+  documents_skipped: "Documentos omitidos", workers_processed: "Personas procesadas",
+  file_name: "Archivo", recipient: "Destinatario", email_sent: "Correo enviado",
+  document_count: "Cantidad de documentos", page_count: "Páginas",
+};
+
+function historyValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map((item) => historyValue(item)).join(", ") || "Ninguno";
+  if (typeof value === "boolean") return value ? "Sí" : "No";
+  if (value == null || value === "") return "—";
+  const text = String(value);
+  const labels: Record<string, string> = { CONTRACT: "Contrato", EPP: "Registro EPP / RIOHS / EIRL", DRAFT: "Borrador", READY: "Listo", SENT: "Enviado", VIEWED: "Revisado", COMPLETED: "Completado", CANCELLED: "Cancelado", PREPARED: "Preparado para papel", PRINTED: "Impreso", SIGNED_RECEIVED: "Firma recibida", ARCHIVED: "Copia archivada" };
+  return labels[text] || text;
+}
+
+function historyDetails(entry: DocumentHistoryEntry): Array<{ label: string; value: string }> {
+  const details: Array<{ label: string; value: string }> = [];
+  const metadata = entry.metadata || {};
+  for (const key of ["created", "already_had", "documents_created", "documents_skipped", "workers_processed", "document_count", "page_count", "kind", "status", "email_sent", "file_name"]) {
+    if (key in metadata && historyFieldLabels[key]) details.push({ label: historyFieldLabels[key], value: historyValue(metadata[key]) });
+  }
+  if (entry.old_data && entry.new_data) {
+    for (const key of Array.from(new Set([...Object.keys(entry.old_data), ...Object.keys(entry.new_data)]))) {
+      const before = entry.old_data[key]; const after = entry.new_data[key];
+      if (JSON.stringify(before) !== JSON.stringify(after) && historyFieldLabels[key]) {
+        details.push({ label: historyFieldLabels[key], value: `${historyValue(before)} → ${historyValue(after)}` });
+      }
+    }
+  }
+  return details;
+}
 
 function qs(values: Record<string, string | undefined>) {
   const params = new URLSearchParams();
@@ -110,6 +179,9 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
   const [selectedDocument, setSelectedDocument] = useState<ManagedDocument | null>(null);
   const [signatureLink, setSignatureLink] = useState<(SignatureLink & { email_sent?: boolean; recipient?: string | null; delivery_error?: string | null }) | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState("");
+  const previewController = useRef<AbortController | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<ManagedDocument | null>(null);
   const [confirmNewVersion, setConfirmNewVersion] = useState<ManagedDocument | null>(null);
   const [confirmSend, setConfirmSend] = useState<ManagedDocument | null>(null);
@@ -120,6 +192,7 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
   const [emailBatchReady, setEmailBatchReady] = useState(false);
   const [retryingEmailBatch, setRetryingEmailBatch] = useState(false);
   const [confirmSelectedBundles, setConfirmSelectedBundles] = useState(false);
+  const [paperPrintOpen, setPaperPrintOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [assignExistingOpen, setAssignExistingOpen] = useState(false);
@@ -186,6 +259,7 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
 
   useEffect(() => { if (user && (!supervisor || eventId)) void load(); }, [load, user, supervisor, eventId]);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  useEffect(() => () => { previewController.current?.abort(); }, []);
 
   useEffect(() => {
     const storedBatchId = window.localStorage.getItem(DOCUMENT_EMAIL_BATCH_STORAGE_KEY);
@@ -288,8 +362,8 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
   const pageSize = 25;
   const pageCount = Math.max(1, Math.ceil(documentGroups.length / pageSize));
   const pagedDocumentGroups = documentGroups.slice((page - 1) * pageSize, page * pageSize);
-  const bundlePairs = useMemo(() => documents.filter((doc) => doc.kind === "CONTRACT" && ["DRAFT", "READY", "SENT", "VIEWED"].includes(doc.status)).flatMap((contract) => {
-    const epp = documents.find((candidate) => candidate.kind === "EPP" && candidate.person_id === contract.person_id && candidate.event_id === contract.event_id && candidate.employment_id === contract.employment_id && ["DRAFT", "READY", "SENT", "VIEWED"].includes(candidate.status));
+  const bundlePairs = useMemo(() => documents.filter((doc) => doc.kind === "CONTRACT" && doc.signature_method !== "PAPER" && ["DRAFT", "READY", "SENT", "VIEWED"].includes(doc.status)).flatMap((contract) => {
+    const epp = documents.find((candidate) => candidate.kind === "EPP" && candidate.signature_method !== "PAPER" && candidate.person_id === contract.person_id && candidate.event_id === contract.event_id && candidate.employment_id === contract.employment_id && ["DRAFT", "READY", "SENT", "VIEWED"].includes(candidate.status));
     return epp ? [{ contract, epp }] : [];
   }), [documents]);
   const selectablePeople = useMemo(() => new Set((eventId && (filter === "ALL" || filter === "PENDING") ? pagedDocumentGroups : [])
@@ -730,10 +804,37 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
   }
 
   async function openPreview(doc: ManagedDocument) {
-    setBusy(true);
-    try { const blob = await documentApi.previewPdf(doc.id); setPreviewUrl(URL.createObjectURL(blob)); setSelectedDocument(doc); }
-    catch (cause) { toast({ title: "No se pudo generar la vista previa", description: cause instanceof Error ? cause.message : undefined, tone: "error" }); }
-    finally { setBusy(false); }
+    if (previewController.current) return;
+    const controller = new AbortController();
+    previewController.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 60_000);
+    setSelectedDocument(doc);
+    setPreviewError("");
+    setPreviewUrl("");
+    setPreviewLoadingId(doc.id);
+    try {
+      const blob = await documentApi.previewPdf(doc.id, controller.signal);
+      if (previewController.current === controller) setPreviewUrl(URL.createObjectURL(blob));
+    } catch (cause) {
+      if (!controller.signal.aborted) setPreviewError(cause instanceof Error ? cause.message : "No se pudo generar la vista previa.");
+      else if (previewController.current === controller) setPreviewError("La vista previa tardó demasiado. Puedes volver a intentarlo.");
+    } finally {
+      window.clearTimeout(timeout);
+      if (previewController.current === controller) {
+        previewController.current = null;
+        setPreviewLoadingId(null);
+      }
+    }
+  }
+
+  function closePreview() {
+    previewController.current?.abort();
+    previewController.current = null;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
+    setPreviewError("");
+    setPreviewLoadingId(null);
+    setSelectedDocument(null);
   }
 
   async function prepareDocument(doc: ManagedDocument, confirmAfterPrepare = false) {
@@ -851,8 +952,11 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
   }
 
   function renderDocumentActions(doc: ManagedDocument) {
+    if (doc.signature_method === "PAPER") return <div className="space-y-2"><PaperDocumentActions document={doc} onDone={() => void load()}/><div className="flex flex-wrap gap-1.5"><Button size="sm" variant="secondary" disabled={Boolean(previewLoadingId)} onClick={() => void openPreview(doc)}>{previewLoadingId === doc.id ? <><LoaderCircle className="h-4 w-4 animate-spin"/>Generando vista…</> : "Ver PDF"}</Button>{doc.has_original_pdf && <Button size="sm" variant="ghost" title="Descargar PDF para papel" onClick={() => void download(doc)}><Download className="h-4 w-4"/></Button>}{["DRAFT", "READY", "CANCELLED"].includes(doc.status) && <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmNewVersion(doc)}>Nueva versión</Button>}</div></div>;
+    const paperEligible = isAdmin && Boolean(doc.event_id) && ["DRAFT", "READY"].includes(doc.status) && doc.signature_method !== "ELECTRONIC";
     return <div className="flex flex-wrap gap-1.5">
-      <Button size="sm" variant="secondary" onClick={() => void openPreview(doc)}>Ver</Button>
+      {paperEligible && <PaperDocumentActions document={doc} allowPrepare onDone={() => void load()}/>}
+      <Button size="sm" variant="secondary" disabled={Boolean(previewLoadingId)} onClick={() => void openPreview(doc)}>{previewLoadingId === doc.id ? <><LoaderCircle className="h-4 w-4 animate-spin"/>Generando vista…</> : "Ver"}</Button>
       {doc.can_edit && <Button size="sm" variant="secondary" onClick={() => void editDocument(doc)}>Editar</Button>}
       {doc.can_edit && <Button size="sm" onClick={() => void sendDocument(doc)}>Enviar</Button>}
       {["SENT", "VIEWED"].includes(doc.status) && <Button size="sm" variant="secondary" onClick={() => void sendDocument(doc)}>Reenviar</Button>}
@@ -872,7 +976,7 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
     return <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div><p className="font-semibold text-slate-900">Personal de la faena</p><p className="text-sm text-slate-500">{documentGroups.length} personas · {searchedDocuments.length} documentos visibles</p></div>
-        <div className="flex flex-wrap items-center gap-3">{missingPeopleIds.length > 0 && <><Button size="sm" variant="secondary" onClick={() => setSelectedDirectoryPeople(new Set([...Array.from(selectedDirectoryPeople), ...missingPeopleIds]))}>Seleccionar faltantes ({missingPeopleIds.length})</Button><Button size="sm" disabled={busy} onClick={() => { setSelectedDirectoryPeople(new Set(missingPeopleIds)); void previewMissingDraftsFor(missingPeopleIds); }}>Revisar creación faltante</Button></>}{!eventId && <p className="text-sm text-slate-500">Selecciona una faena arriba para habilitar el envío masivo.</p>}{selectablePeople.size > 0 && <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600"><input aria-label="Seleccionar todos los envíos conjuntos disponibles de esta página" checked={allVisibleSelected} className="h-4 w-4 accent-emerald-700" onChange={toggleAllVisiblePeople} type="checkbox"/>Seleccionar disponibles</label>}</div>
+        <div className="flex flex-wrap items-center gap-3">{isAdmin && eventId && <Button size="sm" variant="secondary" onClick={() => setPaperPrintOpen(true)}><Printer className="h-4 w-4"/> Imprimir lote</Button>}{missingPeopleIds.length > 0 && <><Button size="sm" variant="secondary" onClick={() => setSelectedDirectoryPeople(new Set([...Array.from(selectedDirectoryPeople), ...missingPeopleIds]))}>Seleccionar faltantes ({missingPeopleIds.length})</Button><Button size="sm" disabled={busy} onClick={() => { setSelectedDirectoryPeople(new Set(missingPeopleIds)); void previewMissingDraftsFor(missingPeopleIds); }}>Revisar creación faltante</Button></>}{!eventId && <p className="text-sm text-slate-500">Selecciona una faena arriba para habilitar el envío masivo.</p>}{selectablePeople.size > 0 && <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600"><input aria-label="Seleccionar todos los envíos conjuntos disponibles de esta página" checked={allVisibleSelected} className="h-4 w-4 accent-emerald-700" onChange={toggleAllVisiblePeople} type="checkbox"/>Seleccionar disponibles</label>}</div>
       </div>
       {loading ? <div className="rounded-xl border bg-white p-12 text-center text-slate-500"><LoaderCircle className="mx-auto h-6 w-6 animate-spin"/><p className="mt-2">Cargando documentos…</p></div>
         : documentGroups.length === 0 ? <div className="rounded-xl border bg-white p-5"><EmptyState icon={<FileText className="h-6 w-6"/>} title={search ? "No encontramos coincidencias" : "Aún no hay documentos"} description={search ? "Prueba con otro nombre, RUT o título de documento." : "Crea una persona y prepara su contrato o registro EPP para esta faena."} action={!search ? <Button onClick={() => resetDocument(people[0]?.id || "")}>Crear documento</Button> : undefined}/></div>
@@ -893,13 +997,14 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
               <div className="flex flex-wrap gap-2">{(["CONTRACT", "EPP"] as const).map((kind) => {
                 const doc = kind === "CONTRACT" ? contract : epp;
                 const label = kind === "CONTRACT" ? "Contrato" : "EPP";
-                return <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs" key={kind}><span className="font-medium text-slate-600">{label}</span>{doc ? <span className={"rounded-full px-2 py-0.5 font-semibold " + (doc.status === "COMPLETED" ? "bg-emerald-100 text-emerald-800" : ["CANCELLED", "EXPIRED", "SUPERSEDED"].includes(doc.status) ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800")}>{statuses[doc.status] || doc.status}</span> : <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">Faltante</span>}</span>;
+                const paperLabel: Record<string, string> = { PREPARED: "Papel · preparado", PRINTED: "Papel · impreso", SIGNED_RECEIVED: "Papel · firmado", ARCHIVED: "Papel · archivado" };
+                return <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs" key={kind}><span className="font-medium text-slate-600">{label}</span>{doc ? <span className={"rounded-full px-2 py-0.5 font-semibold " + (doc.signature_method === "PAPER" ? paperStatusClasses[doc.paper_status || "PREPARED"] : doc.status === "COMPLETED" ? "bg-emerald-100 text-emerald-800" : ["CANCELLED", "EXPIRED", "SUPERSEDED"].includes(doc.status) ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800")}>{doc.signature_method === "PAPER" ? paperLabel[doc.paper_status || "PREPARED"] : statuses[doc.status] || doc.status}</span> : <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">Faltante</span>}</span>;
               })}</div>
               <div className="flex items-center justify-between gap-3 lg:justify-end"><span className="whitespace-nowrap text-xs text-slate-500">{group.docs.length} doc.</span><Button size="sm" variant="secondary" onClick={() => void openPersonHistory(group)}>Historial</Button><Button size="sm" variant="secondary" onClick={() => { setTab("people"); setSearch(""); }}>Personas</Button></div>
             </div>
             {expanded && <div className="border-t border-slate-100 bg-slate-50/70 p-4">
               {personBundles.map(({ contract: pairedContract, epp: pairedEpp }) => <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2" key={pairedContract.id + ":" + pairedEpp.id}><div><p className="text-sm font-semibold text-slate-800">Contrato + EPP listos para envío conjunto</p><p className="text-xs text-slate-500">{pairedContract.title} · {pairedEpp.title}</p></div><Button size="sm" disabled={busy} onClick={() => setConfirmBundle({ contract: pairedContract, epp: pairedEpp })}>Enviar ambos juntos</Button></div>)}
-              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-white text-[11px] uppercase tracking-wide text-slate-500"><tr>{["Documento", "Faena", "Estado", "Actualizado", "Acciones"].map((heading) => <th className="px-3 py-2" key={heading}>{heading}</th>)}</tr></thead><tbody>{group.docs.map((doc) => <tr className="border-t border-slate-100" key={doc.id}><td className="px-3 py-3"><p className="font-medium text-slate-900">{doc.title}</p><p className="text-xs text-slate-500">{doc.kind === "CONTRACT" ? "Contrato por obra o faena" : "EPP / RIOHS / EIRL"} · v{doc.version}</p></td><td className="px-3 py-3 text-xs text-slate-600">{doc.event_id ? events.find((event) => event.id === doc.event_id)?.name || "Evento asociado" : "Global"}</td><td className="px-3 py-3"><span className={"rounded-full px-2.5 py-1 text-xs font-semibold " + (doc.status === "COMPLETED" ? "bg-emerald-100 text-emerald-800" : ["CANCELLED", "EXPIRED", "SUPERSEDED"].includes(doc.status) ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-800")}>{statuses[doc.status] || doc.status}</span></td><td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">{new Date(doc.updated_at).toLocaleDateString("es-CL")}</td><td className="px-3 py-3">{renderDocumentActions(doc)}</td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-white text-[11px] uppercase tracking-wide text-slate-500"><tr>{["Documento", "Faena", "Estado", "Actualizado", "Acciones"].map((heading) => <th className="px-3 py-2" key={heading}>{heading}</th>)}</tr></thead><tbody>{group.docs.map((doc) => { const paperLabels: Record<string, string> = { PREPARED: "Papel · preparado", PRINTED: "Papel · impreso", SIGNED_RECEIVED: "Papel · firmado recibido", ARCHIVED: "Papel · copia archivada" }; return <tr className="border-t border-slate-100" key={doc.id}><td className="px-3 py-3"><p className="font-medium text-slate-900">{doc.title}</p><p className="text-xs text-slate-500">{doc.kind === "CONTRACT" ? "Contrato por obra o faena" : "EPP / RIOHS / EIRL"} · v{doc.version}{doc.signature_method === "PAPER" ? " · Firma en papel" : doc.signature_method === "ELECTRONIC" ? " · Firma electrónica" : ""}</p></td><td className="px-3 py-3 text-xs text-slate-600">{doc.event_id ? events.find((event) => event.id === doc.event_id)?.name || "Evento asociado" : "Global"}</td><td className="px-3 py-3"><span className={"rounded-full px-2.5 py-1 text-xs font-semibold " + (doc.signature_method === "PAPER" ? paperStatusClasses[doc.paper_status || "PREPARED"] : doc.status === "COMPLETED" ? "bg-emerald-100 text-emerald-800" : ["CANCELLED", "EXPIRED", "SUPERSEDED"].includes(doc.status) ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-800")}>{doc.signature_method === "PAPER" ? paperLabels[doc.paper_status || "PREPARED"] : statuses[doc.status] || doc.status}</span></td><td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">{new Date(doc.updated_at).toLocaleDateString("es-CL")}</td><td className="px-3 py-3">{renderDocumentActions(doc)}</td></tr>; })}</tbody></table></div>
             </div>}
           </article>;
         })}</div>}
@@ -1018,7 +1123,11 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
         </form>
       </ModalShell>}
       {signatureLink && <ModalShell title={signatureLink.email_sent ? "Enlace enviado por correo" : "Enlace de firma preparado"} description={signatureLink.email_sent ? `Se envió el acceso al correo ${signatureLink.recipient}.` : "El acceso quedó generado; puedes copiarlo o compartir el QR de forma privada."} onClose={() => setSignatureLink(null)}><div className="grid gap-5 sm:grid-cols-[1fr_auto]"><div><p className="text-sm text-slate-600">Vence: {new Date(signatureLink.expires_at).toLocaleString("es-CL")}</p><div className="mt-3 break-all rounded-lg bg-slate-50 p-3 text-sm">{signatureLink.url}</div><Button className="mt-3" onClick={() => void copyLink()}><Clipboard className="h-4 w-4"/> Copiar enlace</Button></div><Image alt="Código QR para abrir el portal de firma" className="h-40 w-40 rounded-lg border p-2" height={160} src={signatureLink.qr_data_url} unoptimized width={160}/></div>{signatureLink.delivery_error && <p role="alert" className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{signatureLink.delivery_error}</p>}<p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{signatureLink.signature_notice}</p></ModalShell>}
-      {previewUrl && selectedDocument && <ModalShell size="lg" title={selectedDocument.title} description={selectedDocument.status === "PARTIALLY_SIGNED" ? "Vista previa con la firma manuscrita del trabajador. Completa el cierre administrativo para guardar el PDF final." : selectedDocument.status === "COMPLETED" ? "PDF final del documento con las firmas registradas." : "Vista previa temporal; no se guarda un PDF hasta enviar a firma."} onClose={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(""); }}><iframe className="h-[70vh] w-full rounded-lg border" title={`Vista previa de ${selectedDocument.title}`} src={previewUrl}/>{["DRAFT", "READY"].includes(selectedDocument.status) && <div className="mt-4 flex justify-end gap-2">{selectedDocument.status === "DRAFT" ? <Button disabled={busy} onClick={() => void prepareDocument(selectedDocument)}>{busy ? "Preparando…" : "Preparar documento"}</Button> : <Button onClick={() => setConfirmSend(selectedDocument)}>Enviar a firma</Button>}</div>}</ModalShell>}
+      {selectedDocument && (previewUrl || previewLoadingId === selectedDocument.id || previewError) && <ModalShell size="lg" title={selectedDocument.title} description={selectedDocument.status === "PARTIALLY_SIGNED" ? "Vista previa con la firma manuscrita del trabajador. Completa el cierre administrativo para guardar el PDF final." : selectedDocument.status === "COMPLETED" ? "PDF final del documento con las firmas registradas." : "Vista previa temporal; no se guarda un PDF hasta enviar a firma."} onClose={closePreview}>
+        {previewLoadingId === selectedDocument.id && <div className="flex h-[50vh] flex-col items-center justify-center gap-3 rounded-lg border border-slate-200 bg-slate-50 text-center"><LoaderCircle className="h-9 w-9 animate-spin text-emerald-700"/><p className="font-semibold text-slate-800">Preparando vista previa…</p><p className="text-sm text-slate-500">Puede tardar unos segundos. Mantén esta ventana abierta; no vuelvas a pulsar el botón.</p></div>}
+        {previewError && <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-lg border border-rose-200 bg-rose-50 p-6 text-center"><p className="font-semibold text-rose-900">No se pudo abrir la vista previa</p><p className="text-sm text-rose-800">{previewError}</p><div className="flex gap-2"><Button variant="secondary" onClick={closePreview}>Cerrar</Button><Button onClick={() => void openPreview(selectedDocument)}>Intentar de nuevo</Button></div></div>}
+        {previewUrl && <><iframe className="h-[70vh] w-full rounded-lg border" title={`Vista previa de ${selectedDocument.title}`} src={previewUrl}/>{["DRAFT", "READY"].includes(selectedDocument.status) && <div className="mt-4 flex justify-end gap-2">{selectedDocument.status === "DRAFT" ? <Button disabled={busy} onClick={() => void prepareDocument(selectedDocument)}>{busy ? "Preparando…" : "Preparar documento"}</Button> : <Button onClick={() => setConfirmSend(selectedDocument)}>Enviar a firma</Button>}</div>}</>}
+      </ModalShell>}
       {confirmCancel && <ConfirmDialog open title="Cancelar documento" description="Se revocará el enlace de firma activo. El documento no se elimina y sus archivos existentes se conservan." confirmLabel="Cancelar documento" onClose={() => setConfirmCancel(null)} onConfirm={() => void performCancel()}/>}
       {confirmApplyEmployerDefaults && <ConfirmDialog open loading={applyingEmployerDefaults} title="Completar datos del empleador en borradores" description={`Se revisarán los contratos en borrador de ${events.find((event) => event.id === eventId)?.name || "esta faena"}. Solo se rellenarán los campos del empleador que estén vacíos con los datos base vigentes; no se sobrescribirán datos existentes ni se modificarán documentos enviados o completados.`} confirmLabel="Aplicar datos a borradores" onClose={() => setConfirmApplyEmployerDefaults(false)} onConfirm={() => void applyEmployerDefaultsToDrafts()}/>}
       {confirmNewVersion && <ConfirmDialog open loading={busy} title="Crear nueva versión" description={`Se conservará la versión ${confirmNewVersion.version} en el historial y se revocará su enlace activo. Se creará la versión ${confirmNewVersion.version + 1} como borrador para que puedas revisarla antes de enviarla.`} confirmLabel="Crear borrador de nueva versión" onClose={() => setConfirmNewVersion(null)} onConfirm={() => { const doc = confirmNewVersion; setConfirmNewVersion(null); void createNewVersion(doc); }}/>}
@@ -1033,7 +1142,17 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
       {batchGenerationResult && <ModalShell size="lg" title="Resultado de importación y generación" description={`${batchGenerationResult.event_name} · ${batchGenerationResult.workers_processed} trabajador(es) · ${batchGenerationResult.workers_failed} con error`} onClose={() => { setBatchGenerationResult(null); if (!batchGenerationResult.workers_failed) { setImportPreview(null); setImportFile(null); } }}><div className="space-y-3"><div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg bg-emerald-50 p-3 text-sm">Personas nuevas <strong className="block text-xl">{batchGenerationResult.people_created}</strong></div><div className="rounded-lg bg-sky-50 p-3 text-sm">Actualizadas <strong className="block text-xl">{batchGenerationResult.people_updated}</strong></div><div className="rounded-lg bg-indigo-50 p-3 text-sm">Documentos creados <strong className="block text-xl">{batchGenerationResult.documents_created}</strong></div><div className="rounded-lg bg-slate-100 p-3 text-sm">Existentes conservados <strong className="block text-xl">{batchGenerationResult.documents_skipped}</strong></div></div>{batchGenerationResult.setup_warnings.length > 0 && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Completa los datos base de Greenway antes de enviar contratos: {batchGenerationResult.setup_warnings.join(", ")}.</p>}<div className="max-h-[50vh] overflow-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-2">Trabajador</th><th className="p-2">Resultado</th><th className="p-2">Documentos nuevos</th><th className="p-2">Ya existían</th></tr></thead><tbody>{batchGenerationResult.results.map((row) => <tr className="border-t" key={row.rut}><td className="p-2">{row.name}<span className="block text-xs text-slate-500">{row.rut}</span></td><td className="p-2"><span className={row.status === "ERROR" ? "font-semibold text-rose-700" : "font-semibold text-emerald-700"}>{row.status === "ERROR" ? "Error" : `${row.person_action === "created" ? "Creada" : "Actualizada"} · ${row.assignment_action === "created" ? "asignación nueva" : "asignación actualizada"}`}</span>{row.error && <span className="block text-xs text-rose-700">{row.error}</span>}</td><td className="p-2">{row.created.length ? row.created.map((kind) => kind === "CONTRACT" ? "Contrato" : "EPP").join(" · ") : "—"}</td><td className="p-2">{row.already_had.length ? row.already_had.map((kind) => kind === "CONTRACT" ? "Contrato" : "EPP").join(" · ") : "—"}</td></tr>)}</tbody></table></div><div className="flex justify-end gap-2">{batchGenerationResult.workers_failed > 0 && <Button disabled={busy} onClick={() => void retryFailedImportRows()}>{busy ? "Reintentando…" : `Reintentar solo ${batchGenerationResult.workers_failed} fallido(s)`}</Button>}<Button variant="secondary" onClick={() => { const failed = batchGenerationResult.workers_failed > 0; setBatchGenerationResult(null); if (!failed) { setImportPreview(null); setImportFile(null); } }}>Cerrar</Button></div></div></ModalShell>}
       {missingDraftPreview && <ModalShell size="lg" title="Revisar borradores faltantes" description={`${missingDraftPreview.event_name} · ${missingDraftPreview.workers_processed} persona(s) · ${missingDraftPreview.results.filter((row) => row.missing_data?.length).length} con datos por completar`} onClose={() => setMissingDraftPreview(null)}><div className="space-y-4"><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-lg bg-emerald-50 p-3">Contratos a crear <strong className="block text-xl">{missingDraftPreview.contracts_to_create}</strong></div><div className="rounded-lg bg-sky-50 p-3">EPP a crear <strong className="block text-xl">{missingDraftPreview.epp_to_create}</strong></div><div className="rounded-lg bg-slate-100 p-3">Existentes <strong className="block text-xl">{missingDraftPreview.documents_existing}</strong></div></div>{missingDraftPreview.setup_warnings.length > 0 && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Faltan datos base de Greenway: {missingDraftPreview.setup_warnings.join(", ")}.</p>}<div className="max-h-[45vh] overflow-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-2">Persona</th><th className="p-2">A crear</th><th className="p-2">Se conservan</th><th className="p-2">Revisión de datos</th></tr></thead><tbody>{missingDraftPreview.results.map((row) => <tr className="border-t" key={row.person_id || row.rut}><td className="p-2">{row.name}<span className="block text-xs text-slate-500">{row.rut}</span></td><td className="p-2">{row.create.length ? row.create.join(" · ") : "—"}</td><td className="p-2">{row.already_had.length ? row.already_had.join(" · ") : "—"}</td><td className="p-2 text-xs">{row.missing_data?.length ? <span className="text-amber-800">Completar: {row.missing_data.join(", ")}</span> : <span className="text-emerald-800">Sin faltantes detectados</span>}</td></tr>)}</tbody></table></div><p className="text-xs text-slate-500">Los borradores incompletos se pueden crear y guardar para revisión; el envío seguirá bloqueado hasta corregir los campos obligatorios.</p><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setMissingDraftPreview(null)}>Volver</Button><Button disabled={busy || missingDraftPreview.documents_to_create === 0} onClick={() => void generateMissingDrafts()}>{busy ? "Creando…" : `Crear ${missingDraftPreview.documents_to_create} borradores`}</Button></div></div></ModalShell>}
       {peopleImportResult && <ModalShell size="lg" title="Resultado de importación" description={`${peopleImportResult.workers_processed} trabajador(es) procesados · ${peopleImportResult.workers_failed} con error`} onClose={() => { const failed = peopleImportResult.workers_failed > 0; setPeopleImportResult(null); if (!failed) { setImportPreview(null); setImportFile(null); } }}><div className="space-y-3"><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-lg bg-emerald-50 p-3">Personas nuevas <strong className="block text-xl">{peopleImportResult.created}</strong></div><div className="rounded-lg bg-sky-50 p-3">Personas actualizadas <strong className="block text-xl">{peopleImportResult.updated}</strong></div><div className="rounded-lg bg-slate-100 p-3">Asignaciones procesadas <strong className="block text-xl">{peopleImportResult.assignments}</strong></div></div><div className="max-h-[50vh] overflow-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-2">Trabajador</th><th className="p-2">Resultado</th><th className="p-2">Faena</th></tr></thead><tbody>{peopleImportResult.results.map((row) => <tr className="border-t" key={row.rut}><td className="p-2">{row.name}<span className="block text-xs text-slate-500">{row.rut}</span></td><td className="p-2"><span className={row.status === "ERROR" ? "font-semibold text-rose-700" : "font-semibold text-emerald-700"}>{row.status === "ERROR" ? "Error" : row.person_action === "created" ? "Persona creada" : "Persona actualizada"}</span>{row.error && <span className="block text-xs text-rose-700">{row.error}</span>}</td><td className="p-2">{row.assignment_action === "created" ? "Asignación creada" : row.assignment_action === "updated" ? "Asignación actualizada" : "Sin cambios"}</td></tr>)}</tbody></table></div><div className="flex justify-end gap-2">{peopleImportResult.workers_failed > 0 && <Button disabled={busy} onClick={() => void retryFailedPeopleImportRows()}>{busy ? "Reintentando…" : `Reintentar solo ${peopleImportResult.workers_failed} fallido(s)`}</Button>}<Button variant="secondary" onClick={() => { const failed = peopleImportResult.workers_failed > 0; setPeopleImportResult(null); if (!failed) { setImportPreview(null); setImportFile(null); } }}>Cerrar</Button></div></div></ModalShell>}
-      {historyPerson && <ModalShell size="lg" title={`Historial de ${historyPerson.name}`} description={`${events.find((event) => event.id === historyPerson.eventId)?.name || "Faena"} · hasta 100 movimientos recientes`} onClose={() => { setHistoryPerson(null); setHistoryEntries([]); }}><div className="max-h-[65vh] space-y-3 overflow-y-auto">{historyLoading ? <div className="p-8 text-center text-slate-500"><LoaderCircle className="mx-auto h-6 w-6 animate-spin"/>Cargando historial…</div> : historyEntries.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">Aún no hay movimientos registrados para esta persona en esta faena.</p> : historyEntries.map((entry) => <article className="rounded-lg border border-slate-200 p-3" key={entry.id}><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold text-slate-900">{(entry.description || entry.action.replaceAll("_", " ")).replace(/^DOCUMENT\s*/i, "")}</p><time className="text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("es-CL")}</time></div><p className="mt-1 text-xs text-slate-500">Por {entry.actor}</p>{entry.old_data && entry.new_data && <div className="mt-2 grid gap-1 text-xs text-slate-600">{Array.from(new Set([...Object.keys(entry.old_data), ...Object.keys(entry.new_data)])).filter((key) => JSON.stringify(entry.old_data?.[key]) !== JSON.stringify(entry.new_data?.[key])).map((key) => <p key={key}><span className="font-medium">{key.replaceAll("_", " ")}:</span> {String(entry.old_data?.[key] ?? "—")} → {String(entry.new_data?.[key] ?? "—")}</p>)}</div>}</article>)}</div></ModalShell>}
+      {historyPerson && <ModalShell size="lg" title={`Historial de ${historyPerson.name}`} description={`${events.find((event) => event.id === historyPerson.eventId)?.name || "Faena"} · actividad y cambios registrados`} onClose={() => { setHistoryPerson(null); setHistoryEntries([]); }}>
+        <div className="max-h-[65vh] space-y-3 overflow-y-auto">
+          {historyLoading ? <div className="p-8 text-center text-slate-500"><LoaderCircle className="mx-auto h-6 w-6 animate-spin"/>Cargando historial…</div>
+            : historyEntries.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">Aún no hay movimientos registrados para esta persona en esta faena.</p>
+              : historyEntries.map((entry) => <article className="rounded-xl border border-slate-200 bg-white p-4" key={entry.id}>
+                <div className="flex flex-wrap items-start justify-between gap-2"><p className="font-semibold text-slate-900">{historyActionLabels[entry.action] || "Actividad en documentos"}</p><time className="whitespace-nowrap text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("es-CL")}</time></div>
+                <p className="mt-1 text-sm text-slate-500">Realizado por {entry.actor}</p>
+                {historyDetails(entry).length > 0 && <dl className="mt-3 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">{historyDetails(entry).map((detail, index) => <div key={`${detail.label}-${index}`}><dt className="text-xs font-medium text-slate-500">{detail.label}</dt><dd className="text-sm text-slate-800">{detail.value}</dd></div>)}</dl>}
+              </article>)}
+        </div>
+      </ModalShell>}
       <AssignExistingPeopleModal events={events} clientId={clientQuery} open={assignExistingOpen} onClose={() => setAssignExistingOpen(false)} onDone={load}/>
       {editOptionsPerson && <ModalShell title="¿Qué quieres editar?" description={`Elige si actualizar la ficha de ${editOptionsPerson.first_name} ${editOptionsPerson.last_name} o sus datos laborales para esta faena.`} onClose={() => setEditOptionsPerson(null)}>
         <div className="space-y-3">
@@ -1057,6 +1176,13 @@ export function DocumentCenter({ supervisor = false }: { supervisor?: boolean })
           <div className="flex justify-end gap-2 sm:col-span-2"><Button type="button" variant="secondary" onClick={() => setEditingEmployment(null)}>Cerrar</Button><Button disabled={busy}>{busy ? "Guardando…" : "Guardar asignación"}</Button></div>
         </form>
       </ModalShell>}
+      {paperPrintOpen && eventId && <PaperPrintBatchModal
+        eventId={eventId}
+        eventName={events.find((event) => event.id === eventId)?.name || "Faena seleccionada"}
+        people={people.filter((person) => getEmploymentSummary(person)?.event_id === eventId || documents.some((doc) => doc.person_id === person.id && doc.event_id === eventId)).map((person) => ({ personId: person.id, name: `${person.first_name} ${person.last_name}`, rut: person.rut }))}
+        onChanged={() => void load()}
+        onClose={() => { setPaperPrintOpen(false); void load(); }}
+      />}
     </div>
   </RoleGuard>;
 }

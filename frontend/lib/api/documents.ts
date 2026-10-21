@@ -15,7 +15,13 @@ export type ManagedDocument = {
     items: Array<{ item_code: string; label: string; received_at: string | null; returned_at: string | null; received_conformity: boolean }>;
   } | null; version: number; created_at: string; updated_at: string; completed_at: string | null;
   can_edit: boolean; has_original_pdf: boolean; has_signed_pdf: boolean;
+  signature_method?: "PAPER" | "ELECTRONIC" | null;
+  paper_status?: "PREPARED" | "PRINTED" | "SIGNED_RECEIVED" | "ARCHIVED" | null;
+  paper_printed_at?: string | null; paper_signed_received_at?: string | null;
+  paper_evidence_file_name?: string | null; paper_evidence_uploaded_at?: string | null;
+  paper_evidence_sha256?: string | null;
 };
+export type PaperPrintBatch = { id: string; event_id: string; people_count: number; document_count: number; page_count: number; kinds: string[]; printed_at: string | null; created_at: string };
 export type DocumentSummary = { people: number; documents: number; pending: number; completed: number; incomplete_epp: number };
 export type SignatureLink = { url: string; expires_at: string; qr_data_url: string; signature_notice: string };
 export type DocumentSingleSendResult = { document: ManagedDocument; link: SignatureLink; recipient: string | null; email_sent: boolean; delivery_error: string | null };
@@ -130,9 +136,73 @@ export const documentApi = {
     api.post<ExistingPeopleAssignmentResult>("/documents/people/assign-existing", data),
   template: () => blobRequest("/documents/people/template"),
   eventDocumentStatus: (eventId: string) => blobRequest(`/documents/events/${eventId}/status.xlsx`),
+  paperPrintBatch: async (eventId: string, person_ids: string[], kinds: Array<"CONTRACT" | "EPP">) => {
+    const token = getStoredToken();
+    const response = await fetch(`${API_URL}/documents/events/${eventId}/paper-print-batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ person_ids, kinds }),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      let message = "No se pudo preparar el lote para impresión.";
+      try { const payload = await response.json(); message = payload.detail || message; } catch { /* use the safe fallback */ }
+      throw new ApiError(response.status, message);
+    }
+    return {
+      blob: await response.blob(),
+      documents: Number(response.headers.get("X-Documents-Included") || 0),
+      pages: Number(response.headers.get("X-Pages") || 0),
+      batchId: response.headers.get("X-Paper-Batch-Id") || "",
+    };
+  },
+  paperPrintSingle: async (documentId: string) => {
+    const token = getStoredToken();
+    const response = await fetch(`${API_URL}/documents/${documentId}/paper-print`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      let message = "No se pudo preparar el documento para impresión.";
+      try { const payload = await response.json(); message = payload.detail || message; } catch { /* use safe fallback */ }
+      throw new ApiError(response.status, message);
+    }
+    return {
+      blob: await response.blob(),
+      documents: Number(response.headers.get("X-Documents-Included") || 0),
+      pages: Number(response.headers.get("X-Pages") || 0),
+      batchId: response.headers.get("X-Paper-Batch-Id") || "",
+    };
+  },
+  paperBatches: (eventId: string) => api.get<PaperPrintBatch[]>(`/documents/events/${eventId}/paper-batches`),
+  paperBatchPdf: (batchId: string) => blobRequest(`/documents/paper-batches/${batchId}/pdf`),
+  markPaperBatchPrinted: (batchId: string) => api.post<PaperPrintBatch>(`/documents/paper-batches/${batchId}/printed`),
+  markPaperSignedReceived: (documentId: string) => api.post<ManagedDocument>(`/documents/${documentId}/paper-signed-received`),
+  uploadPaperSignedCopy: async (documentId: string, file: File) => {
+    const token = getStoredToken(); const form = new FormData(); form.append("file", file);
+    const response = await fetch(`${API_URL}/documents/${documentId}/paper-signed-copy`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form, cache: "no-store" });
+    if (!response.ok) { let message = "No se pudo archivar la copia firmada."; try { const payload = await response.json(); message = payload.detail || message; } catch { /* safe fallback */ } throw new ApiError(response.status, message); }
+    return response.json() as Promise<ManagedDocument>;
+  },
+  paperSignedCopy: (documentId: string) => blobRequest(`/documents/${documentId}/paper-signed-copy`),
   createDocument: (data: Record<string, unknown>) => api.post<ManagedDocument>("/documents", data),
   updateDocument: (id: string, data: Record<string, unknown>) => api.patch<ManagedDocument>(`/documents/${id}`, data),
-  previewPdf: (id: string) => blobRequest(`/documents/${id}/preview`, "POST"),
+  previewPdf: async (id: string, signal?: AbortSignal) => {
+    const token = getStoredToken();
+    const response = await fetch(`${API_URL}/documents/${id}/preview`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+      signal,
+    });
+    if (!response.ok) {
+      let message = "No se pudo generar la vista previa.";
+      try { const payload = await response.json(); message = payload.detail || message; } catch { /* use safe fallback */ }
+      throw new ApiError(response.status, message);
+    }
+    return response.blob();
+  },
   prepare: (id: string) => api.post<ManagedDocument>(`/documents/${id}/prepare`),
   send: (id: string) => api.post<DocumentSingleSendResult>(`/documents/${id}/send`),
   sendTogether: (contract_document_id: string, epp_document_id: string) => api.post<DocumentPairSendResult>("/documents/send-together", { contract_document_id, epp_document_id }),

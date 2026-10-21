@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 import qrcode
 from fastapi import HTTPException
 from PIL import Image
+from pypdf import PdfReader, PdfWriter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -26,6 +27,8 @@ from app.models.documents import (
     EventEppTemplate,
     DocumentPerson,
     DocumentSignatureRequest,
+    DocumentPaperBatch,
+    DocumentPaperBatchItem,
     EppDelivery,
     EppDeliveryItem,
     ManagedDocument,
@@ -48,6 +51,7 @@ from app.services.document_email_service import (
 )
 from app.services.document_people_service import normalize_person_name, normalize_rut
 from app.services.document_storage_service import document_storage
+from app.services.file_storage_service import read_stored_file, save_private_object, sanitize_filename
 from app.services.document_template_service import render_document_html
 from app.services.report_pdf_service import render_html
 from app.services.signature_provider import signature_provider
@@ -687,7 +691,18 @@ def _read(doc: ManagedDocument) -> dict:
         "created_at": doc.created_at,
         "updated_at": doc.updated_at,
         "completed_at": doc.completed_at,
-        "can_edit": status in {"DRAFT", "READY"},
+        "can_edit": status in {"DRAFT", "READY"} and doc.signature_method != "PAPER",
+        "signature_method": doc.signature_method,
+        "paper_status": doc.paper_status,
+        "paper_printed_at": doc.paper_printed_at,
+        "paper_signed_received_at": doc.paper_signed_received_at,
+        "paper_evidence_file_name": doc.paper_evidence_file_name,
+        "paper_evidence_uploaded_at": doc.paper_evidence_uploaded_at,
+        "paper_evidence_sha256": doc.paper_evidence_sha256,
+        "paper_batch_items": [
+            {"batch_id": str(item.batch_id), "document_version": item.document_version}
+            for item in doc.paper_batch_items[-10:]
+        ],
         "has_original_pdf": bool(doc.original_pdf_key),
         "has_signed_pdf": bool(doc.signed_pdf_key),
     }
@@ -698,6 +713,7 @@ def _document_query():
         selectinload(ManagedDocument.person),
         selectinload(ManagedDocument.epp_delivery).selectinload(EppDelivery.items),
         selectinload(ManagedDocument.signatures),
+        selectinload(ManagedDocument.paper_batch_items),
     )
 
 
@@ -746,6 +762,8 @@ def update_document(db: Session, document_id: UUID, payload: DocumentUpdate, use
     if not doc:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     _allowed(user, doc, db, write=True)
+    if doc.signature_method == "PAPER":
+        raise HTTPException(status_code=409, detail="El documento ya está asignado a firma en papel; crea una nueva versión para modificarlo.")
     if doc.status not in {"DRAFT", "READY"}:
         raise HTTPException(
             status_code=409, detail="Un documento enviado es inmutable; crea una nueva versión"
@@ -915,7 +933,7 @@ def preview_pdf(db: Session, document_id: UUID, user: User) -> bytes:
     return render_html(render_document_html(snapshot, signatures))[0]
 
 
-def _document_completion_gaps(snapshot: dict) -> list[str]:
+def _document_completion_gaps(snapshot: dict, *, require_email: bool = True) -> list[str]:
     person = snapshot.get("person") or {}
     employment = snapshot.get("employment") or {}
     event = snapshot.get("event") or {}
@@ -929,7 +947,8 @@ def _document_completion_gaps(snapshot: dict) -> list[str]:
     require(person.get("first_name"), "Nombre del trabajador")
     require(person.get("last_name"), "Apellido del trabajador")
     require(person.get("rut"), "RUT del trabajador")
-    require(person.get("email"), "Correo electrónico para enviar")
+    if require_email:
+        require(person.get("email"), "Correo electrónico para enviar")
     for key, label in (("rut", "RUT del trabajador"),):
         value = person.get(key)
         if value:
@@ -979,8 +998,10 @@ def _document_completion_gaps(snapshot: dict) -> list[str]:
     return missing
 
 
-def _raise_if_document_incomplete(snapshot: dict, action: str) -> None:
-    gaps = _document_completion_gaps(snapshot)
+def _raise_if_document_incomplete(
+    snapshot: dict, action: str, *, require_email: bool = True
+) -> None:
+    gaps = _document_completion_gaps(snapshot, require_email=require_email)
     if gaps:
         raise HTTPException(
             status_code=422,
@@ -993,6 +1014,8 @@ def prepare_document(db: Session, document_id: UUID, user: User) -> dict:
     if not doc:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     _allowed(user, doc, db, write=True)
+    if doc.signature_method == "PAPER":
+        raise HTTPException(status_code=409, detail="Este documento está en flujo de firma en papel. Crea una nueva versión para cambiar el método.")
     if doc.status != "DRAFT":
         raise HTTPException(status_code=409, detail="Solo un borrador se puede preparar")
     snapshot = _snapshot(db, doc)
@@ -1011,6 +1034,8 @@ def send_for_signature(
     if not doc:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     _allowed(user, doc, db, write=True)
+    if doc.signature_method == "PAPER":
+        raise HTTPException(status_code=409, detail="Este documento está reservado para firma en papel. Crea una nueva versión para enviarlo electrónicamente.")
     if doc.status not in {"READY", "SENT", "VIEWED"}:
         raise HTTPException(
             status_code=409, detail="El estado actual no permite enviar o reenviar este documento"
@@ -1052,6 +1077,7 @@ def send_for_signature(
         )
     )
     doc.frozen_snapshot = snapshot
+    doc.signature_method = "ELECTRONIC"
     doc.status = "SENT"
     doc.updated_at = now
     db.commit()
@@ -1108,6 +1134,8 @@ def send_documents_together(
     _allowed(user, epp, db, write=True)
     if contract.kind != "CONTRACT" or epp.kind != "EPP":
         raise HTTPException(status_code=422, detail="Selecciona un contrato y un documento EPP")
+    if contract.signature_method == "PAPER" or epp.signature_method == "PAPER":
+        raise HTTPException(status_code=409, detail="No se pueden mezclar documentos de firma en papel con un envío electrónico.")
     if (
         contract.person_id != epp.person_id
         or contract.client_id != epp.client_id
@@ -1138,6 +1166,7 @@ def send_documents_together(
     for doc in (contract, epp):
         if doc.status == "DRAFT":
             prepare_document(db, doc.id, user)
+        doc.signature_method = "ELECTRONIC"
     bundle_id = uuid4()
     contract_sent = send_for_signature(db, contract.id, user, bundle_id=bundle_id)
     epp_sent = send_for_signature(db, epp.id, user, bundle_id=bundle_id)
@@ -1622,6 +1651,274 @@ def download_document(db: Session, document_id: UUID, user: User, *, signed: boo
     return _read_pdf(doc.signed_pdf_key if signed else doc.original_pdf_key)
 
 
+def build_paper_print_batch(
+    db: Session,
+    event_id: UUID,
+    person_ids: list[UUID],
+    kinds: list[str],
+    user: User,
+    *,
+    document_ids: list[UUID] | None = None,
+    allow_reprint_existing: bool = False,
+) -> tuple[bytes, DocumentPaperBatch]:
+    """Freeze paper-selected document versions and create an immutable printable batch."""
+    event = db.get(Event, event_id)
+    if not event or not can_manage_event(user, event_id, db):
+        raise HTTPException(status_code=404, detail="Faena no encontrada o sin acceso")
+
+    unique_person_ids = list(dict.fromkeys(person_ids))
+    if len(unique_person_ids) != len(person_ids):
+        raise HTTPException(status_code=422, detail="La selección contiene personas repetidas")
+
+    if document_ids is not None and len(set(document_ids)) != len(document_ids):
+        raise HTTPException(status_code=422, detail="La selección contiene documentos repetidos")
+
+    docs = list(db.scalars(
+        _document_query()
+        .where(
+            ManagedDocument.event_id == event_id,
+            ManagedDocument.person_id.in_(unique_person_ids),
+            ManagedDocument.kind.in_(kinds),
+        )
+        .order_by(ManagedDocument.person_id, ManagedDocument.kind, ManagedDocument.version.desc(), ManagedDocument.updated_at.desc())
+    ))
+    latest: dict[tuple[UUID, str], ManagedDocument] = {}
+    for doc in docs:
+        _allowed(user, doc, db)
+        latest.setdefault((doc.person_id, doc.kind), doc)
+
+    if document_ids is not None:
+        selected = {doc.id: doc for doc in docs}
+        if any(document_id not in selected for document_id in document_ids):
+            raise HTTPException(status_code=404, detail="Documento no encontrado en esta faena")
+        selected_docs = [selected[document_id] for document_id in document_ids]
+    else:
+        selected_docs = []
+
+    writer = PdfWriter()
+    included_docs: list[ManagedDocument] = []
+    for person_id in unique_person_ids:
+        person_docs = (
+            [doc for doc in selected_docs if doc.person_id == person_id]
+            if document_ids is not None
+            else [latest[(person_id, kind)] for kind in kinds if (person_id, kind) in latest]
+        )
+        for doc in person_docs:
+            # Do not pull digital workflow documents into a paper packet.
+            if doc.status not in {"DRAFT", "READY"} or doc.signature_method == "ELECTRONIC":
+                continue
+            if doc.signature_method not in {None, "PAPER"}:
+                continue
+            # A prepared document belongs to its first immutable batch. Reprints
+            # use that batch's saved PDF so later edits cannot change what was issued.
+            if doc.paper_batch_items and not allow_reprint_existing:
+                continue
+            if doc.original_pdf_key:
+                content = _read_pdf(doc.original_pdf_key)
+            else:
+                snapshot = doc.frozen_snapshot or _snapshot(db, doc)
+                _raise_if_document_incomplete(
+                    snapshot, "imprimir para firma en papel", require_email=False
+                )
+                if not snapshot.get("employer_signature"):
+                    profile = _signature_for_event(db, doc.event_id)
+                    snapshot["employer_signature"] = {
+                        "signer_name": profile["signer_name"],
+                        "signer_rut": profile["signer_rut"],
+                        "signature_data_url": profile["signature_data_url"],
+                        "applied_at": datetime.now(UTC).isoformat(),
+                    }
+                content, _ = render_html(render_document_html(snapshot))
+                key, checksum = _store_pdf(doc, content, "original")
+                doc.original_pdf_key, doc.original_sha256 = key, checksum
+                doc.frozen_snapshot = snapshot
+            reader = PdfReader(BytesIO(content))
+            if reader.is_encrypted:
+                raise HTTPException(status_code=422, detail="Uno de los documentos no se puede imprimir")
+            start_page = len(writer.pages)
+            for page in reader.pages:
+                writer.add_page(page)
+            writer.add_outline_item(
+                f"{doc.person.first_name} {doc.person.last_name} · {'Contrato' if doc.kind == 'CONTRACT' else 'EPP'} · v{doc.version}",
+                start_page,
+            )
+            doc.signature_method = "PAPER"
+            doc.paper_status = doc.paper_status or "PREPARED"
+            doc.updated_at = datetime.utcnow()
+            included_docs.append(doc)
+
+    if not included_docs:
+        raise HTTPException(
+            status_code=409,
+            detail="La selección no tiene borradores vigentes listos para imprimir en papel.",
+        )
+
+    output = BytesIO()
+    writer.add_metadata({"/Title": f"Documentos para firma en papel · {event.name}", "/Author": "Greenway"})
+    writer.write(output)
+    batch_id = uuid4()
+    batch_pdf = output.getvalue()
+    storage_key, checksum = document_storage.store(batch_id, 1, "paper-batch", batch_pdf)
+    batch = DocumentPaperBatch(
+        id=batch_id,
+        client_id=event.client_id,
+        event_id=event.id,
+        created_by=user.id,
+        storage_key=storage_key,
+        sha256=checksum,
+        kinds=kinds,
+        people_count=len({doc.person_id for doc in included_docs}),
+        document_count=len(included_docs),
+        page_count=len(writer.pages),
+    )
+    db.add(batch)
+    for doc in included_docs:
+        db.add(DocumentPaperBatchItem(
+            batch_id=batch_id,
+            client_id=event.client_id,
+            event_id=event.id,
+            document_id=doc.id,
+            person_id=doc.person_id,
+            document_version=doc.version,
+            kind=doc.kind,
+        ))
+    db.commit()
+    return batch_pdf, batch
+
+
+def list_paper_batches(db: Session, event_id: UUID, user: User) -> list[dict]:
+    event = db.get(Event, event_id)
+    if not event or not can_manage_event(user, event_id, db):
+        raise HTTPException(status_code=404, detail="Faena no encontrada o sin acceso")
+    batches = db.scalars(
+        select(DocumentPaperBatch)
+        .where(DocumentPaperBatch.event_id == event_id)
+        .order_by(DocumentPaperBatch.created_at.desc())
+        .limit(50)
+    ).all()
+    return [_paper_batch_read(batch) for batch in batches]
+
+
+def _paper_batch_read(batch: DocumentPaperBatch) -> dict:
+    return {
+        "id": str(batch.id), "event_id": str(batch.event_id),
+        "people_count": batch.people_count, "document_count": batch.document_count,
+        "page_count": batch.page_count, "kinds": batch.kinds,
+        "printed_at": batch.printed_at, "created_at": batch.created_at,
+    }
+
+
+def get_paper_batch(db: Session, batch_id: UUID, user: User) -> tuple[bytes, DocumentPaperBatch]:
+    batch = db.get(DocumentPaperBatch, batch_id)
+    if not batch or not can_manage_event(user, batch.event_id, db):
+        raise HTTPException(status_code=404, detail="Lote en papel no encontrado")
+    return document_storage.read(batch.storage_key), batch
+
+
+def mark_paper_batch_printed(db: Session, batch_id: UUID, user: User) -> dict:
+    batch = db.scalar(select(DocumentPaperBatch).where(DocumentPaperBatch.id == batch_id).with_for_update())
+    if not batch or not can_manage_event(user, batch.event_id, db):
+        raise HTTPException(status_code=404, detail="Lote en papel no encontrado")
+    now = datetime.utcnow()
+    batch.printed_at = batch.printed_at or now
+    batch.printed_by = batch.printed_by or user.id
+    items = db.scalars(
+        select(DocumentPaperBatchItem).where(DocumentPaperBatchItem.batch_id == batch.id)
+    ).all()
+    for item in items:
+        doc = db.scalar(select(ManagedDocument).where(ManagedDocument.id == item.document_id).with_for_update())
+        if doc and doc.signature_method == "PAPER" and doc.paper_status == "PREPARED":
+            doc.paper_status, doc.paper_printed_at, doc.paper_printed_by = "PRINTED", now, user.id
+            doc.updated_at = now
+    db.commit()
+    return _paper_batch_read(batch)
+
+
+def mark_paper_document_signed_received(db: Session, document_id: UUID, user: User) -> dict:
+    doc = db.scalar(_document_query().where(ManagedDocument.id == document_id).with_for_update())
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    _allowed(user, doc, db, write=True)
+    if doc.signature_method != "PAPER" or doc.paper_status not in {"PREPARED", "PRINTED", "SIGNED_RECEIVED"}:
+        raise HTTPException(status_code=409, detail="Este documento no está preparado para firma en papel.")
+    if doc.paper_status != "SIGNED_RECEIVED":
+        doc.paper_status = "SIGNED_RECEIVED"
+        doc.paper_signed_received_at = datetime.utcnow()
+        doc.paper_signed_received_by = user.id
+        doc.updated_at = datetime.utcnow()
+        db.commit()
+    return get_document(db, doc.id, user)
+
+
+def upload_paper_signed_copy(db: Session, document_id: UUID, user: User, content: bytes, content_type: str, filename: str) -> dict:
+    doc = db.scalar(_document_query().where(ManagedDocument.id == document_id).with_for_update())
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    _allowed(user, doc, db, write=True)
+    if doc.signature_method != "PAPER" or doc.paper_status not in {"PRINTED", "SIGNED_RECEIVED", "ARCHIVED"}:
+        raise HTTPException(status_code=409, detail="Solo se puede adjuntar una copia a un documento impreso para firma en papel.")
+    if doc.paper_evidence_storage_key:
+        raise HTTPException(status_code=409, detail="La copia archivada es inmutable. Si necesitas corregirla, crea una nueva versión del documento.")
+    if not content or len(content) > settings.max_upload_size_bytes:
+        raise HTTPException(status_code=413 if content else 400, detail="El archivo está vacío o supera el tamaño permitido.")
+    if content_type == "application/pdf":
+        valid = content.startswith(b"%PDF-")
+        extension = ".pdf"
+    elif content_type == "image/png":
+        valid = content.startswith(b"\x89PNG\r\n\x1a\n")
+        extension = ".png"
+    elif content_type == "image/jpeg":
+        valid = content.startswith(b"\xff\xd8\xff")
+        extension = ".jpg"
+    else:
+        valid, extension = False, ""
+    if not valid:
+        raise HTTPException(status_code=415, detail="Adjunta un PDF, PNG o JPG válido.")
+    try:
+        if content_type == "application/pdf":
+            reader = PdfReader(BytesIO(content))
+            if reader.is_encrypted or not reader.pages:
+                raise ValueError("PDF vacío o cifrado")
+        else:
+            with Image.open(BytesIO(content)) as image:
+                image.verify()
+            with Image.open(BytesIO(content)) as image:
+                if image.format != ("PNG" if content_type == "image/png" else "JPEG"):
+                    raise ValueError("Formato de imagen distinto al declarado")
+                if image.width * image.height > settings.max_image_pixels:
+                    raise ValueError("Imagen excede dimensiones permitidas")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="El archivo está dañado o no coincide con su formato.") from exc
+    checksum = hashlib.sha256(content).hexdigest()
+    safe_name = sanitize_filename(filename, "copia-firmada")
+    key = f"{settings.r2_private_prefix.strip('/')}/documents-paper/{doc.id}/{uuid4()}{extension}"
+    stored_key = save_private_object(key, content, content_type=content_type)
+    now = datetime.utcnow()
+    doc.paper_evidence_storage_key = stored_key
+    doc.paper_evidence_sha256 = checksum
+    doc.paper_evidence_content_type = content_type
+    doc.paper_evidence_file_name = safe_name
+    doc.paper_evidence_uploaded_at = now
+    doc.paper_evidence_uploaded_by = user.id
+    doc.paper_signed_received_at = doc.paper_signed_received_at or now
+    doc.paper_signed_received_by = doc.paper_signed_received_by or user.id
+    doc.paper_status = "ARCHIVED"
+    doc.updated_at = now
+    db.commit()
+    return get_document(db, doc.id, user)
+
+
+def download_paper_signed_copy(db: Session, document_id: UUID, user: User) -> tuple[bytes, str, str]:
+    doc = db.get(ManagedDocument, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    _allowed(user, doc, db)
+    if doc.signature_method != "PAPER" or not doc.paper_evidence_storage_key:
+        raise HTTPException(status_code=404, detail="No hay copia firmada archivada")
+    content, mime = read_stored_file(doc.paper_evidence_storage_key)
+    return content, mime, doc.paper_evidence_file_name or f"copia-firmada-{doc.id}"
+
+
 def cancel_document(db: Session, document_id: UUID, user: User) -> dict:
     doc = db.get(ManagedDocument, document_id)
     if not doc:
@@ -1647,9 +1944,10 @@ def create_new_version(db: Session, document_id: UUID, user: User) -> dict:
     if not old:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     _allowed(user, old, db, write=True)
-    if _read(old)["status"] not in {"SENT", "VIEWED", "PARTIALLY_SIGNED", "COMPLETED", "EXPIRED"}:
+    paper_version = old.signature_method == "PAPER" and old.status in {"DRAFT", "READY", "CANCELLED"}
+    if not paper_version and _read(old)["status"] not in {"SENT", "VIEWED", "PARTIALLY_SIGNED", "COMPLETED", "EXPIRED"}:
         raise HTTPException(
-            status_code=409, detail="Solo un documento enviado admite una nueva versión"
+            status_code=409, detail="Solo un documento enviado o reservado para papel admite una nueva versión"
         )
     old.status = "SUPERSEDED"
     for request in db.scalars(

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user, require_roles
+from app.core.config import settings
 from app.core.permissions import can_view_operational_event
 from app.db.session import get_db
 from app.models.audit_log import AuditLog
@@ -29,6 +30,7 @@ from app.schemas.document_schema import (
     ExistingPeopleAssignmentCommit,
     EmploymentUpdate,
     GenerateMissingDraftsCommit,
+    PaperBatchPrintRequest,
     PersonCreate,
     PersonImportCommit,
     PersonUpdate,
@@ -50,6 +52,167 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 _staff_roles = (UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUPERVISOR)
 _rate_limit_counts: dict[tuple[str, int], int] = {}
 _rate_limit_lock = Lock()
+
+
+@router.post("/events/{event_id}/paper-print-batch")
+def print_paper_batch(
+    event_id: UUID,
+    payload: PaperBatchPrintRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+):
+    content, batch = managed_documents_service.build_paper_print_batch(
+        db, event_id, payload.person_ids, payload.kinds, current_user
+    )
+    _audit(
+        db,
+        current_user,
+        "DOCUMENT_PAPER_PRINT_BATCH_PREPARED",
+        event_id=event_id,
+        request=request,
+        metadata={
+            "people_count": len(set(payload.person_ids)),
+            "document_count": batch.document_count,
+            "page_count": batch.page_count,
+            "batch_id": str(batch.id),
+            "kinds": payload.kinds,
+        },
+        entity_id=batch.id,
+        entity_type="DocumentPaperBatch",
+    )
+    return Response(
+        content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="greenway-firma-papel-{event_id}.pdf"',
+            "Cache-Control": "private, no-store",
+            "X-Documents-Included": str(batch.document_count),
+            "X-Pages": str(batch.page_count),
+            "X-Paper-Batch-Id": str(batch.id),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post("/{document_id}/paper-print")
+def print_single_paper_document(
+    document_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+):
+    document = db.get(ManagedDocument, document_id)
+    if not document or not document.event_id:
+        raise HTTPException(status_code=404, detail="Documento de faena no encontrado")
+    content, batch = managed_documents_service.build_paper_print_batch(
+        db,
+        document.event_id,
+        [document.person_id],
+        [document.kind],
+        current_user,
+        document_ids=[document.id],
+        allow_reprint_existing=True,
+    )
+    _audit(
+        db,
+        current_user,
+        "DOCUMENT_PAPER_PRINT_SINGLE_PREPARED",
+        document_id=document.id,
+        event_id=document.event_id,
+        request=request,
+        metadata={"batch_id": str(batch.id), "document_version": document.version},
+        entity_id=batch.id,
+        entity_type="DocumentPaperBatch",
+    )
+    return Response(
+        content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="greenway-papel-{document.id}-v{document.version}.pdf"',
+            "Cache-Control": "private, no-store",
+            "X-Documents-Included": str(batch.document_count),
+            "X-Pages": str(batch.page_count),
+            "X-Paper-Batch-Id": str(batch.id),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/events/{event_id}/paper-batches")
+def get_paper_batches(
+    event_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+):
+    return managed_documents_service.list_paper_batches(db, event_id, current_user)
+
+
+@router.get("/paper-batches/{batch_id}/pdf")
+def download_paper_batch(
+    batch_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+):
+    content, batch = managed_documents_service.get_paper_batch(db, batch_id, current_user)
+    return Response(content, media_type="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="greenway-papel-{batch.id}.pdf"',
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+    })
+
+
+@router.post("/paper-batches/{batch_id}/printed")
+def mark_paper_batch_printed(
+    batch_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+):
+    result = managed_documents_service.mark_paper_batch_printed(db, batch_id, current_user)
+    _audit(db, current_user, "DOCUMENT_PAPER_BATCH_PRINTED", event_id=UUID(result["event_id"]), request=request, metadata={"batch_id": str(batch_id), "documents": result["document_count"]}, entity_id=batch_id, entity_type="DocumentPaperBatch")
+    return result
+
+
+@router.post("/{document_id}/paper-signed-received")
+def mark_paper_signed_received(
+    document_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+):
+    result = managed_documents_service.mark_paper_document_signed_received(db, document_id, current_user)
+    _audit(db, current_user, "DOCUMENT_PAPER_SIGNED_RECEIVED", document_id, result.get("event_id"), request, {"paper_status": result["paper_status"]})
+    return result
+
+
+@router.post("/{document_id}/paper-signed-copy", status_code=200)
+def upload_paper_signed_copy(
+    document_id: UUID,
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+):
+    content = file.file.read(settings.max_upload_size_bytes + 1)
+    result = managed_documents_service.upload_paper_signed_copy(
+        db, document_id, current_user, content, file.content_type or "", file.filename or "copia-firmada"
+    )
+    _audit(db, current_user, "DOCUMENT_PAPER_SIGNED_COPY_ARCHIVED", document_id, result.get("event_id"), request, {"sha256": result.get("paper_evidence_sha256"), "file_name": result.get("paper_evidence_file_name")})
+    return result
+
+
+@router.get("/{document_id}/paper-signed-copy")
+def download_paper_signed_copy(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*_staff_roles)),
+):
+    content, mime, filename = managed_documents_service.download_paper_signed_copy(db, document_id, current_user)
+    disposition = "inline" if mime == "application/pdf" else "attachment"
+    return Response(content, media_type=mime, headers={
+        "Content-Disposition": f'{disposition}; filename="{quote(filename)}"',
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+    })
 
 
 @router.get("/contract-defaults")

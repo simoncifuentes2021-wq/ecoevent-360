@@ -81,6 +81,8 @@ def create_batch(
             raise HTTPException(status_code=404, detail="No se encontraron ambos documentos de una persona")
         managed_documents_service._allowed(user, contract, db, write=True)
         managed_documents_service._allowed(user, epp, db, write=True)
+        if contract.signature_method == "PAPER" or epp.signature_method == "PAPER":
+            raise HTTPException(status_code=409, detail=f"{contract.person.first_name} tiene documentos reservados para firma en papel; no se enviarán electrónicamente.")
         if contract.kind != "CONTRACT" or epp.kind != "EPP":
             raise HTTPException(status_code=422, detail="Cada conjunto requiere contrato y EPP")
         if (

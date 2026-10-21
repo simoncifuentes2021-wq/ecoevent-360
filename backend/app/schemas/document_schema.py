@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class PersonInput(BaseModel):
@@ -84,6 +84,19 @@ class ExistingPeopleAssignmentCommit(BaseModel):
 class GenerateMissingDraftsCommit(BaseModel):
     event_id: UUID
     person_ids: list[UUID] = Field(min_length=1, max_length=500)
+
+
+class PaperBatchPrintRequest(BaseModel):
+    person_ids: list[UUID] = Field(min_length=1, max_length=200)
+    kinds: list[str] = Field(min_length=1, max_length=2)
+
+    @field_validator("kinds")
+    @classmethod
+    def validate_kinds(cls, value: list[str]) -> list[str]:
+        allowed = {"CONTRACT", "EPP"}
+        if len(set(value)) != len(value) or any(kind not in allowed for kind in value):
+            raise ValueError("Selecciona contrato, EPP o ambos, sin repetir.")
+        return value
 
 
 class PersonRead(BaseModel):

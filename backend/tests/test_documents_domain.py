@@ -657,3 +657,100 @@ def test_document_storage_can_write_and_read_private_r2_objects(monkeypatch):
     assert checksum == hashlib.sha256(pdf).hexdigest()
     assert storage.read(key) == pdf
     assert stored[key] == (pdf, "application/pdf")
+
+
+def test_document_storage_uses_new_immutable_key_when_previous_upload_was_orphaned(monkeypatch):
+    from app.services.document_storage_service import CloudflareR2PrivateDocumentStorage
+
+    stored = {}
+    attempts = 0
+
+    def fake_save(key, content, *, content_type):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise FileExistsError("orphaned object from a previous interrupted request")
+        stored[key] = (content, content_type)
+        return key
+
+    monkeypatch.setattr(settings, "r2_private_prefix", "private")
+    monkeypatch.setattr(
+        "app.services.document_storage_service.save_private_object_to_r2", fake_save
+    )
+    storage = CloudflareR2PrivateDocumentStorage()
+    document_id = uuid4()
+    pdf = b"%PDF-1.7\n%%EOF"
+
+    key, checksum = storage.store(document_id, 1, "original", pdf)
+
+    assert attempts == 2
+    assert key.startswith(f"private/documents/{document_id}/v1-original-")
+    assert key.endswith(".pdf")
+    assert checksum == hashlib.sha256(pdf).hexdigest()
+    assert stored[key] == (pdf, "application/pdf")
+
+
+def test_paper_print_batch_merges_only_unsigned_drafts_without_changing_digital_status(monkeypatch):
+    from app.services.managed_documents_service import build_paper_print_batch
+
+    event_id, person_id, sent_person_id = uuid4(), uuid4(), uuid4()
+    pdf_writer = __import__("pypdf").PdfWriter()
+    pdf_writer.add_blank_page(width=612, height=792)
+    output = BytesIO()
+    pdf_writer.write(output)
+    pdf_bytes = output.getvalue()
+    draft = SimpleNamespace(
+        person_id=person_id, kind="CONTRACT", status="DRAFT", version=1,
+        updated_at=datetime.now(UTC), original_pdf_key="draft.pdf",
+        signature_method=None, paper_status=None, paper_batch_items=[],
+        event_id=event_id, client_id=uuid4(), id=uuid4(),
+        person=SimpleNamespace(first_name="Ana", last_name="Pérez"),
+    )
+    sent = SimpleNamespace(
+        person_id=sent_person_id, kind="CONTRACT", status="SENT", version=1,
+        updated_at=datetime.now(UTC), original_pdf_key="sent.pdf",
+        signature_method="ELECTRONIC", paper_status=None, paper_batch_items=[],
+        person=SimpleNamespace(first_name="Luis", last_name="Rojas"),
+    )
+
+    event = SimpleNamespace(name="Faena de prueba", client_id=draft.client_id, id=event_id)
+
+    class FakeDb:
+        def get(self, model, key):
+            return event
+
+        def scalars(self, statement):
+            return iter([draft, sent])
+
+        def add(self, _item):
+            pass
+
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(managed_documents_service, "can_manage_event", lambda *_: True)
+    monkeypatch.setattr(managed_documents_service, "_allowed", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(managed_documents_service, "_read_pdf", lambda _key: pdf_bytes)
+    monkeypatch.setattr(managed_documents_service.document_storage, "store", lambda *_args: ("paper-batch.pdf", "checksum"))
+
+    pdf, batch = build_paper_print_batch(
+        FakeDb(), event_id, [person_id, sent_person_id], ["CONTRACT"], SimpleNamespace(id=uuid4())
+    )
+
+    assert batch.document_count == 1
+    assert batch.page_count == 1
+    assert len(PdfReader(BytesIO(pdf)).pages) == 1
+    assert draft.status == "DRAFT"
+    assert sent.status == "SENT"
+    assert draft.signature_method == "PAPER"
+    assert draft.paper_status == "PREPARED"
+    assert sent.signature_method == "ELECTRONIC"
+
+
+def test_paper_print_batch_request_rejects_duplicate_or_unknown_kinds():
+    from app.schemas.document_schema import PaperBatchPrintRequest
+
+    with pytest.raises(ValueError):
+        PaperBatchPrintRequest(person_ids=[uuid4()], kinds=["CONTRACT", "CONTRACT"])
+    with pytest.raises(ValueError):
+        PaperBatchPrintRequest(person_ids=[uuid4()], kinds=["UNKNOWN"])

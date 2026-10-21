@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 from typing import Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 
@@ -34,13 +34,16 @@ class LocalPrivateDocumentStorage:
     def store(
         self, document_id: UUID, version: int, variant: str, content: bytes
     ) -> tuple[str, str]:
-        if variant not in {"original", "signed"} or not content.startswith(b"%PDF-"):
+        if variant not in {"original", "signed", "paper-batch"} or not content.startswith(b"%PDF-"):
             raise ValueError("Invalid document artifact")
         root = Path(settings.local_private_storage_root).resolve()
         path = self._path(f"documents/{document_id}/v{version}-{variant}.pdf")
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
-            raise HTTPException(status_code=409, detail="Este PDF inmutable ya existe")
+            # A previous request may have uploaded an immutable object and then
+            # failed before its database transaction committed the reference.
+            # Keep the orphan untouched and write this retry under a fresh key.
+            path = self._path(f"documents/{document_id}/v{version}-{variant}-{uuid4().hex}.pdf")
         path.write_bytes(content)
         key = path.relative_to(root).as_posix()
         return key, hashlib.sha256(content).hexdigest()
@@ -58,11 +61,17 @@ class CloudflareR2PrivateDocumentStorage:
     def store(
         self, document_id: UUID, version: int, variant: str, content: bytes
     ) -> tuple[str, str]:
-        if variant not in {"original", "signed"} or not content.startswith(b"%PDF-"):
+        if variant not in {"original", "signed", "paper-batch"} or not content.startswith(b"%PDF-"):
             raise ValueError("Invalid document artifact")
         prefix = settings.r2_private_prefix.strip("/")
         key = f"{prefix}/documents/{document_id}/v{version}-{variant}.pdf"
-        save_private_object_to_r2(key, content, content_type="application/pdf")
+        try:
+            save_private_object_to_r2(key, content, content_type="application/pdf")
+        except FileExistsError:
+            # Never overwrite immutable R2 objects. A retry after a partially
+            # failed request gets a fresh key; the database points at the winner.
+            key = f"{prefix}/documents/{document_id}/v{version}-{variant}-{uuid4().hex}.pdf"
+            save_private_object_to_r2(key, content, content_type="application/pdf")
         return key, hashlib.sha256(content).hexdigest()
 
     def read(self, reference: str) -> bytes:
