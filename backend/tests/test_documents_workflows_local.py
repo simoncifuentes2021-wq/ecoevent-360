@@ -918,6 +918,78 @@ def test_event_contract_defaults_override_global_and_preflight_reports_missing_d
     assert reset["employer_name"] == "Greenway Global SpA"
 
 
+def test_apply_employer_defaults_only_fills_empty_fields_in_contract_drafts(local_document_staff):
+    db, client, staff, event = local_document_staff
+    person = _person_for_staff(db, client, staff, event_id=event.id)
+    defaults = DocumentContractDefaults(
+        employer_name="Greenway Servicios Ambientales SpA",
+        employer_rut=_valid_rut_from_seed(76234567),
+        representative_name="Gonzalo Ormeño",
+        representative_rut=_valid_rut_from_seed(17188611),
+        employer_address="Ñuble 1034",
+        employer_commune="Santiago",
+    )
+    managed_documents_service.save_event_contract_defaults(db, event.id, defaults, staff)
+
+    partial = managed_documents_service.create_document(
+        db,
+        DocumentCreate(
+            person_id=person.id, event_id=event.id, kind="CONTRACT",
+            title="Contrato parcial", data={"employer_name": "Empresa ya revisada"},
+        ),
+        staff,
+    )
+    complete = managed_documents_service.create_document(
+        db,
+        DocumentCreate(
+            person_id=person.id, event_id=event.id, kind="CONTRACT",
+            title="Contrato completo", data={
+                "employer_name": "Nombre manual",
+                "employer_rut": _valid_rut_from_seed(11223344),
+                "representative_name": "Representante manual",
+                "representative_rut": _valid_rut_from_seed(44332211),
+                "employer_address": "Dirección manual",
+                "employer_commune": "Temuco",
+            },
+        ),
+        staff,
+    )
+    sent = managed_documents_service.create_document(
+        db,
+        DocumentCreate(
+            person_id=person.id, event_id=event.id, kind="CONTRACT",
+            title="Contrato enviado", data={},
+        ),
+        staff,
+    )
+    sent_row = db.get(ManagedDocument, sent["id"])
+    sent_row.status = "SENT"
+    db.commit()
+
+    result = managed_documents_service.apply_employer_defaults_to_drafts(db, event.id, staff)
+    assert result == {
+        "event_id": str(event.id),
+        "documents_checked": 2,
+        "documents_updated": 1,
+        "documents_unchanged": 1,
+        "fields_filled": 5,
+        "missing_defaults": [],
+    }
+    partial_after = db.get(ManagedDocument, partial["id"])
+    assert partial_after.data["employer_name"] == "Empresa ya revisada"
+    assert partial_after.data["employer_rut"] == defaults.employer_rut
+    assert partial_after.data["representative_name"] == defaults.representative_name
+    complete_after = db.get(ManagedDocument, complete["id"])
+    assert complete_after.data["employer_name"] == "Nombre manual"
+    sent_after = db.get(ManagedDocument, sent["id"])
+    assert sent_after.status == "SENT"
+    assert sent_after.data == {}
+
+    repeated = managed_documents_service.apply_employer_defaults_to_drafts(db, event.id, staff)
+    assert repeated["documents_updated"] == 0
+    assert repeated["fields_filled"] == 0
+
+
 def test_person_history_returns_actor_and_field_changes(local_document_staff):
     db, client, staff, event = local_document_staff
     person = _person_for_staff(db, client, staff, event_id=event.id)

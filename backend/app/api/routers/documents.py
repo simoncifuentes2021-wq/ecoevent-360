@@ -85,6 +85,33 @@ def save_event_contract_defaults(
     return result
 
 
+@router.post("/events/{event_id}/apply-employer-defaults-to-drafts")
+def apply_employer_defaults_to_drafts(
+    event_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
+):
+    result = managed_documents_service.apply_employer_defaults_to_drafts(
+        db, event_id, current_user
+    )
+    _audit(
+        db,
+        current_user,
+        "DOCUMENT_EMPLOYER_DEFAULTS_APPLIED_TO_DRAFTS",
+        event_id=event_id,
+        request=request,
+        metadata={
+            "documents_checked": result["documents_checked"],
+            "documents_updated": result["documents_updated"],
+            "fields_filled": result["fields_filled"],
+        },
+        entity_id=event_id,
+        entity_type="Event",
+    )
+    return result
+
+
 @router.delete("/events/{event_id}/contract-defaults")
 def reset_event_contract_defaults(
     event_id: UUID,

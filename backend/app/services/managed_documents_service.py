@@ -363,6 +363,66 @@ def save_event_contract_defaults(
     return get_event_contract_defaults(db, event_id)
 
 
+def apply_employer_defaults_to_drafts(db: Session, event_id: UUID, user: User) -> dict:
+    """Fill only missing employer fields in editable contract drafts for one event."""
+    if user.role not in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Solo administración puede actualizar borradores")
+
+    event = db.scalar(select(Event).where(Event.id == event_id).with_for_update())
+    if not event or not can_view_operational_event(user, event, db):
+        raise HTTPException(status_code=404, detail="Faena no encontrada")
+
+    defaults = get_contract_defaults(db, event_id)
+    labels = {
+        "employer_name": "Razón social del empleador",
+        "employer_rut": "RUT del empleador",
+        "representative_name": "Representante legal",
+        "representative_rut": "RUT del representante",
+        "employer_address": "Domicilio del empleador",
+        "employer_commune": "Comuna del empleador",
+    }
+    missing_defaults = [
+        labels[key] for key in labels if not str(defaults.get(key) or "").strip()
+    ]
+    drafts = db.scalars(
+        select(ManagedDocument)
+        .where(
+            ManagedDocument.event_id == event.id,
+            ManagedDocument.client_id == event.client_id,
+            ManagedDocument.kind == "CONTRACT",
+            ManagedDocument.status == "DRAFT",
+        )
+        .order_by(ManagedDocument.created_at, ManagedDocument.id)
+        .with_for_update()
+    ).all()
+
+    documents_updated = 0
+    fields_filled = 0
+    for document in drafts:
+        data = dict(document.data or {})
+        changed = False
+        for key in labels:
+            default_value = str(defaults.get(key) or "").strip()
+            if default_value and not str(data.get(key) or "").strip():
+                data[key] = default_value
+                fields_filled += 1
+                changed = True
+        if changed:
+            document.data = data
+            document.updated_at = datetime.now(UTC).replace(tzinfo=None)
+            documents_updated += 1
+
+    db.commit()
+    return {
+        "event_id": str(event.id),
+        "documents_checked": len(drafts),
+        "documents_updated": documents_updated,
+        "documents_unchanged": len(drafts) - documents_updated,
+        "fields_filled": fields_filled,
+        "missing_defaults": missing_defaults,
+    }
+
+
 def clear_event_contract_defaults(db: Session, event_id: UUID, user: User) -> dict:
     if user.role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
         raise HTTPException(status_code=403, detail="Solo administración puede editar los datos base del contrato")

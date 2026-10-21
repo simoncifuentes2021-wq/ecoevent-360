@@ -103,6 +103,9 @@ test("la consola documental ofrece importación validada, PDF previo y acciones 
   assert.match(center, /Con problema/);
   assert.match(center, /Filtrar por cargo/);
   assert.match(center, /Datos de contrato para esta faena/);
+  assert.match(center, /Aplicar a borradores existentes/);
+  assert.match(center, /solo rellena datos del empleador que estén vacíos/);
+  assert.match(read("lib/api/documents.ts"), /apply-employer-defaults-to-drafts/);
   assert.match(center, /Historial de \$\{historyPerson\.name\}/);
   assert.match(center, /Reintentar \$\{emailBatch\.failed\} fallido\(s\)/);
   assert.match(center, /greenway\.documents\.active-email-batch/);

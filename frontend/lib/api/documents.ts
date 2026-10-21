@@ -32,6 +32,7 @@ export type DocumentEmailBatch = {
   skipped: number; created_at: string; items: DocumentEmailBatchItem[];
 };
 export type DocumentContractDefaults = { employer_name: string; employer_rut: string; representative_name: string; representative_rut: string; employer_address: string; employer_commune: string; has_event_override?: boolean };
+export type ApplyEmployerDefaultsResult = { event_id: string; documents_checked: number; documents_updated: number; documents_unchanged: number; fields_filled: number; missing_defaults: string[] };
 export type DocumentHistoryEntry = { id: string; action: string; description: string | null; actor: string; created_at: string; old_data: Record<string, unknown> | null; new_data: Record<string, unknown> | null; metadata: Record<string, unknown> | null };
 export type RepresentativeSignatureProfile = { configured: boolean; signer_name: string | null; signer_rut: string | null; signature_data_url: string | null; captured_at: string | null };
 export type EventEppTemplate = { event_id: string; items: Array<{ item_code: string; label: string }>; updated_at: string | null; draft_documents_updated?: number };
@@ -105,6 +106,7 @@ export const documentApi = {
   eventContractDefaults: (eventId: string) => api.get<DocumentContractDefaults>(`/documents/events/${eventId}/contract-defaults`),
   saveEventContractDefaults: (eventId: string, data: DocumentContractDefaults) => api.put<DocumentContractDefaults>(`/documents/events/${eventId}/contract-defaults`, data),
   resetEventContractDefaults: (eventId: string) => api.delete<DocumentContractDefaults>(`/documents/events/${eventId}/contract-defaults`),
+  applyEmployerDefaultsToDrafts: (eventId: string) => api.post<ApplyEmployerDefaultsResult>(`/documents/events/${eventId}/apply-employer-defaults-to-drafts`, {}),
   personHistory: (personId: string, eventId: string) => api.get<DocumentHistoryEntry[]>(`/documents/people/${personId}/history?event_id=${encodeURIComponent(eventId)}`),
   eventEppTemplate: (eventId: string) => api.get<EventEppTemplate>(`/documents/events/${eventId}/epp-template`),
   saveEventEppTemplate: (eventId: string, items: EventEppTemplate["items"]) => api.put<EventEppTemplate>(`/documents/events/${eventId}/epp-template`, { items }),
