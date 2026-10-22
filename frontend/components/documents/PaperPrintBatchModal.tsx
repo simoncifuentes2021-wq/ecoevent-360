@@ -91,7 +91,7 @@ export function PaperPrintBatchModal({
             </label>)}
           </div>
         </div>
-        <p className="rounded-lg bg-sky-50 p-3 text-xs text-sky-900">Se incluirán las versiones vigentes en borrador o listas. Al generar el lote, esas versiones quedan reservadas para firma en papel y no podrán enviarse ni editarse electrónicamente. Si luego necesitas cambiar de modalidad o corregir datos, crea una nueva versión. Los lotes guardados se pueden reimprimir.</p>
+        <p className="rounded-lg bg-sky-50 p-3 text-xs text-sky-900">Se incluirán las versiones vigentes en borrador o listas, con el espacio para que trabajador y empleador firmen a mano en papel. No necesitas tener configurada una firma electrónica del empleador para preparar el lote. Al generarlo, esas versiones quedan reservadas para firma en papel y no podrán enviarse ni editarse electrónicamente. Si luego necesitas cambiar de modalidad o corregir datos, crea una nueva versión. Los lotes guardados se pueden reimprimir.</p>
         {error ? <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800" role="alert">{error}</p> : null}
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cerrar</Button><Button disabled={busy || !selected.size || !kinds.length || selected.size > 200} onClick={() => void prepare()}><Printer className="h-4 w-4"/>{busy ? "Preparando PDF…" : "Crear lote para firma en papel"}</Button></div>
         {selected.size > 200 ? <p className="text-right text-xs text-amber-800">El lote admite hasta 200 trabajadores. Desmarca algunos y prepara el siguiente lote después.</p> : null}

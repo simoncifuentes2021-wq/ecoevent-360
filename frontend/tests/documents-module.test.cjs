@@ -184,6 +184,8 @@ test("la impresión en lote es independiente de firma electrónica y no cambia e
   assert.match(modal, /Crear lote para firma en papel/);
   assert.match(modal, /contentWindow\?\.print\(\)/);
   assert.match(modal, /No envía correos ni enlaces/);
+  assert.match(modal, /espacio para que trabajador y empleador firmen a mano en papel/);
+  assert.match(modal, /No necesitas tener configurada una firma electrónica del empleador/);
   assert.match(api, /paper-print-batch/);
   assert.match(api, /paperPrintSingle/);
   assert.match(api, /paper-print`/);

@@ -339,6 +339,25 @@ def test_contract_event_name_and_location_are_rendered_from_event_snapshot():
     assert "dependencias de <strong>Parque Central</strong>" in html
 
 
+def test_paper_document_templates_keep_blank_employer_signature_space():
+    contract = _contract_snapshot()
+    contract_html = render_document_html(contract)
+    assert "Firma manuscrita del trabajador" in contract_html
+    assert "Firma del empleador / representante legal" in contract_html
+    assert "class='signature-image'" not in contract_html
+
+    epp_html = render_document_html(
+        {
+            "kind": "EPP",
+            "person": {"first_name": "Ana", "last_name": "Pérez"},
+            "epp": {"items": []},
+        }
+    )
+    assert "Firma del Trabajador" in epp_html
+    assert "Firma / Timbre del Instructor o Supervisor" in epp_html
+    assert "class='signature-image'" not in epp_html
+
+
 def test_existing_lowercase_names_are_formatted_in_contract_and_epp_documents():
     contract = _contract_snapshot()
     contract["person"]["first_name"] = "sIMON"
@@ -690,7 +709,7 @@ def test_document_storage_uses_new_immutable_key_when_previous_upload_was_orphan
     assert stored[key] == (pdf, "application/pdf")
 
 
-def test_paper_print_batch_merges_only_unsigned_drafts_without_changing_digital_status(monkeypatch):
+def test_paper_print_batch_reprint_strips_saved_employer_signature(monkeypatch):
     from app.services.managed_documents_service import build_paper_print_batch
 
     event_id, person_id, sent_person_id = uuid4(), uuid4(), uuid4()
@@ -702,8 +721,11 @@ def test_paper_print_batch_merges_only_unsigned_drafts_without_changing_digital_
     draft = SimpleNamespace(
         person_id=person_id, kind="CONTRACT", status="DRAFT", version=1,
         updated_at=datetime.now(UTC), original_pdf_key="draft.pdf",
-        signature_method=None, paper_status=None, paper_batch_items=[],
+        signature_method="PAPER", paper_status="PREPARED", paper_batch_items=[object()],
         event_id=event_id, client_id=uuid4(), id=uuid4(),
+        frozen_snapshot={"kind": "CONTRACT", "employer_signature": {
+            "signer_name": "Representante", "signature_data_url": "data:image/png;base64,secret",
+        }},
         person=SimpleNamespace(first_name="Ana", last_name="Pérez"),
     )
     sent = SimpleNamespace(
@@ -730,11 +752,28 @@ def test_paper_print_batch_merges_only_unsigned_drafts_without_changing_digital_
 
     monkeypatch.setattr(managed_documents_service, "can_manage_event", lambda *_: True)
     monkeypatch.setattr(managed_documents_service, "_allowed", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(managed_documents_service, "_read_pdf", lambda _key: pdf_bytes)
+    monkeypatch.setattr(managed_documents_service, "_raise_if_document_incomplete", lambda *_args, **_kwargs: None)
+    def unexpected_signature_profile(*_args, **_kwargs):
+        raise AssertionError("paper flow must not need employer signature")
+
+    monkeypatch.setattr(managed_documents_service, "_signature_for_event", unexpected_signature_profile)
+    monkeypatch.setattr(
+        managed_documents_service,
+        "_read_pdf",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("must regenerate instead of reuse a stale PDF")),
+    )
+    rendered = {}
+    monkeypatch.setattr(
+        managed_documents_service,
+        "render_document_html",
+        lambda snapshot, **kwargs: rendered.update(snapshot=snapshot, kwargs=kwargs) or "paper html",
+    )
+    monkeypatch.setattr(managed_documents_service, "render_html", lambda _html: (pdf_bytes, 1))
     monkeypatch.setattr(managed_documents_service.document_storage, "store", lambda *_args: ("paper-batch.pdf", "checksum"))
 
     pdf, batch = build_paper_print_batch(
-        FakeDb(), event_id, [person_id, sent_person_id], ["CONTRACT"], SimpleNamespace(id=uuid4())
+        FakeDb(), event_id, [person_id, sent_person_id], ["CONTRACT"], SimpleNamespace(id=uuid4()),
+        allow_reprint_existing=True,
     )
 
     assert batch.document_count == 1
@@ -744,6 +783,8 @@ def test_paper_print_batch_merges_only_unsigned_drafts_without_changing_digital_
     assert sent.status == "SENT"
     assert draft.signature_method == "PAPER"
     assert draft.paper_status == "PREPARED"
+    assert "employer_signature" not in draft.frozen_snapshot
+    assert "include_employer_signature" not in rendered["kwargs"]
     assert sent.signature_method == "ELECTRONIC"
 
 

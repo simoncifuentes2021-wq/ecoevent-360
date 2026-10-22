@@ -911,6 +911,11 @@ def preview_pdf(db: Session, document_id: UUID, user: User) -> bytes:
         return _read_pdf(doc.signed_pdf_key)
 
     snapshot = doc.frozen_snapshot or _snapshot(db, doc)
+    if doc.signature_method == "PAPER":
+        # Paper PDFs keep the employer's handwritten signature space, but must
+        # never reproduce the digital signature saved in the event profile.
+        snapshot = dict(snapshot)
+        snapshot.pop("employer_signature", None)
     signatures = {}
     worker_requests = [
         request
@@ -930,7 +935,12 @@ def preview_pdf(db: Session, document_id: UUID, user: User) -> bytes:
         }
         if doc.kind == "EPP":
             snapshot = _apply_worker_epp_acknowledgments(snapshot, worker_form_data)
-    return render_html(render_document_html(snapshot, signatures))[0]
+    return render_html(
+        render_document_html(
+            snapshot,
+            signatures,
+        )
+    )[0]
 
 
 def _document_completion_gaps(snapshot: dict, *, require_email: bool = True) -> list[str]:
@@ -1709,29 +1719,20 @@ def build_paper_print_batch(
                 continue
             if doc.signature_method not in {None, "PAPER"}:
                 continue
-            # A prepared document belongs to its first immutable batch. Reprints
-            # use that batch's saved PDF so later edits cannot change what was issued.
+            # Preserve issued batches unless explicitly reprinting. When
+            # reprinting, regenerate from the frozen snapshot so stale PDFs
+            # cannot carry a previously embedded digital employer signature.
             if doc.paper_batch_items and not allow_reprint_existing:
                 continue
-            if doc.original_pdf_key:
-                content = _read_pdf(doc.original_pdf_key)
-            else:
-                snapshot = doc.frozen_snapshot or _snapshot(db, doc)
-                _raise_if_document_incomplete(
-                    snapshot, "imprimir para firma en papel", require_email=False
-                )
-                if not snapshot.get("employer_signature"):
-                    profile = _signature_for_event(db, doc.event_id)
-                    snapshot["employer_signature"] = {
-                        "signer_name": profile["signer_name"],
-                        "signer_rut": profile["signer_rut"],
-                        "signature_data_url": profile["signature_data_url"],
-                        "applied_at": datetime.now(UTC).isoformat(),
-                    }
-                content, _ = render_html(render_document_html(snapshot))
-                key, checksum = _store_pdf(doc, content, "original")
-                doc.original_pdf_key, doc.original_sha256 = key, checksum
-                doc.frozen_snapshot = snapshot
+            snapshot = dict(doc.frozen_snapshot or _snapshot(db, doc))
+            snapshot.pop("employer_signature", None)
+            _raise_if_document_incomplete(
+                snapshot, "imprimir para firma en papel", require_email=False
+            )
+            content, _ = render_html(render_document_html(snapshot))
+            key, checksum = _store_pdf(doc, content, "original")
+            doc.original_pdf_key, doc.original_sha256 = key, checksum
+            doc.frozen_snapshot = snapshot
             reader = PdfReader(BytesIO(content))
             if reader.is_encrypted:
                 raise HTTPException(status_code=422, detail="Uno de los documentos no se puede imprimir")
