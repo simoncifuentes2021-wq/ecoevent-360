@@ -10,6 +10,7 @@ from app.api.routers import (
     event_forms,
     events,
     evidences,
+    field_staff,
     environmental_impact,
     health,
     incidents,
@@ -19,6 +20,7 @@ from app.api.routers import (
     logbooks,
     orders,
     purchase_requests,
+    purchase_orders,
     reports,
     services,
     show_operations,
@@ -30,6 +32,7 @@ from app.api.routers import (
     waste,
     warehouses,
     zones,
+    volunteers,
 )
 
 routers = [
@@ -53,6 +56,7 @@ routers = [
     logistics_orders.router,
     logbooks.router,
     purchase_requests.router,
+    purchase_orders.router,
     stock.router,
     stock.warehouse_stock_router,
     stock.inventory_stock_router,
@@ -71,4 +75,8 @@ routers = [
     dashboard.router,
     documents.router,
     reports.router,
+    volunteers.router,
+    volunteers.public_router,
+    volunteers.public_history_router,
+    field_staff.router,
 ]

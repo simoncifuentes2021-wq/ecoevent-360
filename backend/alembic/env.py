@@ -8,7 +8,14 @@ from app.db.base import Base
 from app import models  # noqa: F401
 
 config = context.config
-migration_url = settings.migration_database_url or settings.database_url
+# Local/development migrations must always follow the runtime database URL. This
+# prevents a copied MIGRATION_DATABASE_URL from pointing a developer machine at
+# a remote or production database. Production may use its dedicated URL.
+migration_url = (
+    (settings.migration_database_url or settings.database_url)
+    if settings.app_env.lower() == "production"
+    else settings.database_url
+)
 config.set_main_option("sqlalchemy.url", migration_url)
 
 if config.config_file_name is not None:

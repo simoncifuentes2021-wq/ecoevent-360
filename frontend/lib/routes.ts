@@ -37,7 +37,9 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/clientes", label: "Clientes", icon: BriefcaseBusiness },
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
     { href: "/admin/eventos", label: "Eventos", icon: Sparkles },
+    { href: "/admin/voluntarios-activaciones", label: "Voluntarios y Activaciones", icon: Recycle },
     { href: "/admin/documentos", label: "Documentos", icon: ScrollText },
+    { href: "/admin/ordenes-compra", label: "Órdenes de compra", icon: ShoppingCart },
     { href: "/admin/bitacoras", label: "Bitácoras", icon: ClipboardCheck },
     { href: "/admin/logistica/pedidos", label: "Pedidos logisticos", icon: PackageSearch },
     { href: "/admin/stock", label: "Stock", icon: Boxes },
@@ -58,7 +60,9 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/admin/clientes", label: "Clientes", icon: BriefcaseBusiness },
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
     { href: "/admin/eventos", label: "Eventos", icon: Sparkles },
+    { href: "/admin/voluntarios-activaciones", label: "Voluntarios y Activaciones", icon: Recycle },
     { href: "/admin/documentos", label: "Documentos", icon: ScrollText },
+    { href: "/admin/ordenes-compra", label: "Órdenes de compra", icon: ShoppingCart },
     { href: "/admin/bitacoras", label: "Bitácoras", icon: ClipboardCheck },
     { href: "/admin/logistica/pedidos", label: "Pedidos logisticos", icon: PackageSearch },
     { href: "/admin/stock", label: "Stock", icon: Boxes },
@@ -84,6 +88,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
   SUPERVISOR: [
     { href: "/supervisor/dashboard", label: "Dashboard", icon: Home },
     { href: "/supervisor/eventos", label: "Eventos asignados", icon: Sparkles },
+    { href: "/supervisor/voluntarios-activaciones", label: "Voluntarios y Activaciones", icon: Recycle },
     { href: "/supervisor/documentos", label: "Documentos", icon: ScrollText },
     { href: "/supervisor/logistica/pedidos", label: "Pedidos logisticos", icon: PackageSearch },
     { href: "/worker/dashboard", label: "Panel terreno", icon: Home },
@@ -98,6 +103,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
   ],
   LOGISTICS_OPERATOR: [
     { href: "/logistica/dashboard", label: "Dashboard", icon: Home },
+    { href: "/logistica/voluntarios-activaciones", label: "Voluntarios y Activaciones", icon: Recycle },
     { href: "/logistica/mis-pedidos", label: "Mis pedidos", icon: PackageSearch },
     { href: "/logistica/stock", label: "Inventario", icon: Boxes },
     { href: "/logistica/stock/movimientos", label: "Movimientos", icon: ClipboardList, indent: true },
@@ -106,6 +112,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
   ],
   WORKER: [
     { href: "/worker/dashboard", label: "Inicio", icon: Home },
+    { href: "/worker/voluntarios-activaciones", label: "Voluntarios y Activaciones", icon: Recycle },
     { href: "/worker/mis-tareas", label: "Mis tareas", icon: ClipboardList },
     { href: "/worker/mis-bitacoras", label: "Mis bitácoras", icon: ClipboardCheck },
     { href: "/worker/incidencias", label: "Incidencias", icon: AlertTriangle },

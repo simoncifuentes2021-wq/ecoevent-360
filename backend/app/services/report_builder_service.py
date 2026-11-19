@@ -214,12 +214,15 @@ def _apply_environmental_story_preset(db: Session, report: Report) -> None:
         }
         for index, item in enumerate(official.get("equivalences") or [])
     ]
-    equivalences.content = {
+    equivalence_content = {
         "text": official.get("disclaimer"),
         "fields": equivalence_fields,
         "items": [],
     }
-    equivalences.source_snapshot = equivalences.content
+    equivalences.content = report_autofill_service.merge_preserving_overrides(
+        equivalences.content or {}, dict(equivalence_content)
+    )
+    equivalences.source_snapshot = equivalence_content
     equivalences.source_metadata = {
         "availability": "AVAILABLE" if equivalence_fields else "NO_DATA",
         "source_scope": "APPROVED_ENVIRONMENTAL_ACTIONS",
@@ -514,6 +517,11 @@ def refresh(db: Session, report: Report, version: int, user: User) -> Report:
         section.source_metadata = metadata
         section.edit_version += 1
         section.updated_at = datetime.utcnow()
+    if report.template_key == ReportTemplateKey.ENVIRONMENTAL_STORY:
+        # The standalone equivalence page is derived from the environmental
+        # section snapshot. Rebuild it after refreshing source data so catalog
+        # renames and updated conversion factors appear in report drafts.
+        _apply_environmental_story_preset(db, report)
     report.edit_version += 1
     report.updated_at = datetime.utcnow()
     db.commit()

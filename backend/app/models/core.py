@@ -1,5 +1,6 @@
 from datetime import date, datetime, time
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import (
@@ -58,6 +59,9 @@ from app.models.enums import (
     UserRole,
     WasteDestination,
 )
+
+if TYPE_CHECKING:
+    from app.models.volunteers import MaterialContribution
 
 waste_collection_point_types = Table(
     "waste_collection_point_types",
@@ -207,6 +211,9 @@ class Event(Base):
     )
     hidden_from_operations: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("FALSE")
+    )
+    field_staff_portal_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
     )
     created_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
@@ -1362,6 +1369,9 @@ class Evidence(Base):
     task_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     incident_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    volunteer_contribution_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("material_contributions.id", ondelete="SET NULL")
+    )
     uploaded_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -1378,6 +1388,9 @@ class Evidence(Base):
     )
     uploader: Mapped[User | None] = relationship()
     waste_records: Mapped[list["WasteRecord"]] = relationship(back_populates="evidence")
+    volunteer_contribution: Mapped["MaterialContribution | None"] = relationship(
+        back_populates="evidence"
+    )
 
 
 class WasteType(Base):

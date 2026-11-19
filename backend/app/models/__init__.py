@@ -1,4 +1,5 @@
 from app.models.audit_log import AuditLog
+from app.models.purchase_order import PurchaseOrder, PurchaseOrderItem
 from app.models.ai import AIGeneration
 from app.models.documents import (
     DocumentContractDefaults,
@@ -22,6 +23,16 @@ from app.models.environmental import (  # noqa: F401
     EnvironmentalFactor,
     EnvironmentalMethodology,
     WasteCollectionEquivalenceFactor,
+)
+from app.models.volunteers import (
+    FieldStaff,
+    FieldStaffActivation,
+    MaterialContribution,
+    MaterialContributionItem,
+    RecyclingActivation,
+    Volunteer,
+    VolunteerAccessToken,
+    VolunteerActivation,
 )
 from app.models.logbook import *  # noqa: F403
 from app.models.core import (
@@ -76,6 +87,8 @@ from app.models.core import (
 
 __all__ = [
     "AuditLog",
+    "PurchaseOrder",
+    "PurchaseOrderItem",
     "AIGeneration",
     "DocumentEmployment",
     "DocumentContractDefaults",
@@ -137,4 +150,12 @@ __all__ = [
     "WasteType",
     "waste_collection_point_types",
     "WaterRecord",
+    "Volunteer",
+    "FieldStaff",
+    "FieldStaffActivation",
+    "VolunteerActivation",
+    "RecyclingActivation",
+    "MaterialContribution",
+    "MaterialContributionItem",
+    "VolunteerAccessToken",
 ]
