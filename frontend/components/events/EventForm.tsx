@@ -37,8 +37,8 @@ const schema = z
     status: z.enum(statuses).or(z.literal("")).optional()
   })
   .superRefine((data, ctx) => {
-    if (data.start_date && data.end_date && new Date(data.start_date) >= new Date(data.end_date)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La fecha de inicio debe ser menor que la fecha de termino", path: ["end_date"] });
+    if (data.start_date && data.end_date && data.start_date > data.end_date) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La fecha de término debe ser igual o posterior a la de inicio", path: ["end_date"] });
     }
   });
 
@@ -53,8 +53,8 @@ type EventFormProps = {
   submitLabel?: string;
 };
 
-function toDatetimeLocal(value?: string | null) {
-  return value ? value.slice(0, 16) : "";
+function toDateInput(value?: string | null) {
+  return value ? value.slice(0, 10) : "";
 }
 
 function nullableString(value?: string | null) {
@@ -82,8 +82,8 @@ export function EventForm({ event, clients, onSubmit, cancelHref, initialClientI
       country: event?.country || "Chile",
       latitude: event?.latitude ? Number(event.latitude) : undefined,
       longitude: event?.longitude ? Number(event.longitude) : undefined,
-      start_date: toDatetimeLocal(event?.start_date),
-      end_date: toDatetimeLocal(event?.end_date),
+      start_date: toDateInput(event?.start_date),
+      end_date: toDateInput(event?.end_date),
       estimated_attendees: event?.estimated_attendees ?? undefined,
       status: event?.status || ""
     }
@@ -105,8 +105,8 @@ export function EventForm({ event, clients, onSubmit, cancelHref, initialClientI
         country: nullableString(values.country),
         latitude: values.latitude ?? null,
         longitude: values.longitude ?? null,
-        start_date: values.start_date,
-        end_date: values.end_date,
+        start_date: `${values.start_date}T00:00:00`,
+        end_date: `${values.end_date}T23:59:59.999999`,
         estimated_attendees: values.estimated_attendees ?? null
       };
       if (values.status) {
@@ -153,10 +153,10 @@ export function EventForm({ event, clients, onSubmit, cancelHref, initialClientI
               </select>
             </Field>
             <Field error={errors.start_date?.message} label="Inicio">
-              <Input type="datetime-local" {...register("start_date")} />
+              <Input type="date" {...register("start_date")} />
             </Field>
-            <Field error={errors.end_date?.message} label="Termino">
-              <Input type="datetime-local" {...register("end_date")} />
+            <Field error={errors.end_date?.message} label="Término">
+              <Input type="date" {...register("end_date")} />
             </Field>
             <Field error={errors.estimated_attendees?.message} label="Asistentes estimados">
               <Input min={0} type="number" {...register("estimated_attendees")} />
