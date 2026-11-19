@@ -400,8 +400,8 @@ def _styles(document: ReportRenderDocument) -> str:
     .impact-official{{display:grid;grid-template-columns:1.08fr .92fr;gap:6mm;align-items:stretch}} .impact-official .impact-kpis{{display:grid;grid-template-columns:repeat(2,1fr);gap:3mm}}
     .impact-official.no-trace{{grid-template-columns:1fr}} .impact-official.no-trace .impact-kpis{{grid-template-columns:repeat(4,1fr)}}
     .impact-official .impact-card{{min-height:27mm;border:1px solid {t["accent_color"]};border-radius:3mm;padding:4mm;background:white;display:flex;flex-direction:column;justify-content:space-between}} .impact-card span{{display:block;color:{t["muted_color"]};font-size:8pt}} .impact-card strong{{display:flex;align-items:baseline;gap:1.5mm;margin-top:2mm;font-size:17pt;line-height:1;color:{t["primary_color"]};white-space:nowrap}} .impact-card strong small{{font-size:9pt;font-weight:700}}
-    .impact-trace{{border-radius:3mm;background:{t["primary_color"]};color:white;padding:6mm;min-height:117mm}} .impact-trace h3{{color:white;font-size:19pt}} .impact-trace p{{font-size:7.5pt;line-height:1.45}} .impact-trace li{{margin:2mm 0;font-size:7.5pt;line-height:1.35}}
-    .impact-details{{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:6mm}} .impact-details.one-detail{{grid-template-columns:1fr}} .impact-detail{{border-radius:3mm;background:{t["background_color"]};padding:5mm;min-height:34mm}} .impact-detail h4{{margin:0 0 2mm;color:{t["primary_color"]};font-size:11pt}} .impact-detail p{{margin:1mm 0;font-size:7.5pt;line-height:1.4;color:{t["muted_color"]}}} .impact-pill{{display:inline-block;margin:1mm 1mm 0 0;padding:1.5mm 2.5mm;border-radius:99px;background:white;font-size:7pt;color:{t["primary_color"]}}} .impact-disclaimer{{margin-top:5mm;padding:3mm 4mm;border-left:1.5mm solid {t["accent_color"]};font-size:7.5pt;color:{t["muted_color"]};background:{t["background_color"]}}}
+    .impact-trace{{border-radius:3mm;background:{t["primary_color"]};color:white;padding:6mm;min-width:0}} .impact-trace h3{{margin:0 0 2mm;color:white;font-size:17pt;line-height:1.25;overflow-wrap:anywhere}} .impact-trace p{{font-size:7.5pt;line-height:1.45}} .impact-trace ul{{display:grid;gap:2mm;margin:2mm 0 0;padding-left:5mm}} .impact-trace li{{display:grid;gap:1mm;margin:0;padding:2mm 2.5mm;border-radius:1.5mm;background:#ffffff12;font-size:7.5pt;line-height:1.4;overflow-wrap:anywhere;break-inside:avoid}} .impact-trace li b{{display:block;line-height:1.3}} .impact-trace li .impact-item-value{{display:block;font-weight:700;color:white;overflow-wrap:anywhere}} .impact-trace li .impact-item-detail{{display:block;font-size:7pt;line-height:1.4;color:#d6e6de;overflow-wrap:anywhere}}
+    .impact-details{{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:6mm}} .impact-details.one-detail{{grid-template-columns:1fr}} .impact-detail{{min-width:0;border-radius:3mm;background:{t["background_color"]};padding:5mm;min-height:34mm}} .impact-detail h4{{margin:0 0 2mm;color:{t["primary_color"]};font-size:11pt;line-height:1.3}} .impact-detail p{{margin:1mm 0;font-size:7.5pt;line-height:1.4;color:{t["muted_color"]}}} .impact-detail ul{{display:grid;gap:2.5mm;margin:2mm 0 0;padding-left:5mm}} .impact-detail li{{padding-left:1mm;font-size:8pt;line-height:1.4;overflow-wrap:anywhere;break-inside:avoid}} .impact-detail li b{{display:block;margin-bottom:.7mm;line-height:1.3;color:{t["text_color"]}}} .impact-detail li .impact-item-value{{display:block;margin-top:.5mm;font-weight:700;line-height:1.35;color:{t["primary_color"]};overflow-wrap:anywhere}} .impact-detail li .impact-item-detail{{display:block;margin-top:1mm;font-size:7pt;line-height:1.4;color:{t["muted_color"]};overflow-wrap:anywhere}} .impact-pill{{display:inline-block;margin:1mm 1mm 0 0;padding:1.5mm 2.5mm;border-radius:99px;background:white;font-size:7pt;color:{t["primary_color"]}}} .impact-disclaimer{{margin-top:5mm;padding:3mm 4mm;border-left:1.5mm solid {t["accent_color"]};font-size:7.5pt;color:{t["muted_color"]};background:{t["background_color"]}}}
     .carbon-visual,.carbon-photo,.carbon-photo figure{{height:100%;margin:0}} .carbon-photo{{display:block}}
     .carbon-photo figure img{{height:211mm;border-radius:0;object-fit:cover}} .carbon-photo figcaption{{display:none}}
     .carbon-story{{grid-template-columns:1.05fr 1.05fr .65fr}} .carbon-story h3{{font-size:18pt;overflow-wrap:normal;hyphens:none}}
@@ -567,6 +567,14 @@ def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, vi
         if section_key == "preset_eco_equivalences":
             rendered.append(_render_ecoequivalences_premium(section, theme, preset if preset != "AUTO" else "ECOEVENT_EDITORIAL"))
             continue
+        if section_type == "ENVIRONMENTAL_IMPACT":
+            # Keep editable impact copy and traceability available in every style.
+            rendered.append(
+                _render_environmental_impact_premium(
+                    section, photos, theme, preset if preset != "AUTO" else "ENVIRONMENTAL"
+                )
+            )
+            continue
         if section_type == "EXECUTIVE_SUMMARY" and len(str((section.get("content") or {}).get("text") or "")) > 900:
             rendered.append(_render_executive_summary_premium(section, photos, theme, preset if preset != "AUTO" else "ECOEVENT_EDITORIAL"))
             continue
@@ -687,6 +695,7 @@ def _render_carbon_premium(section: dict, photos: list[dict], theme: dict, prese
 
 
 def _render_environmental_impact_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+    content = section.get("content") or {}
     by_key, _, _ = _premium_fields(section)
     avoided, baseline, actual = by_key.get("co2e_avoided_kg"), by_key.get("co2e_baseline_kg"), by_key.get("co2e_actual_kg")
     reduction = None
@@ -698,13 +707,89 @@ def _render_environmental_impact_premium(section: dict, photos: list[dict], them
         pass
     comparison = "".join(f'<div><small>{label}</small><strong>{escape(_premium_value(field))}</strong><span>kg CO₂e</span></div>' for label, field in (("Línea base", baseline), ("Escenario real", actual)) if field)
     secondary = "".join(f'<div><strong>{escape(_premium_value(by_key.get(key)))}<small>{escape(_premium_unit(by_key.get(key)))}</small></strong><span>{escape(str((by_key.get(key) or {}).get("label") or key))}</span></div>' for key in ("energy_kwh", "fuel_avoided_l", "pm25_avoided_kg", "pm10_avoided_kg") if by_key.get(key))
-    trace = (section.get("content") or {}).get("text") or "Resultados calculados desde acciones ambientales aprobadas y trazables."
+    official = (section.get("source_snapshot") or {}).get("official_data") or content.get("official_data") or {}
+    equivalence_names = {str(item.get("name") or "") for item in official.get("equivalences") or []}
+    trace_items = []
+    for raw_item in content.get("items") or []:
+        item = dict(raw_item)
+        if not item.get("kind"):
+            item["kind"] = "EQUIVALENCE" if str(item.get("label") or "") in equivalence_names else "ACTION"
+        if item.get("_is_visible") is not False:
+            trace_items.append(item)
+
+    def trace_rows(items: list[dict]) -> str:
+        rows = []
+        for item in items[:20]:
+            label = escape(str(item.get("label") or "Elemento"))
+            value = item.get("value")
+            unit = escape(str(item.get("unit") or ""))
+            value_text = f'<span class="impact-item-value">{escape(str(value))} {unit}</span>' if value not in (None, "") else ""
+            description = str(item.get("description") or "").strip()
+            detail = f'<small class="impact-item-detail">{_safe_text(description)}</small>' if description else ""
+            rows.append(f"<li><b>{label}</b>{value_text}{detail}</li>")
+        return "".join(rows)
+
+    action_items = [item for item in trace_items if item.get("kind") == "ACTION"]
+    action_rows = trace_rows(action_items)
+    source_rows = trace_rows([item for item in trace_items if item.get("kind") in {"SOURCE", "METHODOLOGY", "MANUAL"}])
+    equivalence_rows = trace_rows([item for item in trace_items if item.get("kind") == "EQUIVALENCE"])
+    traceability_title = content.get("traceability_title") if "traceability_title" in content else "Trazabilidad aprobada"
+    traceability_summary = content.get("traceability_summary") if "traceability_summary" in content else (
+        f"{len(official.get('actions') or [])} acciones aprobadas. Solo estos resultados forman parte del reporte oficial."
+    )
+    trace_blocks = "".join(
+        f"<h4>{heading}</h4><ul>{rows}</ul>"
+        for heading, rows in (("Acciones", action_rows), ("Metodologías y fuentes", source_rows), ("Ecoequivalencias", equivalence_rows))
+        if rows
+    )
+    trace_html = (
+        f'<aside class="premium-methodology impact-trace"{_editable_attr("section.environmental-impact.traceability", "TEXT_BLOCK", "box")}>'
+        f"<h3>{escape(str(traceability_title or ''))}</h3><p>{_safe_text(str(traceability_summary or ''))}</p>{trace_blocks}</aside>"
+        if content.get("show_traceability") is not False else ""
+    )
+    selected_action_keys = {
+        str(item.get("_source_key"))[7:]
+        for item in action_items
+        if str(item.get("_source_key") or "").startswith("action:")
+    }
+    selected_action_labels = {str(item.get("label") or "") for item in action_items}
+    has_action_selection = bool(action_items)
+    scope_actions = [
+        item for item in (official.get("actions") or [])
+        if not has_action_selection
+        or str(item.get("id")) in selected_action_keys
+        or str(item.get("name") or "") in selected_action_labels
+    ]
+    scope_results_html = (
+        _environmental_scope_results_html(scope_actions, content.get("scope_results_title"))
+        if content.get("show_scope_results") is not False else ""
+    )
+    disclaimer = str(content.get("text") or "").strip()
+    disclaimer_html = f'<p class="premium-impact-disclaimer">{_safe_text(disclaimer)}</p>' if disclaimer else ""
     reduction_html = f'<em>↓ {escape(report_visual_design_service.format_metric(reduction, "%", precision=1))}%<small> frente a línea base</small></em>' if reduction is not None else ""
-    return f'<article class="premium-section premium-impact-story premium-tone-{preset.lower()}">{_premium_heading(section, "Impacto ambiental evitado", "LEAF", "environmental-impact")}<div class="premium-impact-hero"{_editable_attr("section.environmental-impact.hero", "BIG_NUMBER", "box")}><div><strong>{escape(_premium_value(avoided))}<small>kg CO₂e</small></strong><span>evitados</span></div>{reduction_html}</div><div class="premium-baseline"{_editable_attr("section.environmental-impact.baseline", "COMPARISON", "box")}>{comparison}</div><div class="premium-secondary"{_editable_attr("section.environmental-impact.secondary", "METRIC_LIST", "box")}>{secondary}</div><aside class="premium-methodology"{_editable_attr("section.environmental-impact.traceability", "TEXT_BLOCK", "box")}><b>Metodología y trazabilidad</b><p>{_safe_text(trace)}</p></aside></article>'
+    return f'<article class="premium-section premium-impact-story premium-tone-{preset.lower()}">{_premium_heading(section, "Impacto ambiental evitado", "LEAF", "environmental-impact")}<div class="premium-impact-hero"{_editable_attr("section.environmental-impact.hero", "BIG_NUMBER", "box")}><div><strong>{escape(_premium_value(avoided))}<small>kg CO₂e</small></strong><span>evitados</span></div>{reduction_html}</div><div class="premium-baseline"{_editable_attr("section.environmental-impact.baseline", "COMPARISON", "box")}>{comparison}</div><div class="premium-secondary"{_editable_attr("section.environmental-impact.secondary", "METRIC_LIST", "box")}>{secondary}</div>{scope_results_html}{disclaimer_html}{trace_html}</article>'
 
 
 def _premium_visible_items(section: dict) -> list[dict]:
     return [item for item in ((section.get("content") or {}).get("items") or []) if item.get("_is_visible", True) is not False]
+
+
+def _environmental_scope_results_html(actions: list[dict], title: Any = None) -> str:
+    breakdown: dict[str, Decimal] = {}
+    for action in actions:
+        scope_name = str(action.get("session_name") or "Evento completo")
+        value = (action.get("metrics") or {}).get("CO2E_AVOIDED_KG")
+        if value is not None:
+            breakdown[scope_name] = breakdown.get(scope_name, Decimal("0")) + Decimal(str(value))
+    if not breakdown:
+        return ""
+    rows = "".join(
+        '<span class="impact-pill">'
+        f"{escape(scope_name)}: {escape(_display_number(value, 2))} kg CO2e</span>"
+        for scope_name, value in list(breakdown.items())[:6]
+    )
+    heading = str(title or "Resultados por alcance").strip() or "Resultados por alcance"
+    return f'<article class="impact-detail"><h4>{escape(heading)}</h4>{rows}</article>'
 
 
 def _premium_text(section: dict, *item_keys: str) -> str:
@@ -961,11 +1046,12 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         rendered_value = ""
         if value not in (None, ""):
             try:
-                rendered_value = f" · {escape(_display_number(value, 5, True))} {escape(unit)}"
+                formatted_value = f"{escape(_display_number(value, 5, True))} {escape(unit)}"
             except (InvalidOperation, ValueError):
-                rendered_value = f" · {escape(str(value))} {escape(unit)}"
+                formatted_value = f"{escape(str(value))} {escape(unit)}"
+            rendered_value = f'<span class="impact-item-value">{formatted_value.strip()}</span>'
         description = str(item.get("description") or "").strip()
-        detail = f"<small>{escape(description)}</small>" if description else ""
+        detail = f'<small class="impact-item-detail">{escape(description)}</small>' if description else ""
         return f"<li><b>{label}</b>{rendered_value}{detail}</li>"
 
     visible_items = [item for item in normalized_items if item.get("_is_visible") is not False]
@@ -985,8 +1071,9 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         f"{escape(scope_name)}: {escape(_display_number(value, 2))} kg CO2e</span>"
         for scope_name, value in list(breakdown.items())[:6]
     )
+    scope_results_title = str(content.get("scope_results_title") or "Resultados por alcance").strip() or "Resultados por alcance"
     equivalence_html = "".join(trace_row(item) for item in equivalence_rows[:20])
-    disclaimer = content.get("text")
+    disclaimer = str(content.get("text") or "").strip()
     show_traceability = content.get("show_traceability") is not False
     traceability_title = content.get("traceability_title") if "traceability_title" in content else "Trazabilidad aprobada"
     traceability_summary = content.get("traceability_summary") if "traceability_summary" in content else (
@@ -1005,9 +1092,9 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         else ""
     )
     detail_cards = []
-    if breakdown_html:
+    if breakdown_html and content.get("show_scope_results") is not False:
         detail_cards.append(
-            f'<article class="impact-detail"><h4>Resultados por alcance</h4>{breakdown_html}</article>'
+            f'<article class="impact-detail"><h4>{escape(scope_results_title)}</h4>{breakdown_html}</article>'
         )
     if equivalence_html:
         detail_cards.append(
@@ -1020,12 +1107,16 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         if detail_cards
         else ""
     )
+    disclaimer_html = (
+        f'<div class="impact-disclaimer"{_editable_attr(f"{section_key}.text.disclaimer", "TEXT_BLOCK", "box")}>{escape(disclaimer)}</div>'
+        if disclaimer else ""
+    )
     return (
         f'<h2{_editable_attr(f"{section_key}.title", "SECTION_TITLE", "box")}>Impacto ambiental evitado</h2>'
         f'<div class="impact-official{"" if show_traceability else " no-trace"}"><div class="impact-kpis"{_editable_attr(f"{section_key}.big-numbers", "BIG_NUMBERS", "box")}>'
         f"{cards}</div>{traceability_html}</div>"
         f"{details_html}"
-        f'<div class="impact-disclaimer"{_editable_attr(f"{section_key}.text.disclaimer", "TEXT_BLOCK", "box")}>{escape(str(disclaimer or ""))}</div>'
+        f"{disclaimer_html}"
     )
 
 

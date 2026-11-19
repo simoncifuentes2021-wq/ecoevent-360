@@ -41,6 +41,8 @@ class ReportSectionContent(BaseModel):
     show_traceability: bool = True
     traceability_title: SafeText | None = None
     traceability_summary: SafeText | None = None
+    show_scope_results: bool = True
+    scope_results_title: SafeText | None = None
     fields: list[ReportField] = Field(default_factory=list, max_length=100)
     items: list[dict[str, Scalar]] = Field(default_factory=list, max_length=500)
 

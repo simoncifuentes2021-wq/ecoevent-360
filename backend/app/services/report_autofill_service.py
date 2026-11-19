@@ -427,7 +427,9 @@ def merge_preserving_overrides(
             fresh["ai_generation_id"] = old.get("ai_generation_id")
     if "show_traceability" in old:
         fresh["show_traceability"] = old["show_traceability"]
-    for key in ("traceability_title", "traceability_summary"):
+    if "show_scope_results" in old:
+        fresh["show_scope_results"] = old["show_scope_results"]
+    for key in ("traceability_title", "traceability_summary", "scope_results_title"):
         if key in old and old.get(key) != old_source_snapshot.get(key):
             fresh[key] = old.get(key)
 
