@@ -928,36 +928,52 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         for field in fields[:8]
     )
     content_items = content.get("items") or []
-    selected_labels = {
-        str(item.get("label")) for item in content_items if item.get("_is_visible") is not False
+    # Older drafts stored only action/equivalence labels. Infer their type so
+    # refreshing and editing them remains backwards compatible.
+    official_equivalences = official.get("equivalences") or []
+    equivalence_names = {str(item.get("name") or "") for item in official_equivalences}
+    normalized_items = []
+    for item in content_items:
+        row = dict(item)
+        if not row.get("kind"):
+            row["kind"] = "EQUIVALENCE" if str(row.get("label") or "") in equivalence_names else "ACTION"
+        normalized_items.append(row)
+    selected_action_keys = {
+        str(item.get("_source_key"))[7:]
+        for item in normalized_items
+        if item.get("kind") == "ACTION" and item.get("_is_visible") is not False and str(item.get("_source_key") or "").startswith("action:")
     }
-    has_item_selection = bool(content_items)
+    selected_action_labels = {
+        str(item.get("label") or "")
+        for item in normalized_items
+        if item.get("kind") == "ACTION" and item.get("_is_visible") is not False
+    }
+    has_action_selection = any(item.get("kind") == "ACTION" for item in normalized_items)
     actions = [
-        item
-        for item in (official.get("actions") or [])
-        if not has_item_selection or str(item.get("name")) in selected_labels
+        item for item in (official.get("actions") or [])
+        if not has_action_selection or str(item.get("id")) in selected_action_keys or str(item.get("name") or "") in selected_action_labels
     ]
-    action_list = "".join(
-        f"<li>{escape(str(item.get('name')))} · {escape(str(item.get('session_name')))} · "
-        f"{escape(str(item.get('methodology') or 'Sin metodología'))}</li>"
-        for item in actions[:8]
-    )
-    sources = []
-    seen_sources: set[tuple[str, str]] = set()
-    for item in official.get("sources") or []:
-        identity = (str(item.get("source") or ""), str(item.get("year") or ""))
-        if identity in seen_sources:
-            continue
-        seen_sources.add(identity)
-        sources.append(item)
-    source_list = (
-        "".join(
-            f"<li>{escape(str(item.get('source') or 'Fuente documentada'))}"
-            f"{' (' + escape(str(item.get('year'))) + ')' if item.get('year') else ''}</li>"
-            for item in sources[:4]
-        )
-        or "<li>Sin factores aprobados disponibles.</li>"
-    )
+
+    def trace_row(item: dict) -> str:
+        label = escape(str(item.get("label") or "Elemento"))
+        value = item.get("value")
+        unit = str(item.get("unit") or "")
+        rendered_value = ""
+        if value not in (None, ""):
+            try:
+                rendered_value = f" · {escape(_display_number(value, 5, True))} {escape(unit)}"
+            except (InvalidOperation, ValueError):
+                rendered_value = f" · {escape(str(value))} {escape(unit)}"
+        description = str(item.get("description") or "").strip()
+        detail = f"<small>{escape(description)}</small>" if description else ""
+        return f"<li><b>{label}</b>{rendered_value}{detail}</li>"
+
+    visible_items = [item for item in normalized_items if item.get("_is_visible") is not False]
+    action_rows = [item for item in visible_items if item.get("kind") == "ACTION"]
+    source_rows = [item for item in visible_items if item.get("kind") in {"SOURCE", "METHODOLOGY", "MANUAL"}]
+    equivalence_rows = [item for item in visible_items if item.get("kind") == "EQUIVALENCE"]
+    action_list = "".join(trace_row(item) for item in action_rows[:20])
+    source_list = "".join(trace_row(item) for item in source_rows[:30])
     breakdown: dict[str, Decimal] = {}
     for action in actions:
         scope_name = str(action.get("session_name") or "Evento completo")
@@ -969,36 +985,21 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         f"{escape(scope_name)}: {escape(_display_number(value, 2))} kg CO2e</span>"
         for scope_name, value in list(breakdown.items())[:6]
     )
-    selected_methodologies = {
-        str(item.get("methodology")) for item in actions if item.get("methodology")
-    }
-    methodologies = [
-        item
-        for item in (official.get("methodologies") or [])
-        if str(item.get("name") or item.get("title")) in selected_methodologies
-    ]
-    methodology_html = "".join(
-        f"<p><b>{escape(str(item.get('name') or item.get('title') or 'Metodología aprobada'))}</b></p>"
-        for item in methodologies[:3]
-    )
-    equivalences = [
-        item
-        for item in (official.get("equivalences") or [])
-        if not has_item_selection or str(item.get("name")) in selected_labels
-    ]
-    equivalence_html = "".join(
-        '<span class="impact-pill">'
-        f"{escape(str(item.get('label') or item.get('name') or 'Equivalencia'))}: "
-        f"{escape(_display_number(item.get('value'), 2, True))} "
-        f"{escape(str(item.get('unit') or '').split('/', 1)[0])}</span>"
-        for item in equivalences[:4]
-    )
-    disclaimer = official.get("disclaimer") or content.get("text") or ""
+    equivalence_html = "".join(trace_row(item) for item in equivalence_rows[:20])
+    disclaimer = content.get("text")
     show_traceability = content.get("show_traceability") is not False
+    traceability_title = content.get("traceability_title") if "traceability_title" in content else "Trazabilidad aprobada"
+    traceability_summary = content.get("traceability_summary") if "traceability_summary" in content else (
+        f"{len(actions)} acciones aprobadas. Solo estos resultados forman parte del reporte oficial."
+    )
+    traceability_blocks = []
+    if action_list:
+        traceability_blocks.append(f"<h4>Acciones</h4><ul>{action_list}</ul>")
+    if source_list:
+        traceability_blocks.append(f"<h4>Metodologías y fuentes</h4><ul>{source_list}</ul>")
     traceability_html = (
-        f"<aside class='impact-trace'{_editable_attr(f'{section_key}.traceability', 'TEXT_BLOCK', 'box')}><h3>Trazabilidad aprobada</h3>"
-        f"<p>{escape(str(len(actions)))} acciones aprobadas. Solo estos resultados forman parte del reporte oficial.</p>"
-        f"<ul>{action_list}</ul><p><b>Fuentes documentadas</b></p><ul>{source_list}</ul>"
+        f"<aside class='impact-trace'{_editable_attr(f'{section_key}.traceability', 'TEXT_BLOCK', 'box')}><h3>{escape(str(traceability_title or ''))}</h3>"
+        f"<p>{escape(str(traceability_summary or ''))}</p>{''.join(traceability_blocks)}"
         "</aside>"
         if show_traceability
         else ""
@@ -1008,10 +1009,10 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         detail_cards.append(
             f'<article class="impact-detail"><h4>Resultados por alcance</h4>{breakdown_html}</article>'
         )
-    if methodology_html or equivalence_html:
+    if equivalence_html:
         detail_cards.append(
-            '<article class="impact-detail"><h4>Metodologías y equivalencias</h4>'
-            f"{methodology_html}{equivalence_html}</article>"
+            '<article class="impact-detail"><h4>Ecoequivalencias</h4>'
+            f"<ul>{equivalence_html}</ul></article>"
         )
     details_html = (
         f'<div class="impact-details{" one-detail" if len(detail_cards) == 1 else ""}">'
@@ -1024,7 +1025,7 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         f'<div class="impact-official{"" if show_traceability else " no-trace"}"><div class="impact-kpis"{_editable_attr(f"{section_key}.big-numbers", "BIG_NUMBERS", "box")}>'
         f"{cards}</div>{traceability_html}</div>"
         f"{details_html}"
-        f'<div class="impact-disclaimer"{_editable_attr(f"{section_key}.text.disclaimer", "TEXT_BLOCK", "box")}>{escape(str(disclaimer))}</div>'
+        f'<div class="impact-disclaimer"{_editable_attr(f"{section_key}.text.disclaimer", "TEXT_BLOCK", "box")}>{escape(str(disclaimer or ""))}</div>'
     )
 
 

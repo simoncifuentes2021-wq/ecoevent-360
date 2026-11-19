@@ -23,10 +23,12 @@ SafeText = Annotated[str, StringConstraints(max_length=10000)]
 class ReportField(BaseModel):
     key: Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,80}$")]
     label: Annotated[str, StringConstraints(min_length=1, max_length=180)]
+    label_overridden: bool = False
     auto_value: Scalar = None
     value: Scalar = None
     unit: str | None = Field(default=None, max_length=30)
     description: str | None = Field(default=None, max_length=500)
+    description_overridden: bool = False
     is_overridden: bool = False
     source: str = Field(default="MANUAL", max_length=60)
     is_visible: bool = True
@@ -37,6 +39,8 @@ class ReportSectionContent(BaseModel):
     text_origin: Literal["MANUAL", "AUTOFILLED", "GENERATED", "ENRICHED"] | None = None
     ai_generation_id: UUID | None = None
     show_traceability: bool = True
+    traceability_title: SafeText | None = None
+    traceability_summary: SafeText | None = None
     fields: list[ReportField] = Field(default_factory=list, max_length=100)
     items: list[dict[str, Scalar]] = Field(default_factory=list, max_length=500)
 

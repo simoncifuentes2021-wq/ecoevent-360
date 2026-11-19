@@ -319,6 +319,8 @@ def build_sections(
     ]
     environmental_items = [
         {
+            "_source_key": f"action:{action['id']}",
+            "kind": "ACTION",
             "label": action["name"],
             "value": action["metrics"].get("CO2E_AVOIDED_KG"),
             "unit": "kg CO₂e evitado",
@@ -327,12 +329,34 @@ def build_sections(
         for action in official["actions"]
     ] + [
         {
+            "_source_key": f"equivalence:{equivalence.get('key') or equivalence.get('id') or index}",
+            "kind": "EQUIVALENCE",
             "label": equivalence["name"],
             "value": equivalence["value"],
             "unit": equivalence["unit"],
             "description": f"Referencia: {equivalence['source']} · {equivalence['year']}",
         }
-        for equivalence in official["equivalences"]
+        for index, equivalence in enumerate(official["equivalences"])
+    ] + [
+        {
+            "_source_key": f"methodology:{methodology.get('id') or methodology.get('name') or index}",
+            "kind": "METHODOLOGY",
+            "label": methodology.get("name") or methodology.get("title") or "Metodología",
+            "value": None,
+            "unit": None,
+            "description": methodology.get("description") or "Metodología aplicada a una acción aprobada.",
+        }
+        for index, methodology in enumerate(official.get("methodologies") or [])
+    ] + [
+        {
+            "_source_key": f"source:{source.get('id') or source.get('technology') or index}",
+            "kind": "SOURCE",
+            "label": source.get("technology") or "Factor ambiental",
+            "value": source.get("year"),
+            "unit": "Año",
+            "description": source.get("source") or "Fuente documentada",
+        }
+        for index, source in enumerate(official.get("sources") or [])
     ]
     environmental = _section(
         environmental_fields,
@@ -341,7 +365,19 @@ def build_sections(
         source_scope="APPROVED_SHOW" if show else "APPROVED_EVENT",
     )
     environmental[0]["text"] = official["disclaimer"]
+    environmental[0]["text_origin"] = "AUTOFILLED"
+    environmental[0]["traceability_title"] = "Trazabilidad aprobada"
+    environmental[0]["traceability_summary"] = (
+        f"{official['actions_count']} acciones aprobadas. "
+        "Solo estos resultados forman parte del reporte oficial."
+    )
     environmental[1]["text"] = official["disclaimer"]
+    environmental[1]["text_origin"] = "AUTOFILLED"
+    environmental[1]["traceability_title"] = "Trazabilidad aprobada"
+    environmental[1]["traceability_summary"] = (
+        f"{official['actions_count']} acciones aprobadas. "
+        "Solo estos resultados forman parte del reporte oficial."
+    )
     environmental[1]["official_data"] = official
     environmental[2]["approved_actions_count"] = official["actions_count"]
     result["environmental_impact"] = environmental
@@ -351,26 +387,100 @@ def build_sections(
     return result
 
 
-def merge_preserving_overrides(old: dict, fresh: dict) -> dict:
+def merge_preserving_overrides(
+    old: dict, fresh: dict, old_source_snapshot: dict | None = None
+) -> dict:
+    old_source_snapshot = old_source_snapshot or {}
     old_fields = {field.get("key"): field for field in old.get("fields", [])}
+    snapshot_fields = {
+        field.get("key"): field for field in old_source_snapshot.get("fields", [])
+    }
     for field in fresh.get("fields", []):
         previous = old_fields.get(field["key"])
         if previous:
             field["is_visible"] = previous.get("is_visible", True)
-            field["description"] = previous.get("description")
+            previous_auto = snapshot_fields.get(field["key"], {})
+            label_was_edited = previous.get("label_overridden") or (
+                previous.get("label") != previous_auto.get("label")
+            )
+            if label_was_edited:
+                field["label"] = previous.get("label")
+                field["label_overridden"] = True
+            description_was_edited = previous.get("description_overridden") or (
+                previous.get("description") != previous_auto.get("description")
+            )
+            if description_was_edited:
+                field["description"] = previous.get("description")
+                field["description_overridden"] = True
+            if previous.get("unit") != previous_auto.get("unit"):
+                field["unit"] = previous.get("unit")
         if previous and previous.get("is_overridden"):
             field["value"] = previous.get("value")
             field["is_overridden"] = True
-    if old.get("text") is not None:
-        fresh["text"] = old["text"]
+    if "text" in old:
+        text_was_edited = old.get("text_origin") in {"MANUAL", "GENERATED", "ENRICHED"} or (
+            old.get("text") != old_source_snapshot.get("text")
+        )
+        if text_was_edited:
+            fresh["text"] = old.get("text")
+            fresh["text_origin"] = old.get("text_origin") or "MANUAL"
+            fresh["ai_generation_id"] = old.get("ai_generation_id")
     if "show_traceability" in old:
         fresh["show_traceability"] = old["show_traceability"]
+    for key in ("traceability_title", "traceability_summary"):
+        if key in old and old.get(key) != old_source_snapshot.get(key):
+            fresh[key] = old.get(key)
+
     old_items = old.get("items", [])
+    snapshot_items = old_source_snapshot.get("items", [])
+    old_by_source_key = {
+        item.get("_source_key"): item for item in old_items if item.get("_source_key")
+    }
     old_by_label = {item.get("label"): item for item in old_items if item.get("label")}
+    snapshot_by_source_key = {
+        item.get("_source_key"): item for item in snapshot_items if item.get("_source_key")
+    }
+    snapshot_by_label = {
+        item.get("label"): item for item in snapshot_items if item.get("label")
+    }
+    old_source_keys = {
+        item.get("_source_key") for item in old_items if item.get("_source_key")
+    }
+    snapshot_source_keys = {
+        item.get("_source_key") for item in snapshot_items if item.get("_source_key")
+    }
+    removed_source_keys = snapshot_source_keys - old_source_keys
+    old_labels = {item.get("label") for item in old_items if item.get("label")}
+    snapshot_labels = {item.get("label") for item in snapshot_items if item.get("label")}
+    removed_legacy_labels = snapshot_labels - old_labels
+    merged_items = []
     for item in fresh.get("items", []):
-        previous = old_by_label.get(item.get("label"))
+        source_key = item.get("_source_key")
+        if source_key in removed_source_keys or (
+            not source_key and item.get("label") in removed_legacy_labels
+        ):
+            continue
+        previous = old_by_source_key.get(source_key) if source_key else None
+        if previous is None:
+            previous = old_by_label.get(item.get("label"))
         if previous:
             item["_is_visible"] = previous.get("_is_visible", True)
-            item["description"] = previous.get("description")
+            previous_snapshot = (
+                snapshot_by_source_key.get(previous.get("_source_key"))
+                if previous.get("_source_key")
+                else snapshot_by_label.get(previous.get("label"), {})
+            ) or {}
+            for key, flag in (
+                ("label", "_label_overridden"),
+                ("value", "_value_overridden"),
+                ("unit", "_unit_overridden"),
+                ("description", "_description_overridden"),
+                ("kind", "_kind_overridden"),
+            ):
+                if previous.get(flag) or previous.get(key) != previous_snapshot.get(key):
+                    item[key] = previous.get(key)
+                    item[flag] = True
+        merged_items.append(item)
+    fresh["items"] = merged_items
     fresh["items"].extend(item for item in old_items if item.get("_manual") is True)
     return fresh

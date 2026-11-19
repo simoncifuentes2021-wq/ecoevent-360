@@ -220,7 +220,9 @@ def _apply_environmental_story_preset(db: Session, report: Report) -> None:
         "items": [],
     }
     equivalences.content = report_autofill_service.merge_preserving_overrides(
-        equivalences.content or {}, dict(equivalence_content)
+        equivalences.content or {},
+        dict(equivalence_content),
+        equivalences.source_snapshot or {},
     )
     equivalences.source_snapshot = equivalence_content
     equivalences.source_metadata = {
@@ -511,7 +513,7 @@ def refresh(db: Session, report: Report, version: int, user: User) -> Report:
             continue
         content, snapshot, metadata = fresh[section.section_key]
         section.content = report_autofill_service.merge_preserving_overrides(
-            section.content, content
+            section.content, content, section.source_snapshot or {}
         )
         section.source_snapshot = snapshot
         section.source_metadata = metadata

@@ -695,6 +695,8 @@ def official_data(db: Session, event_id: UUID, session_id: UUID | None = None) -
     ).all()
     equivalences = [
         {
+            "id": str(item.id),
+            "key": item.key,
             "name": item.name,
             "value": str(totals[item.metric_source.value] * item.factor),
             # Catalog units describe the conversion factor (for example,
