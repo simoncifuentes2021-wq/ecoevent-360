@@ -14,7 +14,7 @@ from app.db.session import set_public_waste_context
 from app.models.core import Event, EventWastePublicForm, EventZone, User, WasteCollectionPoint, WasteCollectionRecord, WasteType
 from app.models.enums import EventStatus, UserRole
 from app.models.environmental import WasteCollectionEquivalenceFactor
-from app.schemas.collection_point_schema import CollectionPointCreate, CollectionPointUpdate, PublicWasteRecordCreate
+from app.schemas.collection_point_schema import CollectionPointCreate, CollectionPointUpdate, PublicWasteRecordCreate, WasteCollectionRecordUpdate
 from app.utils.simple_qr import make_qr_png
 
 
@@ -64,7 +64,33 @@ def list_points(db: Session, event_id: UUID, user: User, base_url: str | None, i
         .group_by(WasteCollectionRecord.collection_point_id)
     ).all()
     by_point = {point_id: (count, total) for point_id, count, total in totals}
-    return [_read_point(point, *by_point.get(point.id, (0, Decimal("0"))), base_url) for point in points]
+    type_totals = db.execute(
+        select(
+            WasteCollectionRecord.collection_point_id,
+            WasteType.id,
+            WasteType.name,
+            func.coalesce(func.sum(WasteCollectionRecord.weight_kg), 0),
+            func.count(WasteCollectionRecord.id),
+        )
+        .join(WasteType, WasteType.id == WasteCollectionRecord.waste_type_id)
+        .where(WasteCollectionRecord.event_id == event_id)
+        .group_by(WasteCollectionRecord.collection_point_id, WasteType.id, WasteType.name)
+        .order_by(WasteCollectionRecord.collection_point_id, func.sum(WasteCollectionRecord.weight_kg).desc())
+    ).all()
+    totals_by_point: dict[UUID, list[dict[str, object]]] = {}
+    for point_id, waste_type_id, name, total_kg, record_count in type_totals:
+        totals_by_point.setdefault(point_id, []).append({
+            "waste_type_id": waste_type_id,
+            "waste_type_name": name,
+            "total_kg": total_kg,
+            "records_count": record_count,
+        })
+    return [
+        _read_point(point, *by_point.get(point.id, (0, Decimal("0"))), base_url).model_copy(
+            update={"waste_type_totals": totals_by_point.get(point.id, [])}
+        )
+        for point in points
+    ]
 
 
 def create_point(db: Session, event_id: UUID, payload: CollectionPointCreate, user: User, base_url: str | None):
@@ -320,6 +346,37 @@ def get_collection_record(db: Session, record_id: UUID, user: User):
     }
 
 
+def update_collection_record(
+    db: Session, record_id: UUID, payload: WasteCollectionRecordUpdate, user: User,
+):
+    record = db.get(WasteCollectionRecord, record_id)
+    if record is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Registro de acopio no encontrado")
+    _check_permission(user, record.event_id, db, manage=True)
+    data = {field: value for field, value in payload.model_dump(exclude_unset=True).items() if value is not None}
+    data.pop("correction_reason", None)
+
+    point_id = data.get("collection_point_id", record.collection_point_id)
+    point = db.get(WasteCollectionPoint, point_id)
+    if point is None or point.event_id != record.event_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El acopio debe pertenecer al mismo evento")
+
+    type_id = data.get("waste_type_id", record.waste_type_id)
+    waste_type = db.get(WasteType, type_id)
+    if waste_type is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El tipo de residuo no existe")
+    if (point.id, waste_type.id) != (record.collection_point_id, record.waste_type_id):
+        allowed_type_ids = {item.id for item in point.allowed_waste_types}
+        if waste_type.id not in allowed_type_ids:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ese tipo de residuo no está habilitado para el acopio seleccionado")
+
+    for field, value in data.items():
+        setattr(record, field, value)
+    db.add(record)
+    db.commit()
+    return get_collection_record(db, record.id, user)
+
+
 def collection_summary(db: Session, event_id: UUID, user: User):
     _check_permission(user, event_id, db)
     total_kg, records_count, unique_submitters = db.execute(select(
@@ -347,6 +404,26 @@ def collection_summary(db: Session, event_id: UUID, user: User):
         .where(WasteCollectionPoint.event_id == event_id)
         .group_by(WasteCollectionPoint.id, WasteCollectionPoint.code, WasteCollectionPoint.name)
         .order_by(WasteCollectionPoint.code)).all()
+    point_type_totals = db.execute(select(
+        WasteCollectionRecord.collection_point_id,
+        WasteType.id,
+        WasteType.name,
+        WasteType.is_recyclable,
+        func.coalesce(func.sum(WasteCollectionRecord.weight_kg), 0),
+        func.count(WasteCollectionRecord.id),
+    ).join(WasteType, WasteType.id == WasteCollectionRecord.waste_type_id)
+        .where(WasteCollectionRecord.event_id == event_id)
+        .group_by(WasteCollectionRecord.collection_point_id, WasteType.id, WasteType.name, WasteType.is_recyclable)
+        .order_by(WasteCollectionRecord.collection_point_id, func.sum(WasteCollectionRecord.weight_kg).desc())).all()
+    types_by_point: dict[UUID, list[dict[str, object]]] = {}
+    for point_id, waste_type_id, name, is_recyclable, total_type_kg, type_count in point_type_totals:
+        types_by_point.setdefault(point_id, []).append({
+            "id": waste_type_id,
+            "name": name,
+            "is_recyclable": bool(is_recyclable),
+            "total_kg": total_type_kg,
+            "records_count": type_count,
+        })
     weights_by_type = {row[0]: row[3] for row in by_type}
     eco_equivalences = []
     if total_kg > 0:
@@ -378,6 +455,6 @@ def collection_summary(db: Session, event_id: UUID, user: User):
         "records_count": records_count,
         "active_points": active_points, "unique_submitters": unique_submitters,
         "by_type": [{"id": row[0], "name": row[1], "is_recyclable": bool(row[2]), "total_kg": row[3], "records_count": row[4]} for row in by_type],
-        "by_point": [{"id": row[0], "code": row[1], "name": row[2], "total_kg": row[3], "records_count": row[4]} for row in by_point],
+        "by_point": [{"id": row[0], "code": row[1], "name": row[2], "total_kg": row[3], "records_count": row[4], "waste_types": types_by_point.get(row[0], [])} for row in by_point],
         "eco_equivalences": eco_equivalences,
     }

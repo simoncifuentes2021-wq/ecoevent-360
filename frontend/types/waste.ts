@@ -45,6 +45,7 @@ export type WasteCollectionPoint = {
   is_active: boolean;
   record_count: number;
   total_kg: number | string;
+  waste_type_totals: { waste_type_id: string; waste_type_name: string; total_kg: number | string; records_count: number }[];
   public_url: string | null;
   qr_data_url: string | null;
   allowed_waste_types: PublicWasteType[];
@@ -67,6 +68,16 @@ export type WasteCollectionRecord = {
   synced_at: string | null;
 };
 
+export type WasteCollectionRecordUpdate = {
+  correction_reason: string;
+  collection_point_id?: string;
+  waste_type_id?: string;
+  weight_kg?: number;
+  submitter_name?: string;
+  submitter_rut?: string;
+  recorded_at?: string;
+};
+
 export type WasteCollectionSummary = {
   event_id: string;
   total_kg: number | string;
@@ -75,7 +86,7 @@ export type WasteCollectionSummary = {
   active_points: number;
   unique_submitters: number;
   by_type: { id: string; name: string; is_recyclable?: boolean; total_kg: number | string; records_count: number }[];
-  by_point: { id: string; code: string; name: string; total_kg: number | string; records_count: number }[];
+  by_point: { id: string; code: string; name: string; total_kg: number | string; records_count: number; waste_types: { id: string; name: string; is_recyclable: boolean; total_kg: number | string; records_count: number }[] }[];
   eco_equivalences?: { kind: "FAMILY_DAYS" | "MATERIAL_UNITS"; waste_type_name: string | null; name: string; value: number | string; unit: string; reference_kg?: number | string }[];
 };
 

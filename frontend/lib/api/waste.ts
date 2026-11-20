@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { toQuery, type QueryValue } from "@/lib/api/query";
 import type { ListResponse } from "@/types/common";
-import type { EventWastePublicForm, PublicCollectionPoint, PublicWasteSubmission, WasteCollectionPoint, WasteCollectionRecord, WasteCollectionSummary, WasteRecord, WasteRecordCreate, WasteRecordUpdate } from "@/types/waste";
+import type { EventWastePublicForm, PublicCollectionPoint, PublicWasteSubmission, WasteCollectionPoint, WasteCollectionRecord, WasteCollectionRecordUpdate, WasteCollectionSummary, WasteRecord, WasteRecordCreate, WasteRecordUpdate } from "@/types/waste";
 
 function normalize(value: WasteRecord[] | ListResponse<WasteRecord>): ListResponse<WasteRecord> {
   if (Array.isArray(value)) return { items: value, total: value.length, page: 1, limit: value.length || 20 };
@@ -54,6 +54,10 @@ export function getWasteCollectionSummary(eventId: string) {
 
 export function getWasteCollectionRecords(eventId: string, params: Record<string, QueryValue> = {}) {
   return api.get<ListResponse<WasteCollectionRecord>>(`/events/${eventId}/waste-collection-records${toQuery(params)}`);
+}
+
+export function updateWasteCollectionRecord(recordId: string, data: WasteCollectionRecordUpdate) {
+  return api.patch<WasteCollectionRecord>(`/waste-collection-records/${recordId}`, data);
 }
 
 export function getPublicCollectionPoint(token: string) {

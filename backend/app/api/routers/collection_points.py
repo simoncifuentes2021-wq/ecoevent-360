@@ -13,7 +13,7 @@ from app.schemas.collection_point_schema import (
     CollectionPointCreate, CollectionPointRead, CollectionPointUpdate,
     EventWastePublicFormRead,
     PublicCollectionPointRead, PublicWasteBatchRequest, PublicWasteBatchResponse,
-    PublicWasteCollectionRecordRead, WasteCollectionRecordRead, WasteCollectionSummaryRead,
+    PublicWasteCollectionRecordRead, WasteCollectionRecordRead, WasteCollectionRecordUpdate, WasteCollectionSummaryRead,
 )
 from app.services import collection_point_service as service
 from app.services.audit_log_service import create_audit_log
@@ -97,6 +97,25 @@ def list_collection_records(
 @router.get("/waste-collection-records/{record_id}", response_model=WasteCollectionRecordRead)
 def get_collection_record(record_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_active_user)):
     return service.get_collection_record(db, record_id, user)
+
+
+@router.patch("/waste-collection-records/{record_id}", response_model=WasteCollectionRecordRead)
+def update_collection_record(
+    record_id: UUID, payload: WasteCollectionRecordUpdate, request: Request,
+    db: Session = Depends(get_db), user: User = Depends(get_current_active_user),
+):
+    before = service.get_collection_record(db, record_id, user)
+    updated = service.update_collection_record(db, record_id, payload, user)
+    create_audit_log(
+        db, user=user, action="UPDATE", module="waste", entity_type="WasteCollectionRecord",
+        entity_id=record_id, event_id=updated["event_id"], old_data=before,
+        new_data={
+            **{key: value for key, value in updated.items() if key not in {"client_generated_id", "device_id"}},
+            "correction_reason": payload.correction_reason,
+        },
+        request=request,
+    )
+    return updated
 
 
 @public_router.get("/{token}", response_model=PublicCollectionPointRead)

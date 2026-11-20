@@ -34,6 +34,13 @@ class CollectionPointWasteTypeRead(BaseModel):
     is_recyclable: bool | None = None
 
 
+class CollectionPointWasteTypeTotalRead(BaseModel):
+    waste_type_id: UUID
+    waste_type_name: str
+    total_kg: Decimal
+    records_count: int
+
+
 class CollectionPointRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -50,6 +57,7 @@ class CollectionPointRead(BaseModel):
     updated_at: datetime
     record_count: int = 0
     total_kg: Decimal = Decimal("0")
+    waste_type_totals: list[CollectionPointWasteTypeTotalRead] = Field(default_factory=list)
     public_url: str | None = None
     qr_data_url: str | None = None
     allowed_waste_types: list[CollectionPointWasteTypeRead] = Field(default_factory=list)
@@ -68,6 +76,49 @@ class PublicWasteRecordCreate(BaseModel):
     @field_validator("submitter_rut")
     @classmethod
     def validate_chilean_rut(cls, value: str) -> str:
+        normalized = value.replace(".", "").replace("-", "").replace(" ", "").upper()
+        if len(normalized) < 2 or not normalized[:-1].isdigit():
+            raise ValueError("RUT no válido")
+        total = sum(int(digit) * (index % 6 + 2) for index, digit in enumerate(reversed(normalized[:-1])))
+        remainder = 11 - total % 11
+        verifier = "0" if remainder == 11 else "K" if remainder == 10 else str(remainder)
+        if normalized[-1] != verifier:
+            raise ValueError("RUT no válido")
+        return f"{normalized[:-1]}-{normalized[-1]}"
+
+
+class WasteCollectionRecordUpdate(BaseModel):
+    correction_reason: str = Field(min_length=4, max_length=500)
+    collection_point_id: UUID | None = None
+    waste_type_id: UUID | None = None
+    weight_kg: Decimal | None = Field(default=None, gt=0, le=100000)
+    submitter_name: str | None = Field(default=None, min_length=2, max_length=160)
+    submitter_rut: str | None = Field(default=None, min_length=8, max_length=20)
+    recorded_at: datetime | None = None
+
+    @field_validator("correction_reason")
+    @classmethod
+    def normalize_correction_reason(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) < 4:
+            raise ValueError("Indica brevemente el motivo de la corrección")
+        return normalized
+
+    @field_validator("submitter_name")
+    @classmethod
+    def normalize_submitter_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        if len(normalized) < 2:
+            raise ValueError("El nombre debe tener al menos 2 caracteres")
+        return normalized
+
+    @field_validator("submitter_rut")
+    @classmethod
+    def validate_submitter_rut(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         normalized = value.replace(".", "").replace("-", "").replace(" ", "").upper()
         if len(normalized) < 2 or not normalized[:-1].isdigit():
             raise ValueError("RUT no válido")
@@ -133,7 +184,7 @@ class WasteCollectionSummaryRead(BaseModel):
     active_points: int
     unique_submitters: int
     by_type: list[dict[str, str | UUID | Decimal | int | bool]]
-    by_point: list[dict[str, str | UUID | Decimal | int]]
+    by_point: list[dict[str, object]]
     eco_equivalences: list[dict[str, str | Decimal | None]] = Field(default_factory=list)
 
 
