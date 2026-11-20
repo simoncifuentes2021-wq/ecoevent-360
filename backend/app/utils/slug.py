@@ -23,15 +23,18 @@ def public_form_duplicate_slug(base: str, ordinal: int) -> str:
     return f"{base}-formulario-{_letters_only_code(ordinal)}"
 
 
-def public_form_link_slug(public_slug: str) -> str:
-    """Replace legacy numeric duplicate suffixes with a readable letter code."""
+def public_form_link_slug(public_slug: str, title: str | None = None) -> str:
+    """Hide a legacy numeric uniqueness suffix when it is not part of the title."""
     match = re.fullmatch(r"(.+)-([0-9]+)", public_slug)
     if not match:
         return public_slug
     number = int(match.group(2))
     if number < 2:
         return public_slug
-    return f"{match.group(1)}-formulario-{_letters_only_code(number)}"
+    title_slug = slugify_url_segment(title) if title else None
+    if title_slug and title_slug != match.group(1):
+        return public_slug
+    return match.group(1)
 
 
 def resolve_public_form_link_slug(public_slug: str) -> str | None:

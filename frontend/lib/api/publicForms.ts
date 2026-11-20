@@ -1,8 +1,11 @@
 import { api } from "@/lib/api";
 import type { FormResponseSubmit, FormSubmitResult, PublicEventForm } from "@/types/eventForm";
 
-export function getPublicForm(slug: string, lang?: string | null) {
-  const query = lang ? `?lang=${encodeURIComponent(lang)}` : "";
+export function getPublicForm(slug: string, lang?: string | null, eventSlug?: string | null) {
+  const params = new URLSearchParams();
+  if (lang) params.set("lang", lang);
+  if (eventSlug) params.set("event_slug", eventSlug);
+  const query = params.size ? `?${params.toString()}` : "";
   return api.get<PublicEventForm>(`/public/forms/${slug}${query}`, { auth: false });
 }
 

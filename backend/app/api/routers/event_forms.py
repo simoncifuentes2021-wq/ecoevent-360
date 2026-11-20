@@ -299,9 +299,15 @@ def delete_form_qr(qr_id: UUID, db: Session = Depends(get_db), current_user: Use
 
 
 @public_router.get("/{slug}", response_model=EventFormPublicRead)
-def get_public_form(slug: str, request: Request, lang: str | None = None, db: Session = Depends(get_db)):
+def get_public_form(
+    slug: str,
+    request: Request,
+    lang: str | None = None,
+    event_slug: str | None = None,
+    db: Session = Depends(get_db),
+):
     enforce(request, "public-form-read", slug, settings.rate_limit_public_read)
-    form = event_form_service.get_public_form_or_404(db, slug)
+    form = event_form_service.get_public_form_or_404(db, slug, event_slug)
     return event_form_service.public_form_payload(form, lang)
 
 

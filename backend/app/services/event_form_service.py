@@ -148,23 +148,38 @@ def get_form_or_404(db: Session, form_id: UUID) -> EventForm:
     return form
 
 
-def get_public_form_or_404(db: Session, slug: str) -> EventForm:
-    active_form = select(EventForm.id).where(
-        EventForm.public_slug == slug,
-        EventForm.status != EventFormStatus.ARCHIVED,
-    )
-    form_id = db.scalar(active_form)
-    if not form_id:
-        legacy_slug = resolve_public_form_link_slug(slug)
-        if legacy_slug:
-            form_id = db.scalar(
-                select(EventForm.id).where(
-                    EventForm.public_slug == legacy_slug,
-                    EventForm.status != EventFormStatus.ARCHIVED,
-                )
+def get_public_form_or_404(db: Session, slug: str, event_slug: str | None = None) -> EventForm:
+    legacy_slug = resolve_public_form_link_slug(slug)
+    possible_slugs = {slug}
+    if legacy_slug:
+        possible_slugs.add(legacy_slug)
+
+    candidates = db.scalars(
+        _load_form_query().where(
+            EventForm.status != EventFormStatus.ARCHIVED,
+            (EventForm.public_slug.in_(possible_slugs))
+            | EventForm.public_slug.like(f"{slug}-%"),
+        )
+    ).all()
+    matches = []
+    for candidate in candidates:
+        candidate_link_slug = public_form_link_slug(candidate.public_slug, candidate.title)
+        slug_matches = candidate.public_slug in possible_slugs or candidate_link_slug == slug
+        context_matches = not event_slug or any(
+            slugify_url_segment(value) == event_slug
+            for value in (
+                candidate.session.name if candidate.session else None,
+                candidate.event.name if candidate.event else None,
             )
-    if not form_id:
+            if value
+        )
+        if slug_matches and context_matches:
+            matches.append(candidate)
+
+    # A clean form name is only accepted when it identifies one form in the supplied event.
+    if len(matches) != 1:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    form_id = matches[0].id
     set_public_form_rls_context(db, form_id=form_id)
     form = db.scalar(
         _load_form_query().where(

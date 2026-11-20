@@ -9,7 +9,7 @@ const SHARE_TITLE_ACRONYMS = new Set(["co2", "qr", "wwe"]);
 const SHARE_TITLE_LOWERCASE_WORDS = new Set(["de", "del", "el", "en", "la", "las", "los", "para", "y"]);
 
 export async function publicFormMetadata(formSlug: string, publicPath: string, showSlug?: string): Promise<Metadata> {
-  const form = await loadPublicForm(formSlug);
+  const form = await loadPublicForm(formSlug, showSlug);
   const canonicalUrl = absoluteUrl(publicPath);
   const formTitle = form?.title?.trim() || humanizeSlug(formSlug);
   const context = form?.session_name?.trim() || form?.event_name?.trim() || (showSlug ? humanizeSlug(showSlug) : "");
@@ -43,9 +43,11 @@ export async function publicFormMetadata(formSlug: string, publicPath: string, s
   };
 }
 
-async function loadPublicForm(slug: string): Promise<PublicEventForm | null> {
+async function loadPublicForm(slug: string, eventSlug?: string): Promise<PublicEventForm | null> {
   try {
-    const response = await fetch(`${PUBLIC_API_URL}/public/forms/${encodeURIComponent(slug)}?lang=es`, {
+    const params = new URLSearchParams({ lang: "es" });
+    if (eventSlug) params.set("event_slug", eventSlug);
+    const response = await fetch(`${PUBLIC_API_URL}/public/forms/${encodeURIComponent(slug)}?${params.toString()}`, {
       next: { revalidate: 300 },
     });
     if (!response.ok) return null;

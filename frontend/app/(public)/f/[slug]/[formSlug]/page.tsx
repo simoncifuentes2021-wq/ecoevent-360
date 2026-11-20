@@ -9,6 +9,6 @@ export function generateMetadata({ params }: { params: { slug: string; formSlug:
   return publicFormMetadata(params.formSlug, `/f/${params.slug}/${params.formSlug}`, params.slug);
 }
 
-export default function ShowPublicFormRoute({ params }: { params: { formSlug: string } }) {
-  return <PublicFormPage slug={params.formSlug} />;
+export default function ShowPublicFormRoute({ params }: { params: { slug: string; formSlug: string } }) {
+  return <PublicFormPage slug={params.formSlug} eventSlug={params.slug} />;
 }

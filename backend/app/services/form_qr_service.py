@@ -226,11 +226,11 @@ def _public_form_path(form: EventForm) -> str:
     if form.session:
         show_slug = slugify_url_segment(form.session.name)
         if show_slug:
-            return f"/f/{show_slug}/{public_form_link_slug(form.public_slug)}"
+            return f"/f/{show_slug}/{public_form_link_slug(form.public_slug, form.title)}"
     event_slug = slugify_url_segment(form.event.name) if form.event else ""
     if event_slug:
-        return f"/f/{event_slug}/{public_form_link_slug(form.public_slug)}"
-    return f"/f/{public_form_link_slug(form.public_slug)}"
+        return f"/f/{event_slug}/{public_form_link_slug(form.public_slug, form.title)}"
+    return f"/f/{public_form_link_slug(form.public_slug, form.title)}"
 
 
 def _public_app_url(public_base_url: str | None = None) -> str:

@@ -12,7 +12,7 @@ import { getPublicForm } from "@/lib/api/publicForms";
 import { normalizePublicFormLanguage, publicFormCopy } from "@/lib/publicFormI18n";
 import type { PublicEventForm } from "@/types/eventForm";
 
-export function PublicFormPage({ slug }: { slug: string }) {
+export function PublicFormPage({ slug, eventSlug }: { slug: string; eventSlug?: string }) {
   const searchParams = useSearchParams();
   const [form, setForm] = useState<PublicEventForm | null>(null);
   const [language, setLanguage] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export function PublicFormPage({ slug }: { slug: string }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await getPublicForm(slug, lang);
+      const data = await getPublicForm(slug, lang, eventSlug);
       setForm(data);
       if (data.language) setLanguage(data.language);
     } catch (err) {
@@ -33,7 +33,7 @@ export function PublicFormPage({ slug }: { slug: string }) {
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+  }, [eventSlug, slug]);
 
   useEffect(() => { void load(searchParams.get("lang")); }, [load, searchParams]);
 
