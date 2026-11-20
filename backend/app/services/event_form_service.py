@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.permissions import can_access_event, can_manage_event
 from app.db.session import set_public_form_rls_context
@@ -141,6 +141,13 @@ def _load_form_query():
     )
 
 
+def _load_form_context_query():
+    return select(EventForm).options(
+        joinedload(EventForm.event),
+        joinedload(EventForm.session),
+    )
+
+
 def get_form_or_404(db: Session, form_id: UUID) -> EventForm:
     form = db.scalar(_load_form_query().where(EventForm.id == form_id))
     if not form:
@@ -153,13 +160,9 @@ def get_public_form_or_404(db: Session, slug: str, event_slug: str | None = None
     possible_slugs = {slug}
     if legacy_slug:
         possible_slugs.add(legacy_slug)
-    # Exact matches remain visible under production RLS policies that restrict prefix scans.
-    legacy_numeric_slugs = {f"{slug}-{ordinal}" for ordinal in range(2, 101)}
-    lookup_slugs = possible_slugs | legacy_numeric_slugs
-
     candidate_query = select(EventForm.id, EventForm.public_slug, EventForm.title).where(
         EventForm.status != EventFormStatus.ARCHIVED,
-        (EventForm.public_slug.in_(lookup_slugs))
+        (EventForm.public_slug.in_(possible_slugs))
         | EventForm.public_slug.like(f"{slug}-%"),
     )
     candidates = db.execute(candidate_query).all()
@@ -187,7 +190,7 @@ def get_public_form_or_404(db: Session, slug: str, event_slug: str | None = None
             # Event/session rows are intentionally hidden by RLS until this form is scoped.
             set_public_form_rls_context(db, form_id=candidate.id)
             scoped_form = db.scalar(
-                _load_form_query()
+                _load_form_context_query()
                 .where(EventForm.id == candidate.id)
                 .execution_options(populate_existing=True)
             )
