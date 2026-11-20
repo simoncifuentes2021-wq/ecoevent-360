@@ -157,40 +157,49 @@ def get_public_form_or_404(db: Session, slug: str, event_slug: str | None = None
     legacy_numeric_slugs = {f"{slug}-{ordinal}" for ordinal in range(2, 101)}
     lookup_slugs = possible_slugs | legacy_numeric_slugs
 
-    candidate_query = _load_form_query().where(
+    candidate_query = select(EventForm.id, EventForm.public_slug, EventForm.title).where(
         EventForm.status != EventFormStatus.ARCHIVED,
         (EventForm.public_slug.in_(lookup_slugs))
         | EventForm.public_slug.like(f"{slug}-%"),
     )
-    candidates = db.scalars(candidate_query).all()
+    candidates = db.execute(candidate_query).all()
 
-    def matching_slug(form: EventForm) -> bool:
+    def matching_slug(candidate) -> bool:
         return (
-            form.public_slug in possible_slugs
-            or public_form_link_slug(form.public_slug, form.title) == slug
+            candidate.public_slug in possible_slugs
+            or public_form_link_slug(candidate.public_slug, candidate.title) == slug
         )
 
     matches = [candidate for candidate in candidates if matching_slug(candidate)]
     if not matches:
         # Some production RLS policies allow exact slug lookups but hide prefix searches.
         # Fall back to active forms and compare their normalized aliases in the service.
-        active_forms = db.scalars(
-            _load_form_query().where(EventForm.status != EventFormStatus.ARCHIVED)
+        active_forms = db.execute(
+            select(EventForm.id, EventForm.public_slug, EventForm.title).where(
+                EventForm.status != EventFormStatus.ARCHIVED
+            )
         ).all()
         matches = [candidate for candidate in active_forms if matching_slug(candidate)]
 
     if event_slug and len(matches) > 1:
-        event_matches = [
-            candidate for candidate in matches
-            if any(
+        event_matches = []
+        for candidate in matches:
+            # Event/session rows are intentionally hidden by RLS until this form is scoped.
+            set_public_form_rls_context(db, form_id=candidate.id)
+            scoped_form = db.scalar(
+                _load_form_query()
+                .where(EventForm.id == candidate.id)
+                .execution_options(populate_existing=True)
+            )
+            if scoped_form and any(
                 slugify_url_segment(value) == event_slug
                 for value in (
-                    candidate.session.name if candidate.session else None,
-                    candidate.event.name if candidate.event else None,
+                    scoped_form.session.name if scoped_form.session else None,
+                    scoped_form.event.name if scoped_form.event else None,
                 )
                 if value
-            )
-        ]
+            ):
+                event_matches.append(candidate)
         if event_matches:
             matches = event_matches
 
@@ -200,10 +209,9 @@ def get_public_form_or_404(db: Session, slug: str, event_slug: str | None = None
     form_id = matches[0].id
     set_public_form_rls_context(db, form_id=form_id)
     form = db.scalar(
-        _load_form_query().where(
-            EventForm.id == form_id,
-            EventForm.status != EventFormStatus.ARCHIVED,
-        )
+        _load_form_query()
+        .where(EventForm.id == form_id, EventForm.status != EventFormStatus.ARCHIVED)
+        .execution_options(populate_existing=True)
     )
     if not form:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
