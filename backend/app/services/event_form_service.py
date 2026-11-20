@@ -153,10 +153,13 @@ def get_public_form_or_404(db: Session, slug: str, event_slug: str | None = None
     possible_slugs = {slug}
     if legacy_slug:
         possible_slugs.add(legacy_slug)
+    # Exact matches remain visible under production RLS policies that restrict prefix scans.
+    legacy_numeric_slugs = {f"{slug}-{ordinal}" for ordinal in range(2, 101)}
+    lookup_slugs = possible_slugs | legacy_numeric_slugs
 
     candidate_query = _load_form_query().where(
         EventForm.status != EventFormStatus.ARCHIVED,
-        (EventForm.public_slug.in_(possible_slugs))
+        (EventForm.public_slug.in_(lookup_slugs))
         | EventForm.public_slug.like(f"{slug}-%"),
     )
     candidates = db.scalars(candidate_query).all()
