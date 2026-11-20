@@ -226,6 +226,8 @@ class EventFormRead(ORMModel):
     description: str | None = None
     form_type: EventFormType
     public_slug: str
+    public_path_context_slug: str
+    public_path_slug: str
     status: EventFormStatus
     banner_url: str | None = None
     primary_logo_url: str | None = None

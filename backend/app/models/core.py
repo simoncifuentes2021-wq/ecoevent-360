@@ -1706,6 +1706,7 @@ class EventForm(Base):
         Index("idx_event_forms_event_id", "event_id"),
         Index("idx_event_forms_session_id", "session_id"),
         Index("idx_event_forms_status", "status"),
+        Index("uq_event_forms_public_path", "public_path_context_slug", "public_path_slug", unique=True),
         UniqueConstraint("public_slug", name="uq_event_forms_public_slug"),
     )
 
@@ -1720,6 +1721,8 @@ class EventForm(Base):
     description: Mapped[str | None] = mapped_column(Text)
     form_type: Mapped[EventFormType] = mapped_column(event_form_type_enum, nullable=False)
     public_slug: Mapped[str] = mapped_column(String(220), nullable=False)
+    public_path_context_slug: Mapped[str] = mapped_column(String(220), nullable=False)
+    public_path_slug: Mapped[str] = mapped_column(String(220), nullable=False)
     status: Mapped[EventFormStatus] = mapped_column(
         event_form_status_enum, nullable=False, server_default=text("'DRAFT'")
     )

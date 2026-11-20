@@ -39,6 +39,8 @@ export type EventForm = {
   description?: string | null;
   form_type: EventFormType;
   public_slug: string;
+  public_path_context_slug: string;
+  public_path_slug: string;
   status: EventFormStatus;
   banner_url?: string | null;
   primary_logo_url?: string | null;

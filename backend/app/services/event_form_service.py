@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.permissions import can_access_event, can_manage_event
 from app.db.session import set_public_form_rls_context
@@ -141,13 +141,6 @@ def _load_form_query():
     )
 
 
-def _load_form_context_query():
-    return select(EventForm).options(
-        joinedload(EventForm.event),
-        joinedload(EventForm.session),
-    )
-
-
 def get_form_or_404(db: Session, form_id: UUID) -> EventForm:
     form = db.scalar(_load_form_query().where(EventForm.id == form_id))
     if not form:
@@ -156,60 +149,43 @@ def get_form_or_404(db: Session, form_id: UUID) -> EventForm:
 
 
 def get_public_form_or_404(db: Session, slug: str, event_slug: str | None = None) -> EventForm:
-    legacy_slug = resolve_public_form_link_slug(slug)
-    possible_slugs = {slug}
-    if legacy_slug:
-        possible_slugs.add(legacy_slug)
-    candidate_query = select(EventForm.id, EventForm.public_slug, EventForm.title).where(
-        EventForm.status != EventFormStatus.ARCHIVED,
-        (EventForm.public_slug.in_(possible_slugs))
-        | EventForm.public_slug.like(f"{slug}-%"),
-    )
-    candidates = db.execute(candidate_query).all()
-
-    def matching_slug(candidate) -> bool:
-        return (
-            candidate.public_slug in possible_slugs
-            or public_form_link_slug(candidate.public_slug, candidate.title) == slug
+    form_id = None
+    if event_slug:
+        form_id = db.scalar(
+            select(EventForm.id).where(
+                EventForm.public_path_context_slug == event_slug,
+                EventForm.public_path_slug == slug,
+                EventForm.status != EventFormStatus.ARCHIVED,
+            )
         )
 
-    matches = [candidate for candidate in candidates if matching_slug(candidate)]
-    if not matches:
-        # Some production RLS policies allow exact slug lookups but hide prefix searches.
-        # Fall back to active forms and compare their normalized aliases in the service.
-        active_forms = db.execute(
-            select(EventForm.id, EventForm.public_slug, EventForm.title).where(
-                EventForm.status != EventFormStatus.ARCHIVED
+    # Preserve links shared before routes became scoped by event/programming.
+    if not form_id:
+        legacy_slug = resolve_public_form_link_slug(slug)
+        possible_slugs = {slug}
+        if legacy_slug:
+            possible_slugs.add(legacy_slug)
+        form_id = db.scalar(
+            select(EventForm.id).where(
+                EventForm.public_slug.in_(possible_slugs),
+                EventForm.status != EventFormStatus.ARCHIVED,
+            )
+        )
+
+    # Keep one-segment public URLs working when their route is globally unique.
+    if not form_id and not event_slug:
+        path_matches = db.scalars(
+            select(EventForm.id).where(
+                EventForm.public_path_slug == slug,
+                EventForm.status != EventFormStatus.ARCHIVED,
             )
         ).all()
-        matches = [candidate for candidate in active_forms if matching_slug(candidate)]
+        if len(path_matches) == 1:
+            form_id = path_matches[0]
 
-    if event_slug and len(matches) > 1:
-        event_matches = []
-        for candidate in matches:
-            # Event/session rows are intentionally hidden by RLS until this form is scoped.
-            set_public_form_rls_context(db, form_id=candidate.id)
-            scoped_form = db.scalar(
-                _load_form_context_query()
-                .where(EventForm.id == candidate.id)
-                .execution_options(populate_existing=True)
-            )
-            if scoped_form and any(
-                slugify_url_segment(value) == event_slug
-                for value in (
-                    scoped_form.session.name if scoped_form.session else None,
-                    scoped_form.event.name if scoped_form.event else None,
-                )
-                if value
-            ):
-                event_matches.append(candidate)
-        if event_matches:
-            matches = event_matches
-
-    if len(matches) != 1:
+    if not form_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
 
-    form_id = matches[0].id
     set_public_form_rls_context(db, form_id=form_id)
     form = db.scalar(
         _load_form_query()
@@ -225,6 +201,10 @@ def create_form(db: Session, event_id: UUID, payload: EventFormCreate, user: Use
     _ensure_can_manage_event(db, event_id, user)
     ensure_session_belongs_to_event(db, payload.session_id, event_id)
     data = payload.model_dump(exclude={"generate_template"})
+    route_context = _public_path_context_slug(db, event_id, payload.session_id)
+    route_base = _slugify(data.get("public_slug") or payload.title)
+    data["public_path_context_slug"] = route_context
+    data["public_path_slug"] = _unique_public_path_slug(db, route_base, route_context)
     if not data.get("public_slug"):
         data["public_slug"] = _unique_slug(db, payload.title)
     else:
@@ -283,6 +263,19 @@ def update_form(db: Session, form_id: UUID, payload: EventFormUpdate, user: User
         ensure_session_belongs_to_event(db, data["session_id"], form.event_id)
     if "public_slug" in data and data["public_slug"]:
         data["public_slug"] = _slugify(data["public_slug"])
+        route_context = _public_path_context_slug(
+            db, form.event_id, data.get("session_id", form.session_id)
+        )
+        form.public_path_context_slug = route_context
+        form.public_path_slug = _unique_public_path_slug(
+            db, data["public_slug"], route_context, exclude_form_id=form.id
+        )
+    elif "session_id" in data:
+        route_context = _public_path_context_slug(db, form.event_id, data["session_id"])
+        form.public_path_context_slug = route_context
+        form.public_path_slug = _unique_public_path_slug(
+            db, _slugify(form.title), route_context, exclude_form_id=form.id
+        )
     for field, value in data.items():
         setattr(form, field, value)
     form.updated_at = datetime.utcnow()
@@ -1138,6 +1131,38 @@ def _field(label, key, field_type, required, order, *, analytics_key=None, optio
 
 def _venue_name(form: EventForm) -> str | None:
     return (form.session.venue_name if form.session and form.session.venue_name else None) or (form.event.location_name if form.event else None)
+
+
+def _public_path_context_slug(db: Session, event_id: UUID, session_id: UUID | None) -> str:
+    context_name = None
+    if session_id:
+        session = db.get(EventSession, session_id)
+        context_name = session.name if session else None
+    if not context_name:
+        event = db.get(Event, event_id)
+        context_name = event.name if event else None
+    return slugify_url_segment(context_name or "") or f"event-{event_id}"
+
+
+def _unique_public_path_slug(
+    db: Session,
+    base: str,
+    context_slug: str,
+    *,
+    exclude_form_id: UUID | None = None,
+) -> str:
+    query = select(EventForm.public_path_slug).where(
+        EventForm.public_path_context_slug == context_slug
+    )
+    if exclude_form_id:
+        query = query.where(EventForm.id != exclude_form_id)
+    occupied = set(db.scalars(query).all())
+    if base not in occupied:
+        return base
+    ordinal = 2
+    while f"{base}-{ordinal}" in occupied:
+        ordinal += 1
+    return f"{base}-{ordinal}"
 
 
 def _unique_slug(db: Session, title: str) -> str:

@@ -223,6 +223,10 @@ def _target_url(form: EventForm, qr_type: str, language: str | None, public_base
 
 
 def _public_form_path(form: EventForm) -> str:
+    context_slug = form.public_path_context_slug
+    route_slug = form.public_path_slug
+    if context_slug and route_slug:
+        return f"/f/{context_slug}/{route_slug}"
     if form.session:
         show_slug = slugify_url_segment(form.session.name)
         if show_slug:

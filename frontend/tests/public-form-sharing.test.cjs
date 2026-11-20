@@ -28,8 +28,9 @@ test("las rutas antigua y con show generan metadata dinámica", () => {
 
 test("los formularios sin programación incorporan el evento en el enlace", () => {
   assert.match(publicPath, /event_name/);
-  assert.match(publicPath, /const eventSlug/);
+  assert.match(publicPath, /public_path_context_slug/);
+  assert.match(publicPath, /public_path_slug/);
   assert.match(publicPath, /publicFormLinkSlug\(form\.public_slug, form\.title\)/);
-  assert.match(publicPath, /`\/f\/\$\{eventSlug\}\/\$\{linkSlug\}`/);
+  assert.match(publicPath, /`\/f\/\$\{contextSlug\}\/\$\{linkSlug\}`/);
   assert.match(publicPath, /`\/f\/\$\{linkSlug\}`/);
 });

@@ -19,10 +19,10 @@ export function publicFormLinkSlug(publicSlug: string, title?: string): string {
   return match[1];
 }
 
-export function publicFormPath(form: Pick<EventForm, "public_slug" | "title" | "event_name" | "session_name">): string {
-  const linkSlug = publicFormLinkSlug(form.public_slug, form.title);
-  const showSlug = form.session_name ? slugifyPublicPathSegment(form.session_name) : "";
-  if (showSlug) return `/f/${showSlug}/${linkSlug}`;
-  const eventSlug = form.event_name ? slugifyPublicPathSegment(form.event_name) : "";
-  return eventSlug ? `/f/${eventSlug}/${linkSlug}` : `/f/${linkSlug}`;
+export function publicFormPath(form: Pick<EventForm, "public_slug" | "public_path_context_slug" | "public_path_slug" | "title" | "event_name" | "session_name">): string {
+  const linkSlug = form.public_path_slug || publicFormLinkSlug(form.public_slug, form.title);
+  const contextSlug = form.public_path_context_slug
+    || (form.session_name ? slugifyPublicPathSegment(form.session_name) : "")
+    || (form.event_name ? slugifyPublicPathSegment(form.event_name) : "");
+  return contextSlug ? `/f/${contextSlug}/${linkSlug}` : `/f/${linkSlug}`;
 }
