@@ -154,31 +154,46 @@ def get_public_form_or_404(db: Session, slug: str, event_slug: str | None = None
     if legacy_slug:
         possible_slugs.add(legacy_slug)
 
-    candidates = db.scalars(
-        _load_form_query().where(
-            EventForm.status != EventFormStatus.ARCHIVED,
-            (EventForm.public_slug.in_(possible_slugs))
-            | EventForm.public_slug.like(f"{slug}-%"),
-        )
-    ).all()
-    matches = []
-    for candidate in candidates:
-        candidate_link_slug = public_form_link_slug(candidate.public_slug, candidate.title)
-        slug_matches = candidate.public_slug in possible_slugs or candidate_link_slug == slug
-        context_matches = not event_slug or any(
-            slugify_url_segment(value) == event_slug
-            for value in (
-                candidate.session.name if candidate.session else None,
-                candidate.event.name if candidate.event else None,
-            )
-            if value
-        )
-        if slug_matches and context_matches:
-            matches.append(candidate)
+    candidate_query = _load_form_query().where(
+        EventForm.status != EventFormStatus.ARCHIVED,
+        (EventForm.public_slug.in_(possible_slugs))
+        | EventForm.public_slug.like(f"{slug}-%"),
+    )
+    candidates = db.scalars(candidate_query).all()
 
-    # A clean form name is only accepted when it identifies one form in the supplied event.
+    def matching_slug(form: EventForm) -> bool:
+        return (
+            form.public_slug in possible_slugs
+            or public_form_link_slug(form.public_slug, form.title) == slug
+        )
+
+    matches = [candidate for candidate in candidates if matching_slug(candidate)]
+    if not matches:
+        # Some production RLS policies allow exact slug lookups but hide prefix searches.
+        # Fall back to active forms and compare their normalized aliases in the service.
+        active_forms = db.scalars(
+            _load_form_query().where(EventForm.status != EventFormStatus.ARCHIVED)
+        ).all()
+        matches = [candidate for candidate in active_forms if matching_slug(candidate)]
+
+    if event_slug and len(matches) > 1:
+        event_matches = [
+            candidate for candidate in matches
+            if any(
+                slugify_url_segment(value) == event_slug
+                for value in (
+                    candidate.session.name if candidate.session else None,
+                    candidate.event.name if candidate.event else None,
+                )
+                if value
+            )
+        ]
+        if event_matches:
+            matches = event_matches
+
     if len(matches) != 1:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+
     form_id = matches[0].id
     set_public_form_rls_context(db, form_id=form_id)
     form = db.scalar(
