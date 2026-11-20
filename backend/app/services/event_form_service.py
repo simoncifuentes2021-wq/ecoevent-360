@@ -32,7 +32,12 @@ from app.models.core import (
 from app.models.enums import BikeZoneStatus, EventFormStatus, EventFormType, FormFieldType, UserRole
 from app.schemas.event_form_schema import EventFormCreate, EventFormUpdate, FormFieldCreate, FormFieldUpdate, FormResponseCreate
 from app.services.event_session_service import ensure_session_belongs_to_event
-from app.utils.slug import slugify_url_segment
+from app.utils.slug import (
+    public_form_duplicate_slug,
+    public_form_link_slug,
+    resolve_public_form_link_slug,
+    slugify_url_segment,
+)
 
 OPTION_FIELD_TYPES = {FormFieldType.SELECT, FormFieldType.MULTI_SELECT, FormFieldType.RADIO}
 PERSONAL_KEYS = {"full_name", "name", "email", "phone", "telefono", "respondent_name", "respondent_email", "respondent_phone"}
@@ -144,12 +149,20 @@ def get_form_or_404(db: Session, form_id: UUID) -> EventForm:
 
 
 def get_public_form_or_404(db: Session, slug: str) -> EventForm:
-    form_id = db.scalar(
-        select(EventForm.id).where(
-            EventForm.public_slug == slug,
-            EventForm.status != EventFormStatus.ARCHIVED,
-        )
+    active_form = select(EventForm.id).where(
+        EventForm.public_slug == slug,
+        EventForm.status != EventFormStatus.ARCHIVED,
     )
+    form_id = db.scalar(active_form)
+    if not form_id:
+        legacy_slug = resolve_public_form_link_slug(slug)
+        if legacy_slug:
+            form_id = db.scalar(
+                select(EventForm.id).where(
+                    EventForm.public_slug == legacy_slug,
+                    EventForm.status != EventFormStatus.ARCHIVED,
+                )
+            )
     if not form_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
     set_public_form_rls_context(db, form_id=form_id)
@@ -1085,12 +1098,21 @@ def _venue_name(form: EventForm) -> str | None:
 
 def _unique_slug(db: Session, title: str) -> str:
     base = _slugify(title)
-    slug = base
-    index = 2
-    while db.scalar(select(EventForm.id).where(EventForm.public_slug == slug)):
-        slug = f"{base}-{index}"
-        index += 1
-    return slug
+    existing = set(db.scalars(
+        select(EventForm.public_slug).where(
+            (EventForm.public_slug == base)
+            | EventForm.public_slug.like(f"{base}-%")
+        )
+    ).all())
+    occupied = existing | {public_form_link_slug(slug) for slug in existing}
+    if base not in occupied:
+        return base
+    ordinal = 1
+    while True:
+        candidate = public_form_duplicate_slug(base, ordinal)
+        if candidate not in occupied:
+            return candidate
+        ordinal += 1
 
 
 def _slugify(value: str) -> str:
