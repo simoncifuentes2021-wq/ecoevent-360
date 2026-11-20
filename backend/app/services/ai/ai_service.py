@@ -531,11 +531,15 @@ class AIService:
             db.commit()
             messages = {
                 "invalid_configuration": "Configuracion de IA invalida.",
+                "not_configured": "Falta configurar las credenciales del proveedor de IA.",
                 "rate_limited": "Limite temporal del proveedor.",
                 "timeout": "OpenAI demoró más de lo esperado. La propuesta no se aplicó; puedes volver a intentarlo.",
                 "output_truncated": "La propuesta excedió la extensión permitida. No se aplicó ningún cambio; intenta nuevamente.",
                 "REPORT_AI_BUDGET_EXCEEDED": "Se alcanzo el presupuesto mensual configurado.",
                 "invalid_output": "Respuesta IA invalida y no fue aplicada.",
+                "unsupported_numeric_claim": "La propuesta incluyó cifras que no coinciden con los datos del reporte. No se aplicó ningún cambio; vuelve a intentarlo.",
+                "unit_mismatch": "La propuesta incluyó unidades que no coinciden con las fuentes del reporte. No se aplicó ningún cambio.",
+                "invalid_source": "La propuesta hizo referencia a una fuente que no está disponible en el reporte. No se aplicó ningún cambio.",
             }
             raise AIServiceError(exc.code, messages.get(exc.code, "No fue posible generar la propuesta.")) from exc
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, ExternalLink } from "lucide-react";
+import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { downloadReport } from "@/lib/api/reports";
@@ -25,12 +25,8 @@ export function ReportDownloadButton({ report }: { report: Report }) {
   async function handleDownload() {
     setLoading(true);
     try {
-      if (report.pdf_url || report.file_url) {
-        window.open(report.pdf_url || report.file_url || "", "_blank");
-        return;
-      }
       const response = await downloadReport(report.id);
-      if (response.blob) downloadBlob(response.blob, response.filename || getReportFilename(report));
+      if (response.blob) downloadBlob(response.blob, getReportFilename(report));
       else if (response.pdf_url || response.file_url) window.open(response.pdf_url || response.file_url, "_blank");
     } finally {
       setLoading(false);
@@ -39,7 +35,7 @@ export function ReportDownloadButton({ report }: { report: Report }) {
 
   return (
     <Button disabled={loading} onClick={handleDownload} size="sm" type="button" variant="secondary">
-      {report.pdf_url || report.file_url ? <ExternalLink className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+      <Download className="h-4 w-4" />
       {loading ? "Descargando..." : "Descargar"}
     </Button>
   );

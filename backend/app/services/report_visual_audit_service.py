@@ -40,7 +40,7 @@ def _has_numeric_data(section: dict) -> bool:
 
 
 def _structural_findings(document) -> list[VisualAuditFinding]:
-    enabled = [item for item in document.sections if item.get("is_enabled") and item.get("section_type") != "COVER"]
+    enabled = [item for item in document.sections if item.get("is_enabled")]
     by_key = {item.get("section_key"): item for item in enabled}
     plans = plan_pages(list(document.sections), document.report["template_key"], document.editorial_config)
     findings: list[VisualAuditFinding] = []
@@ -92,7 +92,12 @@ def _browser_findings(html: str) -> list[VisualAuditFinding]:
             rows = page.locator(".page").evaluate_all("""pages => pages.map((page, index) => ({
               page: index + 1,
               sections: (page.dataset.reportSections || '').split(',').filter(Boolean),
-              overflow: page.scrollHeight > page.clientHeight + 2 || [...page.querySelectorAll('img,svg,table')].some(el => el.getBoundingClientRect().right > page.getBoundingClientRect().right + 2 || el.getBoundingClientRect().bottom > page.getBoundingClientRect().bottom + 2),
+              overflow: page.scrollHeight > page.clientHeight + 2 || [...page.querySelectorAll('*')].some(el => {
+                const style = getComputedStyle(el);
+                const clips = ['hidden', 'clip'].includes(style.overflowY) || ['hidden', 'clip'].includes(style.overflowX);
+                return clips && (el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2)
+                  || ['IMG','SVG','TABLE'].includes(el.tagName) && (el.getBoundingClientRect().right > page.getBoundingClientRect().right + 2 || el.getBoundingClientRect().bottom > page.getBoundingClientRect().bottom + 2);
+              }),
               empty: !(page.innerText || '').trim() && !page.querySelector('img,svg')
             }))""")
         finally:

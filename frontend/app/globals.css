@@ -33,3 +33,11 @@ a {
 [data-documents-view="people"] > .overflow-hidden.rounded-xl.border.border-slate-200.bg-white.shadow-sm {
   display: none;
 }
+/* Keep long navigation lists scrollable without a distracting browser scrollbar. */
+.sidebar-scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+.sidebar-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}

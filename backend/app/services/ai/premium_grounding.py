@@ -1,5 +1,5 @@
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from app.services.ai.providers.base import AIProviderError
 from app.services.ai.schemas import ReportAIAssistantProposal
@@ -25,6 +25,7 @@ def validate_premium_proposal(proposal: ReportAIAssistantProposal, context: dict
     allowed_sections = set(context["allowlists"]["section_keys"])
     allowed_presets = set(context["allowlists"]["presets"])
     allowed_variants = set(context["allowlists"]["premium_variants"])
+    metric_keys_by_section = context["allowlists"].get("metric_keys_by_section") or {}
     sources = context.get("sources") or {}
     evidence_ids = {item["id"] for item in context.get("evidences") or []}
     if str(proposal.report_id) != context["current"]["report_id"]:
@@ -45,8 +46,12 @@ def validate_premium_proposal(proposal: ReportAIAssistantProposal, context: dict
             raise AIProviderError("invalid_variant", "Premium variant does not belong to the proposed preset and section")
         if any(str(item) not in evidence_ids for item in section.selected_evidence_ids):
             raise AIProviderError("invalid_evidence", "Proposal selected an unavailable evidence")
-        if any(key not in sources for key in section.selected_metric_keys):
-            raise AIProviderError("invalid_source", "Proposal selected an unknown metric")
+        allowed_metric_keys = set(metric_keys_by_section.get(section.section_key) or [])
+        # Metric selection only affects visual ordering. Discard unknown keys
+        # instead of rejecting the whole grounded proposal for a harmless UI hint.
+        section.selected_metric_keys = [
+            key for key in section.selected_metric_keys if key in allowed_metric_keys
+        ]
     for suggestion in proposal.evidence_suggestions:
         if str(suggestion.evidence_id) not in evidence_ids or suggestion.section_key not in allowed_sections:
             raise AIProviderError("invalid_evidence", "Proposal selected an unavailable evidence")
@@ -61,7 +66,15 @@ def validate_premium_proposal(proposal: ReportAIAssistantProposal, context: dict
         allowed_units = set()
         for key in claim.source_keys:
             source = sources[key]
-            allowed_numbers.update(_numbers(str(source.get("value"))))
+            source_numbers = _numbers(str(source.get("value")))
+            allowed_numbers.update(source_numbers)
+            # Editorial copy is intentionally rounded to at most two decimals.
+            # Accept that presentation form while still grounding it in the
+            # exact source value (for example 0.15 from 0.1499999985).
+            allowed_numbers.update(
+                number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                for number in source_numbers
+            )
             unit = str(source.get("unit") or "")
             allowed_units.update(UNIT_ALIASES.get(unit, {unit.lower()} if unit else set()))
         if any(number not in allowed_numbers for number in _numbers(claim.text if hasattr(claim, "text") else claim.description)):

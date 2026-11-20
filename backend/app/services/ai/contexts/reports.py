@@ -1,4 +1,5 @@
 from uuid import UUID
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -69,6 +70,24 @@ def build_report_assistant_context(db: Session, report_id: UUID, user: User, ins
             if value is not None:
                 key = str(item.get("key") or item.get("metric_key") or index)
                 sources.setdefault(f"{section.section_key}.items.{key}", {"value": value, "unit": item.get("unit"), "source": section.section_key, "show_id": item.get("show_id")})
+    # The premium impact page displays this comparison as a percentage. Make
+    # the backend-derived value an explicit cited source so the assistant can
+    # explain it without inventing or recomputing a figure the validator cannot
+    # trace to a single source.
+    baseline = sources.get("environmental_impact.co2e_baseline_kg", {}).get("value")
+    actual = sources.get("environmental_impact.co2e_actual_kg", {}).get("value")
+    try:
+        baseline_value = Decimal(str(baseline))
+        actual_value = Decimal(str(actual))
+        if baseline_value > 0:
+            reduction_percent = (baseline_value - actual_value) * Decimal(100) / baseline_value
+            sources["environmental_impact.co2e_reduction_percent"] = {
+                "value": str(reduction_percent),
+                "unit": "%",
+                "source": "backend_calculation",
+            }
+    except (InvalidOperation, TypeError, ValueError):
+        pass
     context = {
         "section_guidance_version": SECTION_GUIDANCE_VERSION,
         "scope": {"event_id": str(report.event_id), "show_id": str(report.session_id) if report.session_id else None},
@@ -82,6 +101,14 @@ def build_report_assistant_context(db: Session, report_id: UUID, user: User, ins
             "premium_variants": sorted({"AUTO", *[value for variants in report_visual_design_service.PRESET_SECTION_VARIANTS.values() for value in variants.values()]}),
             "variants_by_preset": {preset: {s.section_key: variants.get(s.section_type.value, "AUTO") for s in report.sections} for preset, variants in report_visual_design_service.PRESET_SECTION_VARIANTS.items()},
             "section_keys": [s.section_key for s in report.sections],
+            "metric_keys_by_section": {
+                section.section_key: sorted({
+                    str(field.get("key"))
+                    for field in (section.content or {}).get("fields") or []
+                    if field.get("key") and field.get("is_visible", True)
+                })
+                for section in report.sections
+            },
         },
         "sources": sources,
         "multishow_comparisons": comparisons,

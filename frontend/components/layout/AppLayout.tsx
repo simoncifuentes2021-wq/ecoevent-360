@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 
@@ -13,6 +14,19 @@ import { defaultRouteForRole } from "@/lib/auth";
 export function AppLayout({ children }: { children: ReactNode }) {
   const { user, loading, isAuthenticated } = useAuth();
   const pathname = usePathname();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarPreferenceLoaded, setSidebarPreferenceLoaded] = useState(false);
+
+  useEffect(() => {
+    setSidebarCollapsed(window.localStorage.getItem("ecoevent360.sidebar_collapsed") === "true");
+    setSidebarPreferenceLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (sidebarPreferenceLoaded) {
+      window.localStorage.setItem("ecoevent360.sidebar_collapsed", String(sidebarCollapsed));
+    }
+  }, [sidebarCollapsed, sidebarPreferenceLoaded]);
 
   if (loading || !isAuthenticated || !user) {
     return <LoadingState label="Preparando tu espacio de trabajo..." />;
@@ -31,9 +45,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#e8fff4_0,#f6f8fb_35%,#eef3f6_100%)] md:grid md:grid-cols-[18rem_1fr]">
+    <div className={`min-h-screen bg-[radial-gradient(circle_at_top_left,#e8fff4_0,#f6f8fb_35%,#eef3f6_100%)] md:grid ${sidebarCollapsed ? "md:grid-cols-[5rem_1fr]" : "md:grid-cols-[18rem_1fr]"} transition-[grid-template-columns] duration-200`}>
       <div className="hidden md:block">
-        <Sidebar user={user} />
+        <Sidebar user={user} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed(value => !value)} />
       </div>
       <div className="min-w-0">
         <Topbar user={user} />

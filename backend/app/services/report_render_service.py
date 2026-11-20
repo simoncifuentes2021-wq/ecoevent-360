@@ -149,6 +149,7 @@ def build_html(document: ReportRenderDocument) -> str:
     pages = [
         {
             "recipe": plan.recipe.value,
+            "title": plan.title,
             "sections": [by_key[key] for key in plan.section_keys if key in by_key],
         }
         for plan in plans
@@ -319,17 +320,40 @@ def _styles(document: ReportRenderDocument) -> str:
     preset = str(((document.editorial_config or {}).get("visual_config") or {}).get("preset") or "AUTO")
     section_visuals = (document.editorial_config or {}).get("section_visuals") or {}
     has_section_premium = any(str((value or {}).get("premium_variant") or "AUTO") != "AUTO" for value in section_visuals.values())
-    premium_v2_styles = "" if preset == "AUTO" and not has_section_premium else f"""
+    has_custom_composition = any(
+        _uses_custom_composition(section)
+        or section.get("section_type") == "ENVIRONMENTAL_IMPACT"
+        for section in document.sections
+    )
+    premium_v2_styles = "" if preset == "AUTO" and not has_section_premium and not has_custom_composition else f"""
     .premium-carbon-visual{{display:grid;gap:4mm;min-width:0}} .premium-carbon-visual .premium-chart{{min-height:48mm;padding:3mm 4mm}} .premium-carbon-visual .premium-chart svg{{max-height:48mm}} .premium-carbon-photo{{margin:0}} .premium-carbon-photo figure img{{height:54mm;border-radius:2mm}} .premium-carbon-photo figcaption{{font-size:7pt}}
     .premium-page-sections{{display:grid;gap:8mm}} .premium-emphasis-high{{border-left:1.5mm solid {t['accent_color']};padding-left:4mm}} .premium-emphasis-low{{opacity:.94}} .premium-ai-priority{{display:flex;gap:3mm;margin:0 0 4mm}} .premium-ai-priority>div{{flex:1;min-width:0;border-radius:3mm;background:{t['background_color']};padding:3mm 4mm}} .premium-ai-priority small{{display:block;color:{t['muted_color']};font-size:8pt}} .premium-ai-priority strong{{font-size:15pt;color:{t['primary_color']};overflow-wrap:anywhere}} .premium-document-grid{{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:11mm;align-items:start}} .premium-document-grid.single{{grid-template-columns:1fr}}
     .premium-prose{{font-size:13pt;line-height:1.55;color:{t["text_color"]};max-width:150mm}} .premium-hero-rule{{display:flex;align-items:end;justify-content:space-between;gap:8mm;padding:4mm 0 7mm;border-bottom:1px solid #dce5e0;margin-bottom:7mm}} .premium-hero-rule strong{{font-size:47pt;line-height:.88;letter-spacing:-.05em;color:{t["primary_color"]}}} .premium-hero-rule strong small{{font-size:9pt;letter-spacing:0;margin-left:1mm}} .premium-hero-rule span{{max-width:48mm;font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:{t["muted_color"]};text-align:right}}
     .premium-progress{{height:4mm;background:#e7eeea;border-radius:9mm;overflow:hidden;margin:4mm 0 2mm}} .premium-progress i{{display:block;height:100%;background:{t["secondary_color"]};border-radius:inherit}} .premium-editorial-list{{display:grid;border-top:1px solid #dce5e0}} .premium-editorial-row{{display:grid;grid-template-columns:8mm 1fr auto;gap:4mm;padding:4mm 0;border-bottom:1px solid #dce5e0;break-inside:avoid}} .premium-editorial-row b{{color:{t["secondary_color"]}}} .premium-editorial-row strong{{color:{t["primary_color"]}}} .premium-editorial-row p{{grid-column:2/-1;margin:0;font-size:8pt;color:{t["muted_color"]}}}
     .premium-positive{{padding:8mm 0;border-top:2mm solid {t["accent_color"]};font-size:18pt;color:{t["primary_color"]}}} .premium-story-photo figure:first-child img{{height:94mm}} .premium-story-photo figure:not(:first-child) img{{height:44mm}}
     .premium-equivalence-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6mm;margin-top:9mm}} .premium-equivalence-card{{min-width:0;padding:8mm;background:{t["background_color"]};border-radius:3mm;border-top:1.5mm solid {t["accent_color"]}}} .premium-equivalence-card span{{display:block;min-height:12mm;color:{t["muted_color"]}}} .premium-equivalence-card strong{{display:block;margin-top:5mm;font-size:28pt;line-height:1;color:{t["primary_color"]};overflow-wrap:anywhere}} .premium-equivalence-card small{{display:block;margin-top:2mm;font-size:9pt;line-height:1.3}}
-    .premium-tone-ecoevent_editorial .premium-section-heading h2{{font-family:Georgia,'Times New Roman',serif;font-weight:600}} .premium-tone-ecoevent_editorial .premium-prose{{font-family:Georgia,'Times New Roman',serif;line-height:1.7}}
-    .premium-tone-environmental .premium-section-heading{{border-bottom:1.5mm solid #69b849}} .premium-tone-environmental .premium-heading-icon{{background:#2d6a4f}}
-    .premium-tone-bike_zone .premium-section-heading{{border-bottom:1.5mm solid #8ef0cf}} .premium-tone-bike_zone .premium-heading-icon{{background:#007c64}} .premium-tone-bike_zone .premium-hero-rule strong{{color:#007c64}}
-    .premium-tone-impact .premium-section-heading{{border-bottom:2mm solid {t["primary_color"]}}} .premium-tone-impact .premium-hero-rule strong{{font-size:53pt}} .premium-tone-impact .premium-positive{{font-weight:800}}
+    .premium-tone-ecoevent_editorial .premium-section-heading h2{{font-family:Georgia,'Times New Roman',serif;font-weight:600}} .premium-tone-ecoevent_editorial .premium-prose,.premium-tone-ecoevent_editorial .premium-narrative{{font-family:Georgia,'Times New Roman',serif;line-height:1.75}} .premium-tone-ecoevent_editorial .premium-section-heading{{border-bottom:1px solid #b8c9bd}} .premium-tone-ecoevent_editorial .premium-heading-icon{{border-radius:1mm;background:#234638}} .cover-preset-ecoevent_editorial h1{{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.025em}} .cover-preset-ecoevent_editorial .cover-line{{width:42mm;height:1mm}}
+    .premium-tone-executive .premium-section{{padding:7mm;border:1px solid #d8d6cd;border-left:2mm solid #b89b52;background:#fff}} .premium-tone-executive .premium-section-heading{{border-bottom:1px solid #b89b52}} .premium-tone-executive .premium-section-heading h2,.premium-tone-executive .premium-hero-number strong,.premium-tone-executive .premium-hero>strong,.premium-tone-executive .premium-impact-hero strong{{font-family:Arial,'Helvetica Neue',sans-serif;color:#202833}} .premium-tone-executive .premium-heading-icon{{border-radius:1mm;background:#202833}} .premium-tone-executive .premium-secondary>div{{border-top-color:#b89b52}} .premium-tone-executive .premium-baseline{{background:#f3f2ef}} .cover-preset-executive{{background-color:#202833!important}} .cover-preset-executive::before{{background:linear-gradient(115deg,#202833F8 0%,#303a46E8 65%,#0003)}} .cover-preset-executive .cover-line{{background:#c6aa64}} .cover-preset-executive h1{{font-family:Arial,'Helvetica Neue',sans-serif;font-weight:700;letter-spacing:-.02em}}
+    .premium-tone-environmental .premium-section{{padding:7mm;background:#f4faef;border:1px solid #d6e9c9;border-radius:4mm}} .premium-tone-environmental .premium-section-heading{{border-bottom:1.5mm solid #69b849}} .premium-tone-environmental .premium-heading-icon{{background:#2d6a4f}} .premium-tone-environmental .premium-baseline,.premium-tone-environmental .premium-equivalence-card{{background:#e5f3dc}} .premium-tone-environmental .premium-secondary>div{{padding:3mm;border:0;border-radius:2mm;background:#fff}} .cover-preset-environmental{{background-color:#eff9e9!important;color:#1d492d!important}} .cover-preset-environmental::before{{display:none}} .cover-preset-environmental::after{{border:2px solid #78b95788}} .cover-preset-environmental .cover-meta,.cover-preset-environmental .cover-meta strong{{color:#1d492d}}
+    .premium-tone-bike_zone .premium-section-heading{{border-bottom:1.5mm solid #36c8a2}} .premium-tone-bike_zone .premium-heading-icon{{border-radius:2mm;background:#007c64}} .premium-tone-bike_zone .premium-hero,.premium-tone-bike_zone .premium-hero-number{{min-height:36mm;justify-content:center;padding:6mm;background:#075e54;border-radius:3mm;color:#fff}} .premium-tone-bike_zone .premium-hero>strong,.premium-tone-bike_zone .premium-hero-number strong{{color:#fff}} .premium-tone-bike_zone .premium-hero>span,.premium-tone-bike_zone .premium-hero-number span{{color:#d4fff1}} .premium-tone-bike_zone .premium-chart{{padding:5mm;background:#effcf8;border:0;border-radius:3mm}} .premium-tone-bike_zone .premium-secondary>div{{padding:3mm;border:0;border-radius:2mm;background:#e4f8f1}} .cover-preset-bike_zone{{background-color:#075e54!important}} .cover-preset-bike_zone::before{{background:linear-gradient(125deg,#064b45F5 0%,#008b72D9 62%,#75e2bd77)}} .cover-preset-bike_zone .cover-line{{height:3mm;width:34mm;background:#8ef0cf}}
+    .premium-tone-impact .premium-section-heading{{border-bottom:2mm solid #1f4d2c}} .premium-tone-impact .premium-hero-number,.premium-tone-impact .premium-hero{{padding:7mm;background:#1f4d2c;border-radius:3mm;color:#fff}} .premium-tone-impact .premium-hero-number strong,.premium-tone-impact .premium-hero>strong{{font-size:53pt;color:#fff}} .premium-tone-impact .premium-hero-number span,.premium-tone-impact .premium-hero>span{{color:#ddf3cf}} .premium-tone-impact .premium-impact-hero{{padding:9mm;background:#1f4d2c;border:0;border-radius:3mm;color:#fff}} .premium-tone-impact .premium-impact-hero strong,.premium-tone-impact .premium-impact-hero em{{color:#fff}} .premium-tone-impact .premium-impact-hero em small{{color:#d8ead4}} .premium-tone-impact .premium-baseline{{border:1px solid #d5e5d0;border-radius:3mm;overflow:hidden}} .premium-tone-impact .premium-positive{{font-weight:800}} .cover-preset-impact{{background-color:#173d27!important}} .cover-preset-impact::before{{background:linear-gradient(135deg,#102b1bF8 0%,#28623bdd 65%,#a7ce6d55)}} .cover-preset-impact .cover-line{{height:3mm;width:38mm}} .cover-preset-impact h1{{font-size:56pt}}
+    /* Legacy report recipes receive the same visual preset as premium sections. */
+    .preset-page-ecoevent_editorial h2{{font-family:Georgia,'Times New Roman',serif;font-weight:500}} .preset-page-ecoevent_editorial .impact-card,.preset-page-ecoevent_editorial .impact-detail{{border-radius:0;border-top:1mm solid #557864}}
+    .preset-page-executive .page-head{{border-bottom:1mm solid #b89b52}} .preset-page-executive .chapter{{color:#303945}} .preset-page-executive .impact-card,.preset-page-executive .impact-detail{{border-radius:0;border-color:#d8d6cd;background:#fbfaf7}} .preset-page-executive .impact-trace{{background:#202833;border-radius:0}}
+    .preset-page-environmental .impact-card{{background:#f4faef;border-color:#b9d8a7;border-radius:1mm}} .preset-page-environmental .impact-trace{{background:#e5f3dc;color:#173d1b;border-left:1.5mm solid #69b849;border-radius:1mm}} .preset-page-environmental .impact-trace h3{{color:#173d1b}} .preset-page-environmental .impact-trace li{{background:#fff;color:#173d1b}}
+    .preset-page-bike_zone .impact-card{{border:0;border-bottom:1.5mm solid #00a878;border-radius:0;background:#effcf8}} .preset-page-bike_zone .impact-trace{{background:#075e54;border-radius:1mm}} .preset-page-bike_zone .impact-detail{{border-radius:1mm;border-left:1.5mm solid #00a878}}
+    .preset-page-impact.recipe-environmental_overview .impact-card{{border-color:#a8c99b;background:#f7fbf4;border-radius:1mm}} .preset-page-impact.recipe-environmental_overview .impact-card strong{{color:#1f4d2c}} .preset-page-impact.recipe-environmental_overview .impact-trace{{background:#1f4d2c;color:#fff;border:1px solid #1f4d2c;border-radius:2mm}} .preset-page-impact.recipe-environmental_overview .impact-trace h3,.preset-page-impact.recipe-environmental_overview .impact-trace li .impact-item-value{{color:#fff}} .preset-page-impact.recipe-environmental_overview .impact-trace li{{background:#ffffff16;border:1px solid #ffffff20}} .preset-page-impact.recipe-environmental_overview .impact-detail{{background:#f1f7ee;border-left:1.5mm solid #1f4d2c;border-radius:1mm}}
+    /* Impact-section composition choices are applied only when explicitly selected. */
+    .impact-comparison-chart{{grid-column:1/-1;margin-bottom:2mm;padding:4mm 4.5mm;border:1px solid #dce5e0;border-radius:2mm;background:#fff}} .impact-comparison-chart h4{{margin:0 0 3mm;color:{t["primary_color"]};font-size:9pt}} .impact-comparison-chart>div{{display:grid;grid-template-columns:24mm 1fr 20mm;gap:3mm;align-items:center;margin-top:2mm;font-size:7pt}} .impact-comparison-chart i{{display:block;height:2.2mm;border-radius:9mm;background:#e8eee9;overflow:hidden}} .impact-comparison-chart i b{{display:block;height:100%;border-radius:inherit;background:{t["secondary_color"]}}} .impact-comparison-chart>div+div i b{{background:{t["accent_color"]}}} .impact-comparison-chart strong{{text-align:right;color:{t["primary_color"]};font-size:7pt}}
+    .impact-official.impact-layout-feature-chart{{grid-template-columns:1.08fr .92fr;gap:6mm}} .impact-layout-feature-chart .impact-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    .impact-official.impact-layout-kpi-grid{{grid-template-columns:1fr;gap:5mm}} .impact-layout-kpi-grid .impact-kpis{{grid-template-columns:repeat(4,minmax(0,1fr))}} .impact-layout-kpi-grid .impact-trace{{width:100%}} .impact-layout-kpi-grid .impact-trace ul{{grid-template-columns:repeat(2,minmax(0,1fr));gap:2mm 3mm}}
+    .impact-official.impact-layout-two-column{{grid-template-columns:1fr 1fr;gap:7mm}} .impact-layout-two-column .impact-kpis{{grid-template-columns:1fr}}
+    .impact-official.impact-layout-metric-list{{grid-template-columns:1.05fr .95fr;gap:8mm}} .impact-layout-metric-list .impact-kpis{{grid-template-columns:1fr}} .impact-layout-metric-list .impact-card{{min-height:19mm;flex-direction:row;align-items:center;gap:4mm}}
+    .impact-official.impact-layout-big-numbers{{grid-template-columns:1fr;gap:5mm}} .impact-layout-big-numbers .impact-kpis{{grid-template-columns:repeat(3,minmax(0,1fr))}} .impact-layout-big-numbers .impact-card:first-child{{grid-column:span 2;min-height:37mm}} .impact-layout-big-numbers .impact-card:first-child strong{{font-size:27pt}}
+    .impact-official.impact-layout-hero-image-text{{grid-template-columns:1.1fr .9fr;gap:7mm}} .impact-layout-hero-image-text .impact-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}} .impact-layout-hero-image-text .impact-card:first-child{{grid-column:span 2;min-height:35mm;background:{t["primary_color"]};border-color:{t["primary_color"]}}} .impact-layout-hero-image-text .impact-card:first-child span,.impact-layout-hero-image-text .impact-card:first-child strong{{color:#fff}}
+    .impact-official.impact-layout-text-image{{grid-template-columns:.9fr 1.1fr;grid-template-areas:"trace metrics";gap:7mm}} .impact-layout-text-image .impact-kpis{{grid-area:metrics;grid-template-columns:repeat(2,minmax(0,1fr))}} .impact-layout-text-image .impact-trace{{grid-area:trace}}
+    .impact-official.impact-layout-editorial{{grid-template-columns:1fr;gap:5mm}} .impact-layout-editorial .impact-kpis{{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 7mm}} .impact-layout-editorial .impact-card{{border:0;border-bottom:1px solid #dce5e0;border-radius:0;padding:3mm 0;min-height:19mm}}
+    .impact-official.impact-layout-photo-grid{{grid-template-columns:1fr;gap:5mm}} .impact-layout-photo-grid .impact-kpis{{grid-template-columns:repeat(3,minmax(0,1fr));gap:4mm}} .impact-layout-photo-grid .impact-card{{min-height:33mm;border-radius:1mm}} .impact-layout-photo-grid .impact-trace{{width:100%}}
     """
     styles = f"""
     @page {{size:A4;margin:0}} *{{box-sizing:border-box}} html,body{{margin:0;padding:0}}
@@ -457,6 +481,8 @@ def _cover_html(document: ReportRenderDocument, photos: list[dict]) -> str:
         "EDITORIAL": "editorial-cover",
         "MINIMAL_PREMIUM": "minimal-premium",
     }.get(cover_style, "full-photo")
+    preset = str(((document.editorial_config or {}).get("visual_config") or {}).get("preset") or "AUTO")
+    cover_preset = f"cover-preset-{preset.lower()}" if preset != "AUTO" else ""
     title = cover_value("title", document.report["title"])
     client = cover_value("client", document.client["name"])
     event = cover_value("event", document.event["name"])
@@ -468,7 +494,7 @@ def _cover_html(document: ReportRenderDocument, photos: list[dict]) -> str:
         if document.show
         else "<strong>Reporte integral</strong>Alcance evento"
     )
-    return f'''<section class="cover {class_name}"{style}><div class="brand"{_editable_attr("cover.subtitle", "COVER_SUBTITLE", "box")}>Greenway App · {escape(str(subtitle))}</div><div class="cover-copy"><div class="cover-line"></div><h1{_editable_attr("cover.title", "COVER_TITLE", "box")}>{escape(title)}</h1><div class="cover-meta"{_editable_attr("cover.metadata", "METADATA", "box")}><div><strong>{escape(client)}</strong>{escape(event)}</div><div>{show}<br>{escape(date)}<br>{escape(venue)}</div></div></div></section>'''
+    return f'''<section class="cover {class_name} {cover_preset}"{style}><div class="brand"{_editable_attr("cover.subtitle", "COVER_SUBTITLE", "box")}>Greenway App · {escape(str(subtitle))}</div><div class="cover-copy"><div class="cover-line"></div><h1{_editable_attr("cover.title", "COVER_TITLE", "box")}>{escape(title)}</h1><div class="cover-meta"{_editable_attr("cover.metadata", "METADATA", "box")}><div><strong>{escape(client)}</strong>{escape(event)}</div><div>{show}<br>{escape(date)}<br>{escape(venue)}</div></div></div></section>'''
 
 
 def _page_html(
@@ -477,7 +503,7 @@ def _page_html(
 ) -> str:
     sections = page["sections"]
     recipe = page["recipe"]
-    title = sections[0]["title"] if sections else "Información del reporte"
+    title = page.get("title") or (sections[0]["title"] if sections else "Información del reporte")
     section_photos = [
         photo
         for section in sections
@@ -522,14 +548,26 @@ def _page_html(
         content = _mixed_html(sections, photos, theme)
     editorial_config = editorial_config or {}
     visual = report_visual_design_service.normalized(editorial_config.get("visual_config"))
-    premium = _premium_page_html(sections, photos, theme, visual, editorial_config.get("section_visuals"))
-    if premium:
+    if recipe == "ENVIRONMENTAL_IMPACT_TRACE" and sections:
+        premium = _render_environmental_impact_premium(
+            sections[0], photos, theme, str(visual.get("preset") or "AUTO"), traceability_only=True
+        )
+    else:
+        premium = _premium_page_html(
+            sections, photos, theme, visual, editorial_config.get("section_visuals"),
+            exclude_environmental_trace=page.get("separate_traceability", False),
+        )
+    # The environmental overview has a deliberate legacy composition:
+    # indicators on the left, traceability on the right, equivalences below.
+    # Visual presets may restyle it, but must not replace that composition.
+    if premium and recipe != "ENVIRONMENTAL_OVERVIEW":
         content = premium
     section_keys = ",".join(str(section.get("section_key") or "") for section in sections)
-    return f"""<section class="page recipe-{recipe.lower()}" data-report-sections="{escape(section_keys)}"><header class="page-head"><span class="chapter">{escape(title)}</span><span>Greenway App</span></header>{content}<footer class="folio"><span>Impacto · operación · evidencia</span><b>{number:02d}</b></footer></section>"""
+    preset_class = f"preset-page-{visual['preset'].lower()}" if visual.get("preset") != "AUTO" else ""
+    return f"""<section class="page recipe-{recipe.lower()} {preset_class}" data-report-sections="{escape(section_keys)}"><header class="page-head"><span class="chapter">{escape(title)}</span><span>Greenway App</span></header>{content}<footer class="folio"><span>Impacto · operación · evidencia</span><b>{number:02d}</b></footer></section>"""
 
 
-def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, visual: dict, section_visuals: dict | None = None) -> str:
+def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, visual: dict, section_visuals: dict | None = None, *, exclude_environmental_trace: bool = False) -> str:
     preset = str(visual.get("preset") or "AUTO")
     section_visuals = section_visuals or {}
     if preset == "AUTO" and not any(str((value or {}).get("premium_variant") or "AUTO") != "AUTO" for value in section_visuals.values()):
@@ -571,7 +609,8 @@ def _premium_page_html(sections: list[dict], photos: list[dict], theme: dict, vi
             # Keep editable impact copy and traceability available in every style.
             rendered.append(
                 _render_environmental_impact_premium(
-                    section, photos, theme, preset if preset != "AUTO" else "ENVIRONMENTAL"
+                    section, photos, theme, preset if preset != "AUTO" else "ENVIRONMENTAL",
+                    include_traceability=not exclude_environmental_trace,
                 )
             )
             continue
@@ -694,7 +733,7 @@ def _render_carbon_premium(section: dict, photos: list[dict], theme: dict, prese
     return f'<article class="premium-section premium-carbon premium-tone-{preset.lower()}">{_premium_heading(section, "Huella de carbono", "CARBON", "carbon")}<div class="premium-split"><div><div class="premium-hero"{_editable_attr("section.carbon.hero", "BIG_NUMBER", "box")}><strong>{escape(_premium_value(total))}<small>{escape(_premium_unit(total))}</small></strong><span>emisiones totales</span></div><div class="premium-breakdown"{_editable_attr("section.carbon.breakdown", "METRIC_LIST", "box")}>{breakdown}</div><p class="premium-methodology">{_safe_text(text)}</p></div>{visual_html}</div></article>'
 
 
-def _render_environmental_impact_premium(section: dict, photos: list[dict], theme: dict, preset: str) -> str:
+def _render_environmental_impact_premium(section: dict, photos: list[dict], theme: dict, preset: str, *, include_traceability: bool = True, traceability_only: bool = False) -> str:
     content = section.get("content") or {}
     by_key, _, _ = _premium_fields(section)
     avoided, baseline, actual = by_key.get("co2e_avoided_kg"), by_key.get("co2e_baseline_kg"), by_key.get("co2e_actual_kg")
@@ -723,9 +762,9 @@ def _render_environmental_impact_premium(section: dict, photos: list[dict], them
             label = escape(str(item.get("label") or "Elemento"))
             value = item.get("value")
             unit = escape(str(item.get("unit") or ""))
-            value_text = f'<span class="impact-item-value">{escape(str(value))} {unit}</span>' if value not in (None, "") else ""
+            value_text = f'<span class="impact-item-value">{escape(_format_trace_value(value))} {unit}</span>' if value not in (None, "") else ""
             description = str(item.get("description") or "").strip()
-            detail = f'<small class="impact-item-detail">{_safe_text(description)}</small>' if description else ""
+            detail = f'<small class="impact-item-detail">{_safe_text(_format_trace_description(description))}</small>' if description else ""
             rows.append(f"<li><b>{label}</b>{value_text}{detail}</li>")
         return "".join(rows)
 
@@ -747,6 +786,8 @@ def _render_environmental_impact_premium(section: dict, photos: list[dict], them
         f"<h3>{escape(str(traceability_title or ''))}</h3><p>{_safe_text(str(traceability_summary or ''))}</p>{trace_blocks}</aside>"
         if content.get("show_traceability") is not False else ""
     )
+    if traceability_only:
+        return f'<article class="premium-section premium-impact-story premium-tone-{preset.lower()}">{_premium_heading(section, "Trazabilidad del impacto ambiental", "LEAF", "environmental-impact.traceability")}{trace_html}</article>'
     selected_action_keys = {
         str(item.get("_source_key"))[7:]
         for item in action_items
@@ -767,7 +808,7 @@ def _render_environmental_impact_premium(section: dict, photos: list[dict], them
     disclaimer = str(content.get("text") or "").strip()
     disclaimer_html = f'<p class="premium-impact-disclaimer">{_safe_text(disclaimer)}</p>' if disclaimer else ""
     reduction_html = f'<em>↓ {escape(report_visual_design_service.format_metric(reduction, "%", precision=1))}%<small> frente a línea base</small></em>' if reduction is not None else ""
-    return f'<article class="premium-section premium-impact-story premium-tone-{preset.lower()}">{_premium_heading(section, "Impacto ambiental evitado", "LEAF", "environmental-impact")}<div class="premium-impact-hero"{_editable_attr("section.environmental-impact.hero", "BIG_NUMBER", "box")}><div><strong>{escape(_premium_value(avoided))}<small>kg CO₂e</small></strong><span>evitados</span></div>{reduction_html}</div><div class="premium-baseline"{_editable_attr("section.environmental-impact.baseline", "COMPARISON", "box")}>{comparison}</div><div class="premium-secondary"{_editable_attr("section.environmental-impact.secondary", "METRIC_LIST", "box")}>{secondary}</div>{scope_results_html}{disclaimer_html}{trace_html}</article>'
+    return f'<article class="premium-section premium-impact-story premium-tone-{preset.lower()}">{_premium_heading(section, "Impacto ambiental evitado", "LEAF", "environmental-impact")}<div class="premium-impact-hero"{_editable_attr("section.environmental-impact.hero", "BIG_NUMBER", "box")}><div><strong>{escape(_premium_value(avoided))}<small>kg CO₂e</small></strong><span>evitados</span></div>{reduction_html}</div><div class="premium-baseline"{_editable_attr("section.environmental-impact.baseline", "COMPARISON", "box")}>{comparison}</div><div class="premium-secondary"{_editable_attr("section.environmental-impact.secondary", "METRIC_LIST", "box")}>{secondary}</div>{scope_results_html}{disclaimer_html}{trace_html if include_traceability else ""}</article>'
 
 
 def _premium_visible_items(section: dict) -> list[dict]:
@@ -1012,6 +1053,26 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         "</article>"
         for field in fields[:8]
     )
+    field_by_key = {str(field.get("key")): field for field in fields}
+    comparison_chart = ""
+    if str(section.get("layout_variant") or "FEATURE_CHART") == "FEATURE_CHART":
+        baseline = field_by_key.get("co2e_baseline_kg")
+        actual = field_by_key.get("co2e_actual_kg")
+        try:
+            baseline_value = Decimal(str((baseline or {}).get("value")))
+            actual_value = Decimal(str((actual or {}).get("value")))
+            if baseline_value > 0:
+                actual_width = min(Decimal(100), max(Decimal(0), actual_value * 100 / baseline_value))
+                comparison_chart = (
+                    '<div class="impact-comparison-chart"><h4>Comparación de emisiones</h4>'
+                    '<div><span>Línea base</span><i><b style="width:100%"></b></i>'
+                    f'<strong>{escape(_display_number(baseline_value, 2, True))} kg</strong></div>'
+                    '<div><span>Escenario real</span><i>'
+                    f'<b style="width:{actual_width:.2f}%"></b></i>'
+                    f'<strong>{escape(_display_number(actual_value, 2, True))} kg</strong></div></div>'
+                )
+        except (InvalidOperation, TypeError, ValueError):
+            comparison_chart = ""
     content_items = content.get("items") or []
     # Older drafts stored only action/equivalence labels. Infer their type so
     # refreshing and editing them remains backwards compatible.
@@ -1046,12 +1107,12 @@ def _environmental_impact_html(sections: list[dict]) -> str:
         rendered_value = ""
         if value not in (None, ""):
             try:
-                formatted_value = f"{escape(_display_number(value, 5, True))} {escape(unit)}"
+                formatted_value = f"{escape(_format_trace_value(value))} {escape(unit)}"
             except (InvalidOperation, ValueError):
                 formatted_value = f"{escape(str(value))} {escape(unit)}"
             rendered_value = f'<span class="impact-item-value">{formatted_value.strip()}</span>'
         description = str(item.get("description") or "").strip()
-        detail = f'<small class="impact-item-detail">{escape(description)}</small>' if description else ""
+        detail = f'<small class="impact-item-detail">{escape(_format_trace_description(description))}</small>' if description else ""
         return f"<li><b>{label}</b>{rendered_value}{detail}</li>"
 
     visible_items = [item for item in normalized_items if item.get("_is_visible") is not False]
@@ -1075,6 +1136,7 @@ def _environmental_impact_html(sections: list[dict]) -> str:
     equivalence_html = "".join(trace_row(item) for item in equivalence_rows[:20])
     disclaimer = str(content.get("text") or "").strip()
     show_traceability = content.get("show_traceability") is not False
+    impact_layout = str(section.get("layout_variant") or "FEATURE_CHART").lower().replace("_", "-")
     traceability_title = content.get("traceability_title") if "traceability_title" in content else "Trazabilidad aprobada"
     traceability_summary = content.get("traceability_summary") if "traceability_summary" in content else (
         f"{len(actions)} acciones aprobadas. Solo estos resultados forman parte del reporte oficial."
@@ -1113,8 +1175,8 @@ def _environmental_impact_html(sections: list[dict]) -> str:
     )
     return (
         f'<h2{_editable_attr(f"{section_key}.title", "SECTION_TITLE", "box")}>Impacto ambiental evitado</h2>'
-        f'<div class="impact-official{"" if show_traceability else " no-trace"}"><div class="impact-kpis"{_editable_attr(f"{section_key}.big-numbers", "BIG_NUMBERS", "box")}>'
-        f"{cards}</div>{traceability_html}</div>"
+        f'<div class="impact-official impact-layout-{escape(impact_layout)}{"" if show_traceability else " no-trace"}"><div class="impact-kpis"{_editable_attr(f"{section_key}.big-numbers", "BIG_NUMBERS", "box")}>'
+        f"{comparison_chart}{cards}</div>{traceability_html}</div>"
         f"{details_html}"
         f"{disclaimer_html}"
     )
@@ -1132,6 +1194,32 @@ def _display_number(value: Any, digits: int = 2, trim: bool = False) -> str:
     if trim:
         formatted = formatted.rstrip("0").rstrip(".")
     return formatted.replace(".", ",")
+
+
+def _format_trace_value(value: Any) -> str:
+    """Keep traceability figures readable without hiding small equivalences."""
+    if value is None:
+        return "—"
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return str(value)
+    if not number:
+        return "0"
+    # Two decimals are enough for ordinary quantities. For fractional
+    # equivalences, retain three significant digits so small values remain
+    # meaningful (for example 0.0127 ha instead of 0.01 ha).
+    digits = 2 if abs(number) >= 1 else max(0, 2 - number.copy_abs().adjusted())
+    return _display_number(number, digits, trim=True)
+
+
+def _format_trace_description(description: str) -> str:
+    """Shorten long decimal factors in source notes while preserving years."""
+    return re.sub(
+        r"(?<![\w])\d+[.,]\d{3,}",
+        lambda match: _format_trace_value(match.group(0).replace(",", ".")),
+        description,
+    )
 
 
 def _carbon_equivalences_html(sections: list[dict], photos: list[dict]) -> str:

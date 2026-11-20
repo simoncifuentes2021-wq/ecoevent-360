@@ -80,7 +80,7 @@ export function formatReportDate(value?: string | null) {
 
 export function getReportFilename(report: Pick<Report, "id" | "title">) {
   const slug = report.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return `ecoevent-360-${slug || "reporte"}-${report.id}.pdf`;
+  return `greenway-${slug || "reporte"}-${report.id}.pdf`;
 }
 
 export { buildEventDashboardFromFallbackData };

@@ -179,7 +179,10 @@ def apply_proposal(db, report, generation_id: UUID, edit_version: int, user, acc
     if not generation:
         raise HTTPException(404, "AI report proposal not found")
     proposal = ReportAIAssistantProposal.model_validate(generation.output)
-    revision = report_revision_service.create(db, report, user, edit_version, "Antes de aplicar propuesta IA premium")
+    revision = report_revision_service.create(
+        db, report, user, edit_version,
+        "Antes de aplicar propuesta IA premium", commit=False,
+    )
     accepted = set(accepted_section_keys) if accepted_section_keys is not None else {item.section_key for item in proposal.sections}
     by_key = {section.section_key: section for section in report.sections}
     unknown = accepted.difference(by_key)
@@ -192,7 +195,6 @@ def apply_proposal(db, report, generation_id: UUID, edit_version: int, user, acc
     page_overrides = dict(config.get("page_overrides") or {})
     if apply_preset:
         visual["preset"] = proposal.recommended_preset
-        config["target_page_count"] = proposal.estimated_pages
     config["mode"] = "CUSTOM"
 
     proposed_by_key = {item.section_key: item for item in proposal.sections}
@@ -221,7 +223,8 @@ def apply_proposal(db, report, generation_id: UUID, edit_version: int, user, acc
         if item.section_key not in accepted:
             continue
         section = by_key[item.section_key]
-        section.is_enabled = item.visible
+        # Visibility is an explicit editor choice. The assistant may suggest
+        # it, but applying a design must never hide report content.
         _set_generated_text(section, _section_narrative(item, seen_findings), generation.id)
         section.updated_at = datetime.now(UTC).replace(tzinfo=None)
     ordered = sorted(report.sections, key=lambda section: (
@@ -232,6 +235,16 @@ def apply_proposal(db, report, generation_id: UUID, edit_version: int, user, acc
         section.sort_order = index
 
     _apply_global_content(by_key, accepted, proposal, generation.id)
+
+    from app.services.report_page_planner import plan_pages
+    config["target_page_count"] = len(
+        plan_pages(
+            report_revision_service.snapshot(report)["sections"],
+            report.template_key.value,
+            config,
+        )
+    )
+    report.editorial_config = config
 
     evidence_targets = {str(evidence_id): item.section_key for item in proposal.sections if item.section_key in accepted for evidence_id in item.selected_evidence_ids}
     evidence_targets.update({str(item.evidence_id): item.section_key for item in proposal.evidence_suggestions if item.section_key in accepted})
@@ -245,6 +258,12 @@ def apply_proposal(db, report, generation_id: UUID, edit_version: int, user, acc
             per_section_order[target] = evidence.sort_order + 1
 
     visual_audit = report_visual_audit_service.audit_correct_and_verify(report, accepted)
+    if not visual_audit["final"]["passed"]:
+        db.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail="La propuesta no se aplicó porque el informe aún tiene contenido fuera de página. Prueba otro estilo o revisa la sección indicada.",
+        )
     generation.applied = True
     report.edit_version += 1
     report.updated_at = datetime.now(UTC).replace(tzinfo=None)

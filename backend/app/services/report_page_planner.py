@@ -12,6 +12,7 @@ class PageRecipe(StrEnum):
     EXECUTIVE_OVERVIEW = "EXECUTIVE_OVERVIEW"
     OPERATIONS_SUMMARY = "OPERATIONS_SUMMARY"
     ENVIRONMENTAL_OVERVIEW = "ENVIRONMENTAL_OVERVIEW"
+    ENVIRONMENTAL_IMPACT_TRACE = "ENVIRONMENTAL_IMPACT_TRACE"
     BIKE_ZONE_FEATURE = "BIKE_ZONE_FEATURE"
     WASTE_FEATURE = "WASTE_FEATURE"
     CARBON_FEATURE = "CARBON_FEATURE"
@@ -284,4 +285,6 @@ def plan_pages(
             )
         )
     cover = [ReportPagePlan(1, PageRecipe.COVER_HERO, EditorialDensity.HIGH, "Portada", ("cover",))] if has_cover else []
-    return [*cover, *result]
+    planned = [*cover, *result]
+
+    return planned

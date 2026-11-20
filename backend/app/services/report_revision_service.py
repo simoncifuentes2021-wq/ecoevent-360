@@ -109,7 +109,8 @@ def snapshot(report: Report) -> dict:
 
 
 def create(
-    db: Session, report: Report, user: User, version: int, note: str | None
+    db: Session, report: Report, user: User, version: int, note: str | None,
+    *, commit: bool = True,
 ) -> ReportRevision:
     _assert_editable(report, version)
     number = (
@@ -129,7 +130,10 @@ def create(
     )
     db.add(revision)
     report.edit_version += 1
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(revision)
     return revision
 
