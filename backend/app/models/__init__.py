@@ -1,6 +1,7 @@
 from app.models.audit_log import AuditLog
 from app.models.purchase_order import PurchaseOrder, PurchaseOrderItem
 from app.models.ai import AIGeneration
+from app.models.disposal_certificate import WasteDisposalCertificate
 from app.models.documents import (
     DocumentContractDefaults,
     DocumentEmailBatch,
@@ -90,6 +91,7 @@ __all__ = [
     "PurchaseOrder",
     "PurchaseOrderItem",
     "AIGeneration",
+    "WasteDisposalCertificate",
     "DocumentEmployment",
     "DocumentContractDefaults",
     "DocumentEmailBatch",
