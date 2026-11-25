@@ -15,6 +15,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { LegalFooter } from "@/components/legal/LegalFooter";
 
 const benefits = [
   { title: "Control operativo", icon: ClipboardList },
@@ -131,6 +132,7 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+      <LegalFooter />
     </main>
   );
 }

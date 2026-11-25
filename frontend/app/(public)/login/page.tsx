@@ -3,11 +3,12 @@ import { Leaf } from "lucide-react";
 
 import { LoginForm } from "@/components/auth/LoginForm";
 import { Card, CardContent } from "@/components/ui/card";
+import { LegalFooter } from "@/components/legal/LegalFooter";
 
 export default function LoginPage() {
   return (
     <main className="grid min-h-screen grid-cols-1 bg-background lg:grid-cols-[1fr_.95fr]">
-      <section className="flex items-center justify-center px-6 py-10">
+      <section className="flex flex-col items-center justify-center px-6 py-10">
         <div className="w-full max-w-md space-y-7">
           <Link className="flex items-center gap-3" href="/">
             <span className="grid h-11 w-11 place-items-center rounded-lg bg-primary text-primary-foreground">
@@ -29,6 +30,7 @@ export default function LoginPage() {
               <LoginForm />
             </CardContent>
           </Card>
+          <LegalFooter />
         </div>
       </section>
       <section className="hidden bg-[linear-gradient(135deg,#073b3f_0%,#0f766e_54%,#d9f99d_120%)] p-10 text-white lg:flex lg:items-end">
