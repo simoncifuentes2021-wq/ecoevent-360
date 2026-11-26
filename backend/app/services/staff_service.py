@@ -8,8 +8,9 @@ from app.core.permissions import can_access_event, can_manage_event
 from app.models.core import Event, EventStaff, Task, User
 from app.models.enums import TaskStatus, UserRole
 from app.schemas.staff_schema import EventStaffCreate
+from app.services.google_calendar_service import sync_event_calendar
 
-ASSIGNABLE_ROLES = {UserRole.SUPERVISOR, UserRole.WORKER, UserRole.LOGISTICS_OPERATOR}
+ASSIGNABLE_ROLES = {UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.WORKER, UserRole.LOGISTICS_OPERATOR}
 ACTIVE_TASK_STATUSES = {TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.OBSERVED}
 
 
@@ -35,7 +36,12 @@ def assign_staff(
     if user.role not in ASSIGNABLE_ROLES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only SUPERVISOR, WORKER or LOGISTICS_OPERATOR users can be assigned to events",
+            detail="Only ADMIN, SUPERVISOR, WORKER or LOGISTICS_OPERATOR users can be assigned to events",
+        )
+    if user.role == UserRole.ADMIN and current_user.role not in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can assign an administrator to an event",
         )
 
     existing = db.scalar(
@@ -52,6 +58,8 @@ def assign_staff(
     staff = EventStaff(event_id=event_id, **payload.model_dump())
     db.add(staff)
     db.commit()
+    db.refresh(staff)
+    sync_event_calendar(db, event_id)
     db.refresh(staff)
     return staff
 
@@ -100,3 +108,4 @@ def remove_staff(db: Session, event_id: UUID, user_id: UUID, current_user: User)
 
     db.delete(staff)
     db.commit()
+    sync_event_calendar(db, event_id)

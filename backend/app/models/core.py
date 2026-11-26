@@ -204,6 +204,7 @@ class Event(Base):
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     start_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     end_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    google_calendar_event_id: Mapped[str | None] = mapped_column(String(128))
     estimated_attendees: Mapped[int | None] = mapped_column(Integer, server_default=text("0"))
     real_attendees: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[EventStatus] = mapped_column(
@@ -1148,6 +1149,11 @@ class EventStaff(Base):
     role_in_event: Mapped[str | None] = mapped_column(String(100))
     shift_start: Mapped[datetime | None] = mapped_column(DateTime)
     shift_end: Mapped[datetime | None] = mapped_column(DateTime)
+    calendar_invitation_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'PENDING'")
+    )
+    calendar_invitation_error: Mapped[str | None] = mapped_column(Text)
+    calendar_invitation_sent_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = created_at_column()
 
     event: Mapped[Event] = relationship(back_populates="staff_assignments")

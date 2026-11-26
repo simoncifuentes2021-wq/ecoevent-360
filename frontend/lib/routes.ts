@@ -33,6 +33,7 @@ export type NavItem = {
 
 export const roleNavigation: Record<UserRole, NavItem[]> = {
   SUPER_ADMIN: [
+    { href: "/checklist-terreno", label: "Checklist de terreno", icon: ClipboardList },
     { href: "/admin/dashboard", label: "Dashboard", icon: Home },
     { href: "/admin/clientes", label: "Clientes", icon: BriefcaseBusiness },
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
@@ -56,6 +57,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/settings", label: "Configuracion", icon: ShieldCheck }
   ],
   ADMIN: [
+    { href: "/checklist-terreno", label: "Mi checklist", icon: ClipboardList },
     { href: "/admin/dashboard", label: "Dashboard", icon: Home },
     { href: "/admin/clientes", label: "Clientes", icon: BriefcaseBusiness },
     { href: "/admin/usuarios", label: "Usuarios", icon: Users },
@@ -86,6 +88,7 @@ export const roleNavigation: Record<UserRole, NavItem[]> = {
     { href: "/client/mi-cuenta", label: "Mi cuenta", icon: UserRound }
   ],
   SUPERVISOR: [
+    { href: "/checklist-terreno", label: "Mi checklist", icon: ClipboardList },
     { href: "/supervisor/dashboard", label: "Dashboard", icon: Home },
     { href: "/supervisor/eventos", label: "Eventos asignados", icon: Sparkles },
     { href: "/supervisor/voluntarios-activaciones", label: "Voluntarios y Activaciones", icon: Recycle },

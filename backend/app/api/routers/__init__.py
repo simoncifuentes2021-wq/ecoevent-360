@@ -12,8 +12,10 @@ from app.api.routers import (
     events,
     evidences,
     field_staff,
+    field_checklists,
     environmental_impact,
     health,
+    google_calendar,
     incidents,
     inventory,
     logistics_evidences,
@@ -38,6 +40,7 @@ from app.api.routers import (
 
 routers = [
     health.router,
+    google_calendar.router,
     audit_logs.router,
     audit_logs.event_router,
     auth.router,
@@ -81,4 +84,5 @@ routers = [
     volunteers.public_router,
     volunteers.public_history_router,
     field_staff.router,
+    field_checklists.router,
 ]

@@ -1,4 +1,6 @@
 from app.models.audit_log import AuditLog
+from app.models.field_checklist import FieldChecklistHistory, FieldChecklistItem
+from app.models.google_calendar import GoogleCalendarConnection
 from app.models.purchase_order import PurchaseOrder, PurchaseOrderItem
 from app.models.ai import AIGeneration
 from app.models.disposal_certificate import WasteDisposalCertificate
@@ -88,6 +90,9 @@ from app.models.core import (
 
 __all__ = [
     "AuditLog",
+    "FieldChecklistHistory",
+    "FieldChecklistItem",
+    "GoogleCalendarConnection",
     "PurchaseOrder",
     "PurchaseOrderItem",
     "AIGeneration",

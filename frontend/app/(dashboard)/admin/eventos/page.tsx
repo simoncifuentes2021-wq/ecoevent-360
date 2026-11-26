@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { FileInput, Plus } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EventFilters } from "@/components/events/EventFilters";
 import { EventTable } from "@/components/events/EventTable";
+import { EventFormsBulkCreateDialog } from "@/components/event-forms/EventFormsBulkCreateDialog";
 import { StatusChangeDialog } from "@/components/events/StatusChangeDialog";
 import { RoleGuard } from "@/components/layout/RoleGuard";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export default function AdminEventsPage() {
   const [cancelTarget, setCancelTarget] = useState<Event | null>(null);
   const [statusTarget, setStatusTarget] = useState<Event | null>(null);
   const [visibilityTarget, setVisibilityTarget] = useState<Event | null>(null);
+  const [bulkFormsOpen, setBulkFormsOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,12 +116,18 @@ export default function AdminEventsPage() {
           title="Eventos"
           description="Planifica y administra eventos, clientes, fechas y estado operativo."
           actions={
-            <Link href="/admin/eventos/nuevo">
-              <Button>
-                <Plus className="h-4 w-4" />
-                Crear evento
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={() => setBulkFormsOpen(true)}>
+                <FileInput className="h-4 w-4" />
+                Formularios en lote
               </Button>
-            </Link>
+              <Link href="/admin/eventos/nuevo">
+                <Button>
+                  <Plus className="h-4 w-4" />
+                  Crear evento
+                </Button>
+              </Link>
+            </div>
           }
         />
         <EventFilters
@@ -171,6 +179,7 @@ export default function AdminEventsPage() {
           onConfirm={cancelEvent}
         />
         <StatusChangeDialog event={statusTarget} loading={statusLoading} role={user?.role} onClose={() => setStatusTarget(null)} onConfirm={updateStatus} />
+        {bulkFormsOpen ? <EventFormsBulkCreateDialog onClose={() => setBulkFormsOpen(false)} onComplete={() => undefined} /> : null}
       </div>
     </RoleGuard>
   );

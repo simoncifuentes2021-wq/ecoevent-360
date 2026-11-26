@@ -26,6 +26,7 @@ from app.schemas.event_schema import (
     EventStatusUpdate,
     EventUpdate,
 )
+from app.services.google_calendar_service import sync_event_calendar
 
 VALID_STATUS_TRANSITIONS = {
     EventStatus.QUOTE: {EventStatus.PLANNING, EventStatus.CANCELLED},
@@ -233,6 +234,11 @@ def update_event(db: Session, event_id: UUID, payload: EventUpdate, current_user
     db.add(event)
     db.commit()
     db.refresh(event)
+    if event.google_calendar_event_id or db.scalar(
+        select(EventStaff.id).where(EventStaff.event_id == event.id).limit(1)
+    ):
+        sync_event_calendar(db, event.id)
+        db.refresh(event)
     return event
 
 
@@ -251,6 +257,11 @@ def update_event_status(
     db.add(event)
     db.commit()
     db.refresh(event)
+    if event.google_calendar_event_id or db.scalar(
+        select(EventStaff.id).where(EventStaff.event_id == event.id).limit(1)
+    ):
+        sync_event_calendar(db, event.id)
+        db.refresh(event)
     return event
 
 
@@ -278,6 +289,11 @@ def cancel_event(db: Session, event_id: UUID, current_user: User) -> Event:
     db.add(event)
     db.commit()
     db.refresh(event)
+    if event.google_calendar_event_id or db.scalar(
+        select(EventStaff.id).where(EventStaff.event_id == event.id).limit(1)
+    ):
+        sync_event_calendar(db, event.id)
+        db.refresh(event)
     return event
 
 

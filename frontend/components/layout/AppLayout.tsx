@@ -35,9 +35,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const allowedPrefixes =
     user.role === "WORKER" ? ["/worker"] :
     user.role === "CLIENT" ? ["/client"] :
-    user.role === "SUPERVISOR" ? ["/supervisor", "/worker", "/alerts"] :
+    user.role === "SUPERVISOR" ? ["/supervisor", "/worker", "/alerts", "/checklist-terreno"] :
     user.role === "LOGISTICS_OPERATOR" ? ["/logistica"] :
-    ["/admin", "/reports", "/settings", "/alerts", "/worker"];
+    ["/admin", "/reports", "/settings", "/alerts", "/worker", "/checklist-terreno"];
 
   if (!allowedPrefixes.some((prefix) => pathname.startsWith(prefix))) {
     if (typeof window !== "undefined") window.location.href = defaultRouteForRole(user.role);

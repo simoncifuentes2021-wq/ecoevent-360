@@ -21,3 +21,7 @@ export function assignEventStaff(eventId: string, data: EventStaffCreate) {
 export function removeEventStaff(eventId: string, userId: string) {
   return api.delete<EventStaff>(`/events/${eventId}/staff/${userId}`);
 }
+
+export function syncEventCalendarInvitations(eventId: string) {
+  return api.post<{ ok: boolean; message: string; count?: number }>(`/events/${eventId}/staff/calendar-invitations`);
+}

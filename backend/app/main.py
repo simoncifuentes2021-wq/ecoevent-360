@@ -10,6 +10,7 @@ from starlette.responses import Response
 from app.api.routers import routers
 from app.core.config import settings
 from app.services.document_email_queue_service import queue_worker_loop
+from app.services.field_checklist_service import reminder_worker_loop
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
@@ -41,11 +42,19 @@ async def lifespan(_app: FastAPI):
         daemon=True,
     )
     worker.start()
+    checklist_worker = threading.Thread(
+        target=reminder_worker_loop,
+        args=(stop_event,),
+        name="field-checklist-reminders",
+        daemon=True,
+    )
+    checklist_worker.start()
     try:
         yield
     finally:
         stop_event.set()
         worker.join(timeout=5)
+        checklist_worker.join(timeout=5)
 
 
 app = FastAPI(
@@ -63,6 +72,7 @@ app = FastAPI(
         {"name": "event services", "description": "Servicios contratados por evento."},
         {"name": "event zones", "description": "Zonas fisicas o funcionales dentro del evento."},
         {"name": "tasks", "description": "Tareas operativas del equipo en terreno."},
+        {"name": "field checklists", "description": "Checklists personales de coordinadores con recordatorios por correo."},
         {"name": "incidents", "description": "Incidencias operativas y sanitarias."},
         {"name": "evidences", "description": "Evidencias fotograficas por evento o incidencia."},
         {"name": "waste", "description": "Registros de residuos y destino."},

@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     resend_api_key: str | None = Field(
         default=None, validation_alias=AliasChoices("RESEND_API_KEY")
     )
+    google_calendar_client_id: str | None = Field(default=None, validation_alias=AliasChoices("GOOGLE_CALENDAR_CLIENT_ID"))
+    google_calendar_client_secret: str | None = Field(default=None, validation_alias=AliasChoices("GOOGLE_CALENDAR_CLIENT_SECRET"))
+    google_calendar_redirect_uri: str | None = Field(default=None, validation_alias=AliasChoices("GOOGLE_CALENDAR_REDIRECT_URI"))
+    google_calendar_token_encryption_key: str | None = Field(default=None, validation_alias=AliasChoices("GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY"))
     documents_allow_local_emails: bool = False
     documents_local_email_recipient: str | None = None
     email_from: str = Field(

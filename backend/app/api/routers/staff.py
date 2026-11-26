@@ -1,16 +1,30 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_active_user
+from app.api.deps import get_current_active_user, require_roles
+from app.core.permissions import can_manage_event
 from app.db.session import get_db
 from app.models.core import User
 from app.schemas.staff_schema import EventStaffCreate, EventStaffListResponse, EventStaffRead
 from app.services import staff_service
 from app.services.audit_log_service import create_audit_log, serialize_model_for_audit
+from app.services.google_calendar_service import sync_event_calendar
+from app.models.enums import UserRole
 
 router = APIRouter(prefix="/events", tags=["event staff"])
+
+
+@router.post("/{event_id}/staff/calendar-invitations")
+def sync_calendar_invitations(
+    event_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUPERVISOR)),
+):
+    if not can_manage_event(current_user, event_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+    return sync_event_calendar(db, event_id)
 
 
 @router.post(

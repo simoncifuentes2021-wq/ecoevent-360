@@ -39,6 +39,9 @@ class EventStaffRead(BaseModel):
     role_in_event: str | None = None
     shift_start: datetime | None = None
     shift_end: datetime | None = None
+    calendar_invitation_status: str = "PENDING"
+    calendar_invitation_error: str | None = None
+    calendar_invitation_sent_at: datetime | None = None
     created_at: datetime
     user: EventStaffUserRead | None = None
 

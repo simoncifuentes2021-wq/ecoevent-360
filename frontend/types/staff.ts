@@ -8,6 +8,9 @@ export type EventStaff = {
   role_in_event?: string | null;
   shift_start?: string | null;
   shift_end?: string | null;
+  calendar_invitation_status?: "PENDING" | "SENT" | "ERROR" | "CANCELLED";
+  calendar_invitation_error?: string | null;
+  calendar_invitation_sent_at?: string | null;
   created_at?: string;
   session_id?: string | null;
   session_name?: string | null;

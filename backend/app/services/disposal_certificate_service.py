@@ -5,7 +5,6 @@ import html
 import base64
 from datetime import date, datetime
 from decimal import Decimal
-from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
