@@ -11,6 +11,10 @@ export type EventStaff = {
   calendar_invitation_status?: "PENDING" | "SENT" | "ERROR" | "CANCELLED";
   calendar_invitation_error?: string | null;
   calendar_invitation_sent_at?: string | null;
+  resend_invitation_status?: "PENDING" | "ACCEPTED" | "ERROR";
+  resend_invitation_error?: string | null;
+  resend_invitation_id?: string | null;
+  resend_invitation_accepted_at?: string | null;
   created_at?: string;
   session_id?: string | null;
   session_name?: string | null;

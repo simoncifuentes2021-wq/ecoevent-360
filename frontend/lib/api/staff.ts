@@ -23,5 +23,5 @@ export function removeEventStaff(eventId: string, userId: string) {
 }
 
 export function syncEventCalendarInvitations(eventId: string) {
-  return api.post<{ ok: boolean; message: string; count?: number }>(`/events/${eventId}/staff/calendar-invitations`);
+  return api.post<{ ok: boolean; calendar_ok: boolean; resend_ok: boolean; message: string; count?: number; resend_accepted_count?: number; resend_failed_count?: number; resend_skipped_count?: number }>(`/events/${eventId}/staff/calendar-invitations`);
 }

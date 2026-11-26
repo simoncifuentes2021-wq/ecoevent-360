@@ -42,6 +42,10 @@ class EventStaffRead(BaseModel):
     calendar_invitation_status: str = "PENDING"
     calendar_invitation_error: str | None = None
     calendar_invitation_sent_at: datetime | None = None
+    resend_invitation_status: str = "PENDING"
+    resend_invitation_error: str | None = None
+    resend_invitation_id: str | None = None
+    resend_invitation_accepted_at: datetime | None = None
     created_at: datetime
     user: EventStaffUserRead | None = None
 

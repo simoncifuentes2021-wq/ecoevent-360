@@ -1154,6 +1154,12 @@ class EventStaff(Base):
     )
     calendar_invitation_error: Mapped[str | None] = mapped_column(Text)
     calendar_invitation_sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resend_invitation_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'PENDING'")
+    )
+    resend_invitation_error: Mapped[str | None] = mapped_column(Text)
+    resend_invitation_id: Mapped[str | None] = mapped_column(String(128))
+    resend_invitation_accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = created_at_column()
 
     event: Mapped[Event] = relationship(back_populates="staff_assignments")

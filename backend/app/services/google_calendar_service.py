@@ -12,6 +12,7 @@ from app.models.core import Event, EventStaff
 from app.models.enums import EventStatus
 from app.models.google_calendar import GoogleCalendarConnection
 from app.services.google_calendar_security import token_fernet
+from app.services.staff_invitation_email_service import send_staff_event_email
 
 logger = logging.getLogger(__name__)
 _CALENDAR_API = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
@@ -46,8 +47,8 @@ def _event_description(event: Event) -> str:
     start = _local_date(event.start_date)
     end = _local_date(event.end_date)
     lines = [
-        "GREENWAY · ECOEVENT 360",
-        "Invitación de personal",
+        "APP GREENWAY",
+        "Invitación para personal asignado",
         "",
         f"Evento: {event.name}",
         f"Cliente: {event.client.business_name}" if event.client else "",
@@ -109,7 +110,7 @@ def _event_payload(event: Event, assignments: list[EventStaff]) -> dict[str, obj
             attendees.append({"email": email})
             seen.add(email)
     payload: dict[str, object] = {
-        "summary": f"EcoEvent 360 | {event.name}",
+        "summary": f"App Greenway | {event.name}",
         "description": _event_description(event),
         "start": {"date": start},
         "end": {"date": end},
@@ -126,6 +127,59 @@ def _mark_assignments(assignments: list[EventStaff], status: str, error: str | N
         assignment.calendar_invitation_status = status
         assignment.calendar_invitation_error = error
         assignment.calendar_invitation_sent_at = sent_at
+
+
+def _send_resend_notices(db: Session, event: Event, assignments: list[EventStaff]) -> dict[str, int]:
+    accepted = 0
+    failed = 0
+    skipped = 0
+    for assignment in assignments:
+        if assignment.resend_invitation_status == "ACCEPTED":
+            skipped += 1
+            continue
+        email_status, resend_id, error = send_staff_event_email(event, assignment)
+        assignment.resend_invitation_status = email_status
+        assignment.resend_invitation_id = resend_id
+        assignment.resend_invitation_error = error
+        assignment.resend_invitation_accepted_at = (
+            datetime.now(UTC).replace(tzinfo=None) if email_status == "ACCEPTED" else None
+        )
+        accepted += email_status == "ACCEPTED"
+        failed += email_status == "ERROR"
+    db.commit()
+    return {"accepted": accepted, "failed": failed, "skipped": skipped}
+
+
+def _sync_result(
+    *, calendar_ok: bool, calendar_message: str, email_summary: dict[str, int], count: int
+) -> dict[str, object]:
+    accepted = email_summary["accepted"]
+    failed = email_summary["failed"]
+    if accepted and failed:
+        email_message = f"Resend aceptó {accepted} correo(s) y rechazó {failed}."
+    elif accepted and email_summary["skipped"]:
+        email_message = (
+            f"Resend aceptó {accepted} correo(s) nuevo(s); "
+            f"{email_summary['skipped']} ya estaban aceptados y no se duplicaron."
+        )
+    elif accepted:
+        email_message = f"Resend aceptó el correo de aviso para {accepted} persona(s)."
+    elif failed:
+        email_message = f"Resend no pudo aceptar el correo de {failed} persona(s)."
+    elif email_summary["skipped"]:
+        email_message = "El aviso por Resend ya había sido aceptado; no se duplicó."
+    else:
+        email_message = "No había correos pendientes para Resend."
+    return {
+        "ok": calendar_ok and failed == 0,
+        "calendar_ok": calendar_ok,
+        "resend_ok": failed == 0,
+        "message": f"{calendar_message} {email_message}",
+        "count": count,
+        "resend_accepted_count": accepted,
+        "resend_failed_count": failed,
+        "resend_skipped_count": email_summary["skipped"],
+    }
 
 
 def _safe_google_error(response: httpx.Response) -> str:
@@ -201,17 +255,19 @@ def sync_event_calendar(db: Session, event_id) -> dict[str, object]:
                 return {"ok": False, "message": str(exc) if isinstance(exc, GoogleCalendarSyncError) else "No se pudo actualizar Google Calendar."}
         return {"ok": True, "message": "No hay personal asignado para invitar."}
 
+    email_summary = _send_resend_notices(db, event, assignments)
+
     if connection is None:
         error = "Google Calendar no está conectado. Conecta la cuenta en Configuración y reintenta."
         _mark_assignments(assignments, "PENDING", error)
         db.commit()
-        return {"ok": False, "message": error}
+        return _sync_result(calendar_ok=False, calendar_message=error, email_summary=email_summary, count=len(assignments))
 
     try:
         payload = _event_payload(event, assignments)
         client_name = event.client.business_name if event.client else None
         if client_name:
-            payload["summary"] = f"EcoEvent 360 · {client_name} · {event.name}"
+            payload["summary"] = f"App Greenway · {client_name} · {event.name}"
         deterministic_id = hashlib.sha256(f"ecoevent360:{event.id}".encode()).hexdigest()[:40]
         headers: dict[str, str]
         with httpx.Client(timeout=25) as client:
@@ -251,7 +307,12 @@ def sync_event_calendar(db: Session, event_id) -> dict[str, object]:
 
         _mark_assignments(assignments, "SENT")
         db.commit()
-        return {"ok": True, "message": "Invitación solicitada a Google Calendar.", "count": len(assignments)}
+        return _sync_result(
+            calendar_ok=True,
+            calendar_message="Invitación solicitada a Google Calendar.",
+            email_summary=email_summary,
+            count=len(assignments),
+        )
     except GoogleCalendarSyncError as exc:
         error = str(exc)
     except httpx.RequestError as exc:
@@ -263,4 +324,4 @@ def sync_event_calendar(db: Session, event_id) -> dict[str, object]:
 
     _mark_assignments(assignments, "ERROR", error)
     db.commit()
-    return {"ok": False, "message": error, "count": len(assignments)}
+    return _sync_result(calendar_ok=False, calendar_message=error, email_summary=email_summary, count=len(assignments))
