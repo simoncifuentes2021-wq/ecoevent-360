@@ -24,7 +24,7 @@ const callbackMessages: Record<string, { tone: string; message: string }> = {
   cancelled: { tone: "warning", message: "No se conectó la cuenta. Puedes intentarlo cuando quieras." },
   invalid_state: { tone: "error", message: "La autorización expiró o no se pudo validar. Inicia la conexión nuevamente." },
   invalid_client: { tone: "error", message: "Google rechazó el ID o el secreto del cliente. Revisa que ambos pertenezcan al mismo cliente OAuth de tipo Aplicación web." },
-  missing_refresh_token: { tone: "error", message: "Google no entregó autorización para mantener la conexión. Quita el acceso de EcoEvent en tu cuenta de Google y vuelve a conectar con el consentimiento completo." },
+  missing_refresh_token: { tone: "error", message: "Google no entregó autorización para mantener la conexión. Quita el acceso de App Greenway en tu cuenta de Google y vuelve a conectar con el consentimiento completo." },
   oauth_error: { tone: "error", message: "Google rechazó el intercambio de autorización. Revisa la dirección de retorno y vuelve a intentarlo." },
   error: { tone: "error", message: "Google no pudo completar la conexión. Revisa la configuración e inténtalo otra vez." }
 };
@@ -88,7 +88,7 @@ function SettingsContent() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Sistema" title="Configuración" description="Administra las conexiones de EcoEvent 360. Solo el Super Admin puede vincular estas cuentas." />
+      <PageHeader eyebrow="Sistema" title="Configuración" description="Administra las conexiones de App Greenway. Solo el Super Admin puede vincular estas cuentas." />
 
       {notice ? <div className={`rounded-xl border p-4 text-sm ${notice.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : notice.tone === "warning" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-rose-200 bg-rose-50 text-rose-900"}`}>{notice.message}</div> : null}
       {error ? <ErrorState message={error} onRetry={() => void loadStatus()} /> : null}
@@ -133,7 +133,7 @@ function SettingsContent() {
               </div></div>
             </div> : null}
 
-            <p className="text-xs leading-5 text-muted-foreground">La autorización permite administrar invitaciones de eventos. Al desconectar se revoca el acceso de EcoEvent; las invitaciones ya enviadas no se borran de los calendarios de sus destinatarios.</p>
+            <p className="text-xs leading-5 text-muted-foreground">La autorización permite administrar invitaciones de eventos. Al desconectar se revoca el acceso de App Greenway; las invitaciones ya enviadas no se borran de los calendarios de sus destinatarios.</p>
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => void loadStatus()}><RefreshCw className="h-4 w-4" />Actualizar estado</Button>
           </> : null}
         </CardContent>
